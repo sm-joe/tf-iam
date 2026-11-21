@@ -26,6 +26,7 @@ def catalog_actions(version=None):
             rule=get_rule("resource" if category=="resources" else "data",kind,version)
             for field in ("read","write","delete"): out.update(rule[field])
             for attr in rule["attributes"]: out.update(attr["actions"])
+    out.update({"iam:CreateServiceLinkedRole","eks:CreateAccessEntry","iam:PutRolePermissionsBoundary","iam:DeleteRolePermissionsBoundary","eks:AssociateEncryptionConfig"})
     return out
 
 def download_snapshot(folder,services):
@@ -137,6 +138,7 @@ def audit(actions,permissions,folder):
             keys=keys+definitions.get(name,{}).get("ConditionKeys",[])
         for conditions in p.get("condition",{}).values():
             for key in conditions:
+                if key.lower()=='aws:requestedregion': continue  # AWS global request context key
                 if not any(condition_matches(k,key) for k in keys if isinstance(k,str)):
                     # The metadata does not enumerate all globally available context keys.
                     # Unlisted keys are unverified, not automatically invalid.

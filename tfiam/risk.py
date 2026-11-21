@@ -1,7 +1,7 @@
 """Conservative candidate risk detection; combinations do not prove exploitability."""
 LEVELS={"LOW":1,"MEDIUM":2,"HIGH":3,"CRITICAL":4}
 DELEGATION={
-    "iam:PassRole":"HIGH","iam:AttachRolePolicy":"HIGH","iam:PutRolePolicy":"HIGH",
+    "iam:CreateServiceLinkedRole":"HIGH","iam:PassRole":"HIGH","iam:AttachRolePolicy":"HIGH","iam:PutRolePolicy":"HIGH",
     "iam:UpdateAssumeRolePolicy":"HIGH","iam:CreatePolicyVersion":"HIGH",
     "iam:SetDefaultPolicyVersion":"HIGH","iam:CreateAccessKey":"HIGH",
     "iam:PutUserPolicy":"HIGH","iam:AttachUserPolicy":"HIGH","iam:PutGroupPolicy":"HIGH",
