@@ -136,5 +136,6 @@ def audit(actions,permissions,folder):
     findings.sort(key=lambda f:(f["action"],f.get("source",""),f["code"],f.get("condition_key","")))
     return {"status":"issues" if any(f["severity"]=="error" for f in findings) else "review" if findings else "compatible",
             "actions_total":len(actions),"actions_recognized":valid,"permission_observations_checked":checked,
-            "missing_services":missing,"evidence":evidence,"findings":findings,
+            "missing_services":missing,"metadata_directory":str(Path(folder).resolve()),"evidence":evidence,"findings":findings,
+            "diagnostics":(["Missing service snapshots; run catalog-audit with --refresh in the intended directory."] if missing else []),
             "limitation":"Metadata compatibility only; required multi-resource groups, condition values, provider API calls and effective IAM authorization are not established."}
