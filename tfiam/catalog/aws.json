@@ -32,7 +32,14 @@
       "delete": [
         "s3:DeleteBucket"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "s3:CreateBucket",
+        "s3:PutBucketTagging"
+      ],
+      "update": [
+        "s3:PutBucketTagging"
+      ]
     },
     "aws_s3_bucket_versioning": {
       "validation": "candidate",
@@ -47,7 +54,13 @@
       "delete": [
         "s3:PutBucketVersioning"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "s3:PutBucketVersioning"
+      ],
+      "update": [
+        "s3:PutBucketVersioning"
+      ]
     },
     "aws_s3_bucket_public_access_block": {
       "validation": "candidate",
@@ -62,7 +75,13 @@
       "delete": [
         "s3:PutBucketPublicAccessBlock"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "s3:PutBucketPublicAccessBlock"
+      ],
+      "update": [
+        "s3:PutBucketPublicAccessBlock"
+      ]
     },
     "aws_s3_bucket_server_side_encryption_configuration": {
       "validation": "candidate",
@@ -77,7 +96,13 @@
       "delete": [
         "s3:PutEncryptionConfiguration"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "s3:PutEncryptionConfiguration"
+      ],
+      "update": [
+        "s3:PutEncryptionConfiguration"
+      ]
     },
     "aws_s3_object": {
       "validation": "candidate",
@@ -94,7 +119,15 @@
       "delete": [
         "s3:DeleteObject"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "s3:PutObject",
+        "s3:PutObjectTagging"
+      ],
+      "update": [
+        "s3:PutObject",
+        "s3:PutObjectTagging"
+      ]
     },
     "aws_sqs_queue": {
       "validation": "candidate",
@@ -114,7 +147,16 @@
       "delete": [
         "sqs:DeleteQueue"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "sqs:CreateQueue",
+        "sqs:TagQueue"
+      ],
+      "update": [
+        "sqs:SetQueueAttributes",
+        "sqs:TagQueue",
+        "sqs:UntagQueue"
+      ]
     },
     "aws_dynamodb_table": {
       "validation": "candidate",
@@ -137,7 +179,20 @@
       "delete": [
         "dynamodb:DeleteTable"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "dynamodb:CreateTable",
+        "dynamodb:TagResource",
+        "dynamodb:UpdateTimeToLive",
+        "dynamodb:UpdateContinuousBackups"
+      ],
+      "update": [
+        "dynamodb:UpdateTable",
+        "dynamodb:TagResource",
+        "dynamodb:UntagResource",
+        "dynamodb:UpdateTimeToLive",
+        "dynamodb:UpdateContinuousBackups"
+      ]
     },
     "aws_vpc": {
       "validation": "candidate",
@@ -157,7 +212,17 @@
       "delete": [
         "ec2:DeleteVpc"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "ec2:CreateVpc",
+        "ec2:ModifyVpcAttribute",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:ModifyVpcAttribute",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ]
     },
     "aws_subnet": {
       "validation": "candidate",
@@ -177,7 +242,17 @@
       "delete": [
         "ec2:DeleteSubnet"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "ec2:CreateSubnet",
+        "ec2:ModifySubnetAttribute",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:ModifySubnetAttribute",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ]
     },
     "aws_instance": {
       "validation": "candidate",
@@ -204,7 +279,19 @@
       "delete": [
         "ec2:TerminateInstances"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "ec2:RunInstances",
+        "ec2:ModifyInstanceAttribute",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:ModifyInstanceAttribute",
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "ec2:StartInstances",
+        "ec2:StopInstances"
+      ]
     },
     "aws_iam_role": {
       "validation": "candidate",
@@ -226,7 +313,17 @@
       "delete": [
         "iam:DeleteRole"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "iam:CreateRole",
+        "iam:TagRole"
+      ],
+      "update": [
+        "iam:UpdateRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:TagRole",
+        "iam:UntagRole"
+      ]
     },
     "aws_iam_policy": {
       "validation": "candidate",
@@ -249,7 +346,17 @@
         "iam:DeletePolicy",
         "iam:DeletePolicyVersion"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "iam:CreatePolicy",
+        "iam:TagPolicy"
+      ],
+      "update": [
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicyVersion",
+        "iam:TagPolicy",
+        "iam:UntagPolicy"
+      ]
     },
     "aws_iam_role_policy_attachment": {
       "validation": "candidate",
@@ -264,7 +371,13 @@
       "delete": [
         "iam:DetachRolePolicy"
       ],
-      "attributes": []
+      "attributes": [],
+      "create": [
+        "iam:AttachRolePolicy"
+      ],
+      "update": [
+        "iam:AttachRolePolicy"
+      ]
     },
     "aws_eks_cluster": {
       "validation": "candidate",
@@ -305,6 +418,16 @@
           ],
           "scope": "literal_arn"
         }
+      ],
+      "create": [
+        "eks:CreateCluster",
+        "eks:UpdateClusterConfig",
+        "eks:DescribeUpdate"
+      ],
+      "update": [
+        "eks:UpdateClusterConfig",
+        "eks:UpdateClusterVersion",
+        "eks:DescribeUpdate"
       ]
     },
     "aws_eks_node_group": {
@@ -335,6 +458,15 @@
           ],
           "scope": "resource"
         }
+      ],
+      "create": [
+        "eks:CreateNodegroup",
+        "eks:DescribeUpdate"
+      ],
+      "update": [
+        "eks:UpdateNodegroupConfig",
+        "eks:UpdateNodegroupVersion",
+        "eks:DescribeUpdate"
       ]
     },
     "aws_eks_addon": {
@@ -365,6 +497,14 @@
           ],
           "scope": "resource"
         }
+      ],
+      "create": [
+        "eks:CreateAddon",
+        "eks:DescribeUpdate"
+      ],
+      "update": [
+        "eks:UpdateAddon",
+        "eks:DescribeUpdate"
       ]
     },
     "aws_eks_pod_identity_association": {
@@ -393,6 +533,12 @@
           ],
           "scope": "resource"
         }
+      ],
+      "create": [
+        "eks:CreatePodIdentityAssociation"
+      ],
+      "update": [
+        "eks:UpdatePodIdentityAssociation"
       ]
     }
   },
@@ -406,7 +552,9 @@
       ],
       "write": [],
       "delete": [],
-      "attributes": []
+      "attributes": [],
+      "create": [],
+      "update": []
     },
     "aws_ami": {
       "validation": "candidate",
@@ -417,7 +565,9 @@
       ],
       "write": [],
       "delete": [],
-      "attributes": []
+      "attributes": [],
+      "create": [],
+      "update": []
     },
     "aws_eks_cluster": {
       "validation": "candidate",
@@ -428,7 +578,9 @@
       ],
       "write": [],
       "delete": [],
-      "attributes": []
+      "attributes": [],
+      "create": [],
+      "update": []
     },
     "aws_eks_addon": {
       "validation": "candidate",
@@ -439,7 +591,9 @@
       ],
       "write": [],
       "delete": [],
-      "attributes": []
+      "attributes": [],
+      "create": [],
+      "update": []
     },
     "aws_eks_node_group": {
       "validation": "candidate",
@@ -450,7 +604,9 @@
       ],
       "write": [],
       "delete": [],
-      "attributes": []
+      "attributes": [],
+      "create": [],
+      "update": []
     },
     "aws_iam_role": {
       "validation": "candidate",
@@ -461,7 +617,9 @@
       ],
       "write": [],
       "delete": [],
-      "attributes": []
+      "attributes": [],
+      "create": [],
+      "update": []
     },
     "aws_vpc": {
       "validation": "candidate",
@@ -472,7 +630,9 @@
       ],
       "write": [],
       "delete": [],
-      "attributes": []
+      "attributes": [],
+      "create": [],
+      "update": []
     },
     "aws_subnet": {
       "validation": "candidate",
@@ -483,7 +643,9 @@
       ],
       "write": [],
       "delete": [],
-      "attributes": []
+      "attributes": [],
+      "create": [],
+      "update": []
     },
     "aws_region": {
       "validation": "candidate",
@@ -492,7 +654,9 @@
       "read": [],
       "write": [],
       "delete": [],
-      "attributes": []
+      "attributes": [],
+      "create": [],
+      "update": []
     },
     "aws_partition": {
       "validation": "candidate",
@@ -501,7 +665,9 @@
       "read": [],
       "write": [],
       "delete": [],
-      "attributes": []
+      "attributes": [],
+      "create": [],
+      "update": []
     }
   }
 }

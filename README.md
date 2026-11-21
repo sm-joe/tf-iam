@@ -24,18 +24,37 @@ tfiam compare ./examples/aws --existing examples/existing-aws.json --fail-on-mis
 
 The default provider is AWS. Other providers are rejected for policy generation and reported as unsupported during scans. Generate never deploys policies. Terraform JSON output belongs in a separate privileged policy-provisioning workspace. Scan has no cloud credentials requirement.
 
+
+## Saved Terraform plan JSON (M02)
+
+Use a separate, appropriately authorized planning identity to produce the saved plan. The CLI does not execute Terraform or request cloud credentials.
+
+```bash
+terraform -chdir=./infra plan -out=tfplan
+terraform -chdir=./infra show -json tfplan > plan.json
+tfiam scan ./infra --plan-json plan.json --aws-account 123456789012 --aws-region us-east-1
+tfiam generate ./infra --plan-json plan.json --aws-account 123456789012 --aws-region us-east-1 --allow-partial --output apply-policy.json
+tfiam compare ./infra --plan-json plan.json --aws-account 123456789012 --aws-region us-east-1 --existing existing.json --fail-on-missing
+```
+
+The directory is optional in plan mode; it supplies only backend configuration and provider lockfile, not additional resource changes. Without a directory, supply explicit S3 backend configuration via `--backend-config` or review the missing backend warning. The default phase is apply; create/update/delete select distinct catalog operation candidates, replacements use both before and after scopes, no-op and data reads use read candidates, and forget is state-only. `--phase plan` reports retrospective read candidates; it cannot establish all permissions needed to produce the plan. `--phase destroy` rejects plans containing managed creates or updates. Deferred/incomplete plans, imports, drift, unknown and unsupported operations remain explicit review items. Full module instance and deposed addresses retain provenance.
+
+Terraform JSON plans may contain plaintext secrets and confidential infrastructure details. Keep saved plans and reports in protected ephemeral storage; never commit real plans or upload them to public logs. Values identified by Terraform sensitive/unknown masks are withheld, not copied into reports. Other unmarked resource identifiers can appear in scopes and source addresses. AWS aliases, account/region assumptions, provider version validation, and precise action-level scope still require review. Catalog candidates are not proven sufficient.
+
+Reference: [Terraform JSON output format](https://developer.hashicorp.com/terraform/internals/json-format).
+
 ## Catalog
 
 The packaged `tfiam/catalog/aws.json` stores independently authored resource and data-source rules; `schema.json` defines their schema. Each entry has lifecycle actions, optional attribute-triggered actions, references, validation status and exact tested provider versions. Catalog loading validates schema and rejects writable data rules. The current catalog contains 17 resource and 10 data-source entries; all are candidates, none has live version-specific validation. The report records the AWS provider lockfile version if available. This is not proof of version compatibility. Resource-level scope logic remains in the scanner; unknown dependencies must not be silently granted.
 
 ## Coverage and gates
 
-Root and reachable local modules, HCL and Terraform JSON, S3 state with lockfile/DynamoDB and optional KMS, local backend. Plan is read-oriented and may include backend locking mutations. Apply includes deletes for replacement; destroy includes read/delete. Variable defaults and direct references are only static approximations. Remote modules, plan JSON, tfvars evaluation, aliases and provider-specific dependencies remain incomplete. Do not use generated policies without review and isolated lifecycle testing. All scans currently remain PARTIAL. Exit codes: 0 completed; 1 input/error; 2 partial with --strict; 3 missing or denied candidate permissions with --fail-on-missing.
+Root and reachable local modules, HCL and Terraform JSON, S3 state with lockfile/DynamoDB and optional KMS, local backend. Plan is read-oriented and may include backend locking mutations. Apply includes deletes for replacement; destroy includes read/delete. Variable defaults and direct references are only static approximations. Remote modules, full tfvars evaluation, aliases and provider-specific dependencies remain incomplete. Do not use generated policies without review and isolated lifecycle testing. All scans currently remain PARTIAL. Exit codes: 0 completed; 1 input/error; 2 partial with --strict; 3 missing or denied candidate permissions with --fail-on-missing.
 
 ## Roadmap
 
 1. AWS-only external catalog and risk diagnostics (this change).
-2. Saved Terraform plan JSON and installed module inventory; lifecycle-aware operation selection and value resolution.
+2. Saved Terraform plan JSON and lifecycle operations (M02); installed module inventory and full configuration resolution (M03).
 3. Expand AWS mappings with action-level ARN and IAM condition evidence; validate against pinned provider versions.
 4. Planner, applier and destructive-operation policy separation; scope-aware comparison and Access Analyzer.
 5. Live read-only IAM retrieval and CloudTrail evidence refinement.

@@ -1,0 +1,200 @@
+{
+  "format_version": "1.2",
+  "terraform_version": "1.10.5",
+  "applyable": true,
+  "complete": true,
+  "errored": false,
+  "resource_changes": [
+    {
+      "address": "aws_s3_bucket.created",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": "new-pipeline-bucket"
+        }
+      }
+    },
+    {
+      "address": "aws_sqs_queue.updated",
+      "mode": "managed",
+      "type": "aws_sqs_queue",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "update"
+        ],
+        "before": {
+          "name": "pipeline-queue"
+        },
+        "after": {
+          "name": "pipeline-queue"
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket.removed",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete"
+        ],
+        "before": {
+          "bucket": "old-bucket"
+        },
+        "after": null
+      }
+    },
+    {
+      "address": "module.child[\"blue\"].aws_iam_role.runner[0]",
+      "mode": "managed",
+      "type": "aws_iam_role",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "delete",
+          "create"
+        ],
+        "before": {
+          "name": "old-role",
+          "path": "/ci/"
+        },
+        "after": {
+          "name": "new-role",
+          "path": "/ci/",
+          "arn": null
+        },
+        "after_unknown": {
+          "arn": true
+        }
+      }
+    },
+    {
+      "address": "aws_eks_cluster.unchanged",
+      "mode": "managed",
+      "type": "aws_eks_cluster",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "no-op"
+        ],
+        "before": {
+          "name": "existing",
+          "arn": "arn:aws:eks:us-east-1:123456789012:cluster/existing"
+        },
+        "after": {
+          "name": "existing",
+          "arn": "arn:aws:eks:us-east-1:123456789012:cluster/existing"
+        }
+      }
+    },
+    {
+      "address": "data.aws_ami.base",
+      "mode": "data",
+      "type": "aws_ami",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "read"
+        ],
+        "before": null,
+        "after": {
+          "id": null
+        },
+        "after_unknown": {
+          "id": true
+        }
+      }
+    },
+    {
+      "address": "aws_iam_role.hidden",
+      "mode": "managed",
+      "type": "aws_iam_role",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": "do-not-leak-sensitive-role",
+          "path": "/"
+        },
+        "after_sensitive": {
+          "name": true
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket.unknown",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "bucket": null
+        },
+        "after_unknown": {
+          "bucket": true
+        }
+      }
+    },
+    {
+      "address": "aws_iam_policy.unknown",
+      "mode": "managed",
+      "type": "aws_iam_policy",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {
+          "name": null
+        },
+        "after_unknown": {
+          "name": true
+        }
+      }
+    },
+    {
+      "address": "aws_s3_bucket.forgotten",
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "change": {
+        "actions": [
+          "forget"
+        ],
+        "before": {
+          "bucket": "forgotten-bucket"
+        },
+        "after": null
+      }
+    },
+    {
+      "address": "random_pet.name",
+      "mode": "managed",
+      "type": "random_pet",
+      "provider_name": "registry.terraform.io/hashicorp/random",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "before": null,
+        "after": {}
+      }
+    }
+  ]
+}

@@ -42,7 +42,9 @@
         "read",
         "write",
         "delete",
-        "attributes"
+        "attributes",
+        "create",
+        "update"
       ],
       "properties": {
         "validation": {
@@ -130,6 +132,22 @@
                 ]
               }
             }
+          }
+        },
+        "create": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
+          }
+        },
+        "update": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
           }
         }
       }

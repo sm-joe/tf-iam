@@ -1,6 +1,7 @@
 import json, re
 from pathlib import Path
-from .catalog_loader import get_rule, actions_for, attribute_values, CATALOG
+from .catalog_loader import get_rule, actions_for, operation_actions, attribute_values, CATALOG
+from .plan import parse_plan
 from .risk import assess
 
 def blocks(doc, key):
@@ -10,8 +11,10 @@ def blocks(doc, key):
 def literal(v):
     return v if isinstance(v,str) and v and not any(c in v for c in ('${','%{','*','?')) else None
 
-def scan(root, phase='apply', account=None, region=None, partition='aws', backend_config=None):
-    root=Path(root).resolve()
+def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None):
+    if root is None and plan is None: raise ValueError('Provide a Terraform directory or saved plan JSON')
+    has_root=root is not None
+    root=Path(root or '.').resolve()
     if not root.is_dir(): raise ValueError('Terraform directory does not exist')
     report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'backends':[]}
     report['catalog']={'schema_version':CATALOG['schema_version'],'provider':CATALOG['provider'],'provider_version':None}
@@ -23,6 +26,13 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
             key=(p,action,s,source,plane,json.dumps(condition,sort_keys=True))
             if key not in records:
                 records.add(key); report['permissions'].append(dict(provider=p,action=action,scope=s,source=source,plane=plane, **({"condition":condition} if condition else {})))
+    plan_tasks=[]
+    if plan is not None:
+        entries,plan_tasks,plan_warnings,meta=parse_plan(plan,phase)
+        report['input']='terraform-plan-json'; report['plan']=meta; report['resources']=entries
+        for message in plan_warnings: warn(message)
+        warn('Saved-plan analysis is operation-specific, not a complete provider API trace; aliases and cross-account contexts require review')
+    else: report['input']='terraform-config'
     def backend(kind,b,src,readonly=False):
         if not readonly: b={**b,**(backend_config or {})}
         report['backends'].append({'type':kind,'source':src})
@@ -47,8 +57,8 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
         folder=folder.resolve()
         if folder in visited: return
         visited.add(folder)
-        files=sorted(set(folder.glob('*.tf'))|set(folder.glob('*.tf.json')))
-        if not files: warn(str(folder)+': no Terraform files')
+        files=sorted(set(folder.glob('*.tf'))|set(folder.glob('*.tf.json'))) if has_root else []
+        if not files and plan is None: warn(str(folder)+': no Terraform files')
         docs=[]
         for f in files:
             src=str(f.relative_to(root)) if f.is_relative_to(root) else str(f)
@@ -71,6 +81,7 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
                         elif category=='variable': definitions['var.'+typ]=instances
                         else: definitions['local.'+typ]={'value':instances}
         def resolve(value,seen=()):
+            if plan is not None: return literal(value)
             if not isinstance(value,str): return None
             def lookup(match):
                 ref=match.group(1)
@@ -88,26 +99,46 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
             m=re.fullmatch(r'\$\{([\w.-]+)\}',value)
             return lookup(m) if m else literal(value)
         def role_arn(body,seen=()):
+            known=resolve(body.get('arn'),seen) if plan is not None else None
+            if known and re.fullmatch(r'arn:[a-z0-9-]+:iam::[0-9]{12}:role/[^\s*?]+',known): return known
             name=resolve(body.get('name'),seen)
             path=resolve(body.get('path','/'),seen)
             return f'arn:{partition}:iam::{account}:role{path}{name}' if account and name and path else None
-        for src,doc in docs:
+        task_lookup={}
+        analysis_docs=docs
+        role_targets={}
+        if plan is not None:
+            analysis_docs=[]
+            for i,task in enumerate(plan_tasks):
+                key='plan:'+str(i); task_lookup[key]=task
+                entry=task['entry']; body=task['body']
+                analysis_docs.append((key,{entry['mode']:{entry['type']:{'instance':body}}}))
+                if entry['type']=='aws_iam_role' and entry['mode'] in ('resource','data'):
+                    role=resolve(body.get('name')); arn=role_arn(body)
+                    if role and arn: role_targets.setdefault(role,set()).add(arn)
+        for src,doc in analysis_docs:
             for category in ('resource','data'):
                 for group in blocks(doc,category):
                     for typ,instances in group.items():
                         for name,body in instances.items():
-                            address=f'{src}:{category}.{typ}.{name}'
+                            task=task_lookup.get(src)
+                            address=task['entry']['address'] if task else f'{src}:{category}.{typ}.{name}'
+                            operation=task['operation'] if task else None
+                            resource_phase=('plan' if operation=='read' else 'destroy' if operation=='delete' else 'apply') if task else phase
                             if typ=='terraform_remote_state' and category=='data':
                                 backend(body.get('backend','unknown'),body.get('config',{}),address,True); continue
                             rule=get_rule(category,typ)
-                            entry={'address':address,'type':typ,'mode':category,'status':'PARTIAL' if rule else 'UNSUPPORTED'}; report['resources'].append(entry)
+                            entry=task['entry'] if task else {'address':address,'type':typ,'mode':category,'status':'PARTIAL' if rule else 'UNSUPPORTED'}
+                            if not task: report['resources'].append(entry)
+                            if not rule: entry['status']='UNSUPPORTED'
                             if not rule: warn(address+': no AWS '+category+' permission mapping'); continue
                             entry['validation']=rule['validation']; entry['reference']=rule['reference']
-                            p='aws'; acts=actions_for(rule, 'plan' if category=='data' else phase)
+                            p='aws'; acts=operation_actions(rule,operation) if task else actions_for(rule, 'plan' if category=='data' else phase)
                             attr_rules=[]
                             for attr in rule['attributes']:
                                 values=attribute_values(body,attr['path'])
-                                if phase not in attr['phases'] or not values: continue
+                                if resource_phase not in attr['phases'] or not values: continue
+                                if task and any(v is None for v in values): warn(address+': unknown or sensitive '+attr['path']+'; dependent actions may be incomplete')
                                 if attr['scope']=='resource': acts=sorted(set(acts+attr['actions']))
                                 else: attr_rules.append((attr,values))
                             if category=='resource':
@@ -120,18 +151,26 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
                                         else: warn(address+': unresolved '+attr['path']+' ARN; dependent actions omitted')
                             scope='*'
                             if p=='aws' and typ.startswith('aws_s3_'):
-                                bucket=literal(body.get('bucket'))
+                                bucket=resolve(body.get('bucket'))
                                 if bucket and typ=='aws_s3_object':
-                                    key=literal(body.get('key')); scope=f'arn:{partition}:s3:::{bucket}/{key}' if key else '*'
+                                    key=resolve(body.get('key')); scope=f'arn:{partition}:s3:::{bucket}/{key}' if key else '*'
                                 elif bucket: scope=f'arn:{partition}:s3:::{bucket}'
                             if p=='aws' and typ=='aws_dynamodb_table' and account and region and literal(body.get('name')): scope=f'arn:{partition}:dynamodb:{region}:{account}:table/{body["name"]}'
                             if p=='aws' and typ=='aws_sqs_queue' and account and region and literal(body.get('name')): scope=f'arn:{partition}:sqs:{region}:{account}:{body["name"]}'
                             if typ=='aws_iam_role': scope=role_arn(body) or '*'
+                            if typ=='aws_iam_policy':
+                                known=resolve(body.get('arn')); policy_name=resolve(body.get('name')); policy_path=resolve(body.get('path','/'))
+                                if known and re.fullmatch(r'arn:[a-z0-9-]+:iam::(?:[0-9]{12}|aws):policy/[^\s*?]+',known): scope=known
+                                elif account and policy_name and policy_path: scope=f'arn:{partition}:iam::{account}:policy{policy_path}{policy_name}'
+                                if scope=='*': warn(address+': unresolved IAM policy ARN; actions omitted'); acts=[]
                             if typ=='aws_iam_role_policy_attachment':
                                 role=resolve(body.get('role'))
                                 # Resolve role paths from direct references when possible.
                                 ref=re.fullmatch(r'\$\{(aws_iam_role\.[\w-]+)\.name\}',str(body.get('role')))
                                 scope=(role_arn(definitions.get(ref.group(1),{})) if ref else None) or (f'arn:{partition}:iam::{account}:role/{role}' if role and account and not ref else '*') or '*'
+                                if task:
+                                    targets=role_targets.get(role,set())
+                                    scope=next(iter(targets)) if len(targets)==1 else '*'
                                 policy_arn=resolve(body.get('policy_arn'))
                                 for action in acts:
                                     if action in ('iam:AttachRolePolicy','iam:DetachRolePolicy'):
@@ -151,22 +190,28 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
                                 elif prefix and kind=='podidentityassociation': scope=prefix+kind+'/'+cluster+'/*'
                                 elif prefix and name: scope=prefix+kind+'/'+cluster+'/'+name+'/*'
                                 else: scope='*'
+                                known=resolve(body.get('arn')) if task else None
+                                if known and re.fullmatch(r'arn:[a-z0-9-]+:eks:[a-z0-9-]+:[0-9]{12}:'+kind+r'/[^\s*?]+',known):
+                                    scope=known
+                                    if kind=='cluster': cluster_arn=known
                                 for action in acts:
                                     target='*' if action in ('eks:CreateCluster','eks:DescribeAddonVersions') else cluster_arn if action in ('eks:CreateNodegroup','eks:CreateAddon','eks:CreatePodIdentityAssociation') else scope
                                     if target=='*' and action not in ('eks:CreateCluster','eks:DescribeAddonVersions'): warn(address+': unresolved EKS scope; '+action+' omitted'); continue
                                     add(p,[action],target,address)
-                                if phase=='apply' and category=='resource':
+                                if resource_phase=='apply' and category=='resource':
                                     field,service={'cluster':('role_arn','eks.amazonaws.com'),'nodegroup':('node_role_arn','eks.amazonaws.com'),'addon':('service_account_role_arn','eks.amazonaws.com'),'podidentityassociation':('role_arn','pods.eks.amazonaws.com')}[kind]
                                     if kind!='addon' or body.get(field):
                                         arn=resolve(body.get(field))
-                                        if arn and arn.startswith('arn:'): add(p,['iam:PassRole'],arn,address,condition={'StringEquals':{'iam:PassedToService':service}})
+                                        if arn and re.fullmatch(r'arn:[a-z0-9-]+:iam::[0-9]{12}:role/[^\s*?]+',arn): add(p,['iam:PassRole'],arn,address,condition={'StringEquals':{'iam:PassedToService':service}})
                                         else: warn(address+': unresolved PassRole target; permission omitted')
                                     if kind in ('cluster','nodegroup'): warn(address+': verify first-use service-linked roles, optional encryption, access entries and provider-specific dependencies')
                                 if scope=='*': warn(address+': provide account, region and resolvable resource names')
                                 continue
                             if typ=='aws_iam_role' and scope=='*':
-                                if phase=='apply' or phase=='destroy': warn(address+': unresolved role ARN; IAM mutations omitted')
+                                if resource_phase=='apply' or resource_phase=='destroy': warn(address+': unresolved role ARN; IAM mutations omitted')
                                 acts=[]
+                            if task and scope=='*' and (typ.startswith('aws_s3_') or typ in ('aws_dynamodb_table','aws_sqs_queue')):
+                                warn(address+': named resource scope unresolved; actions omitted'); acts=[]
                             add(p,acts,scope,address)
                             if typ in ('aws_iam_role','aws_iam_policy'): warn(address+': review privilege delegation and permissions boundaries')
                             if typ=='aws_instance' and body.get('iam_instance_profile'): warn(address+': instance profile PassRole dependency unresolved; permission omitted')
@@ -179,13 +224,17 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
                         if target.is_relative_to(root) and target.is_dir(): visit(target)
                         else: warn(src+': module '+name+' outside scan root or missing')
                     else: warn(src+': remote or dynamic module '+name+' not analyzed')
+        for src,doc in docs:
             if is_root:
                 for group in blocks(doc,'terraform'):
                     for item in blocks(group,'backend'):
                         for kind,b in item.items(): backend(kind,b,src)
             if doc.get('provider'): warn(src+': provider initialization, aliases, impersonation and registration require review')
+        if is_root and plan is not None and not report['backends']:
+            if backend_config: backend('s3',backend_config,'plan-backend')
+            else: warn('Backend not available from plan JSON; supply the Terraform directory or explicit S3 backend config')
     lock=root/'.terraform.lock.hcl'
-    if lock.is_file():
+    if has_root and lock.is_file():
         try:
             import hcl2
             with lock.open() as handle: locked=hcl2.load(handle)

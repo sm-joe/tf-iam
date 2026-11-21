@@ -4,3 +4,8 @@ __pycache__/
 *.egg-info/
 *.tfstate*
 .terraform/
+
+# Saved Terraform plans may contain secrets
+*.tfplan
+plan.json
+tfplan

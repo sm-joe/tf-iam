@@ -12,6 +12,8 @@ def load_catalog():
         for name, rule in catalog[category].items():
             if rule["validation"] == "validated" and not rule["provider_versions"]:
                 raise ValueError(f"Validated rule {name} must identify tested provider versions")
+            if set(rule["write"]) != set(rule["create"] + rule["update"]):
+                raise ValueError(f"Operation mappings do not cover write actions for {name}")
             if category == "data" and (rule["write"] or rule["delete"] or rule["attributes"]):
                 raise ValueError(f"Data rule {name} must be read-only")
     return catalog
@@ -29,3 +31,11 @@ def attribute_values(body, path):
 
 def actions_for(rule, phase):
     return sorted(set(rule["read"] + (rule["write"] + rule["delete"] if phase == "apply" else rule["delete"] if phase == "destroy" else [])))
+
+def operation_actions(rule, operation):
+    """Select only candidate actions for the actual Terraform operation."""
+    if operation in ("read", "no-op"):
+        return sorted(set(rule["read"]))
+    if operation not in ("create", "update", "delete"):
+        raise ValueError("Unsupported resource operation")
+    return sorted(set(rule["read"] + rule[operation]))
