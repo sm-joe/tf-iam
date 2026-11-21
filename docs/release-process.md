@@ -1,11 +1,24 @@
 # Release process
 
-The Linux build workflow produces an unsigned standalone x86_64 executable and SHA256SUMS on every PR and main push. It does not publish a release. Python is required on the build host, not the target Linux host. AWS credentials are never required for the build. The build uses a fixed runner family but dependency ranges are not a reproducible lock; byte-for-byte reproducibility and signing remain required before stable publication.
+CI tests Python 3.10, 3.12, 3.13 and 3.14 and builds a standalone Linux x86_64 executable on Ubuntu 22.04. Ordinary CI artifacts are unsigned and are not releases.
 
-Run the acceptance checker against a private evidence manifest:
+## Acceptance
+
+Prepare a private evidence directory with manifest.json and sanitized artifacts. Each required check is defined in scripts/check-release.py and must contain status "passed", artifact (relative path), and sha256. Include the exact tested commit and provider_version. Use only reviewed real results; do not upload secrets or raw state. The checker verifies integrity and presence, not the truth of the contents.
 
 ```bash
-python scripts/check-release.py evidence/manifest.json
+python scripts/check-release.py evidence/manifest.json --expected-commit "$(git rev-parse HEAD)"
 ```
 
-The manifest contains commit, provider_version, and checks keyed by the names in REQUIRED. Each check has status passed, artifact (relative path below the manifest directory), and sha256. A passing checker verifies presence and integrity, not the truth of the evidence. Review actual logs and isolated AWS authorization results before creating a tag. No release or tag is created by this branch.
+The maintainer must review the actual evidence before using the manual signed-release workflow. Its artifact input must be a trusted GitHub Actions run containing the reviewed evidence manifest and files. Restrict access to acceptance evidence. The workflow refuses a mismatched commit, runs regressions, builds twice in the same environment, checks byte equality and smoke-tests the executable before creating signed GitHub build provenance. This repeatability check is not a guarantee of reproducibility across machines or future dependency selections; dependency ranges remain unlocked.
+
+Verify the resulting artifact:
+
+```bash
+sha256sum -c SHA256SUMS
+gh attestation verify tfiam --repo sm-joe/tf-iam
+```
+
+Only after all checks and independent review should the maintainer create the stable v1.0.0 tag and release using the exact attested artifact. This workflow deliberately does not automatically publish a release. GitHub artifact attestation availability depends on repository visibility and plan.
+
+See [acceptance checklist](release-acceptance.md).

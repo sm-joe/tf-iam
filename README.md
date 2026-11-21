@@ -1,124 +1,166 @@
 # TF IAM Scope
 
-AWS IAM permission analysis for Terraform CI/CD pipelines. Independent Python CLI; no Pike code or mappings imported. GCP, Azure and OpenTofu are outside the current scope.
+**AWS IAM permission intelligence for Terraform CI/CD.**
 
-## Install
+[![CI](https://github.com/sm-joe/tf-iam/actions/workflows/ci.yml/badge.svg)](https://github.com/sm-joe/tf-iam/actions/workflows/ci.yml)
+[![Linux build](https://github.com/sm-joe/tf-iam/actions/workflows/linux-build.yml/badge.svg)](https://github.com/sm-joe/tf-iam/actions/workflows/linux-build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+TF IAM Scope analyzes Terraform configuration and saved plans, derives scoped AWS IAM permission candidates, highlights security-sensitive operations and compares candidate grants with existing deployment identities. It is a standalone CLI for engineers reviewing infrastructure permissions before deployment.
+
+## Features
+
+| Capability | Description |
+| --- | --- |
+| Static analysis | Terraform HCL and JSON, variables, local references and installed modules |
+| Plan analysis | Create, update, delete, replacement and no-op lifecycle candidates |
+| Permission catalog | 106 managed resource types and 37 data-source types with version-aware evidence |
+| Least-privilege candidates | Scoped ARNs, bounded future identifiers, service conditions and dependency review |
+| Security enforcement | Delegation, destructive actions, privilege risk combinations and configurable gates |
+| Policy separation | Planner, applier and break-glass permission partitions |
+| IAM comparison | Offline policy or live role retrieval, deduplicated findings and service summaries |
+| AWS validation | AWS authorization metadata and IAM Access Analyzer |
+| Runtime evidence | Bounded CloudTrail management event analysis |
+| Distribution | Python package and standalone Linux x86_64 build |
+
+AWS and Terraform are the supported platforms. Generated policies are candidates requiring review; the tool does not provision resources, attach IAM policies or revoke permissions.
+
+## Quick start
+
+Requirements: Python 3.10 or later (CI covers 3.10, 3.12, 3.13 and 3.14), Bash and Git. Terraform is needed only to produce a saved plan. AWS credentials are optional for static analysis.
 
 ```bash
+git clone https://github.com/sm-joe/tf-iam.git
+cd tf-iam
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e '.[test]'
+python -m pip install '.[aws]'
 tfiam --help
-python -m pytest -q
 ```
 
-## Usage
+Set the target account and region. Use a literal target account when working offline, or resolve the current AWS identity explicitly.
 
 ```bash
-tfiam scan ./examples/eks --phase plan --aws-account 123456789012 --aws-region us-east-1
-tfiam scan ./examples/eks --format json --output report.json
-tfiam generate ./examples/eks --phase apply --aws-account 123456789012 --aws-region us-east-1 --allow-partial --output policy.json
-tfiam generate ./examples/aws --format terraform --allow-partial --output policy.tf.json
-tfiam compare ./examples/aws --existing examples/existing-aws.json --fail-on-missing
+export AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+export AWS_REGION=us-east-1
+tfiam scan ./examples/eks --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION"
 ```
 
-The default provider is AWS. Other providers are rejected for policy generation and reported as unsupported during scans. Generate never deploys policies. Terraform JSON output belongs in a separate privileged policy-provisioning workspace. Scan has no cloud credentials requirement.
+## Commands
 
+| Command | Purpose |
+| --- | --- |
+| `scan` | Analyze configuration or a saved plan; report scope, coverage and risks |
+| `generate` | Produce IAM JSON or Terraform JSON policy candidates |
+| `compare` | Compare candidates against an identity policy or live IAM role |
+| `split` | Separate read, mutation and privileged/destructive grants |
+| `catalog-audit` | Check catalog action names against public AWS metadata |
+| `validate-policy` | Validate an identity policy through IAM Access Analyzer |
+| `runtime-audit` | Analyze CloudTrail observations for an exact IAM session issuer |
 
-## Saved Terraform plan JSON (M02)
+Run any command with `--help` for options.
 
-Use a separate, appropriately authorized planning identity to produce the saved plan. The CLI does not execute Terraform or request cloud credentials.
+## Terraform workflow
+
+Use an appropriately authorized planning identity to create the plan. TF IAM Scope never invokes Terraform itself.
 
 ```bash
+umask 077
 terraform -chdir=./infra plan -out=tfplan
 terraform -chdir=./infra show -json tfplan > plan.json
-tfiam scan ./infra --plan-json plan.json --aws-account 123456789012 --aws-region us-east-1
-tfiam generate ./infra --plan-json plan.json --aws-account 123456789012 --aws-region us-east-1 --allow-partial --output apply-policy.json
-tfiam compare ./infra --plan-json plan.json --aws-account 123456789012 --aws-region us-east-1 --existing existing.json --fail-on-missing
+tfiam scan ./infra --plan-json plan.json --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --format json --output report.json
+tfiam generate ./infra --plan-json plan.json --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --allow-partial --output policy.json
 ```
 
-The directory is optional in plan mode; it supplies only backend configuration and provider lockfile, not additional resource changes. Without a directory, supply explicit S3 backend configuration via `--backend-config` or review the missing backend warning. The default phase is apply; create/update/delete select distinct catalog operation candidates, replacements use both before and after scopes, no-op and data reads use read candidates, and forget is state-only. `--phase plan` reports retrospective read candidates; it cannot establish all permissions needed to produce the plan. `--phase destroy` rejects plans containing managed creates or updates. Deferred/incomplete plans, imports, drift, unknown and unsupported operations remain explicit review items. Full module instance and deposed addresses retain provenance.
+The directory supplies backend and lockfile data in plan mode; it does not add static resource changes. Plan paths resolve relative to the current shell. Use exported JSON, not a binary plan or streaming UI JSON. UTF-8 and BOM-encoded UTF-16/32 are accepted. No-op resources emit read candidates; replacements retain before/after identities. Destroy mode rejects plans with managed create/update operations. Imports, drift, deferred changes and unknowns require review.
 
-Terraform JSON plans may contain plaintext secrets and confidential infrastructure details. Keep saved plans and reports in protected ephemeral storage; never commit real plans or upload them to public logs. Values identified by Terraform sensitive/unknown masks are withheld, not copied into reports. Other unmarked resource identifiers can appear in scopes and source addresses. AWS aliases, account/region assumptions, provider version validation, and precise action-level scope still require review. Catalog candidates are not proven sufficient.
+Static scanning also supports `--phase plan`, `--phase apply` and `--phase destroy`. Static apply includes possible deletions for replacement. A plan-phase scan is not proof of all permissions required to run Terraform plan.
 
-Reference: [Terraform JSON output format](https://developer.hashicorp.com/terraform/internals/json-format).
-
-## Static inputs and modules (M03)
+## Policy generation and separation
 
 ```bash
-tfiam scan ./infra --var-file ./infra/prod.tfvars --var environment=prod --aws-account 123456789012 --aws-region us-east-1
+tfiam generate ./infra --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --allow-partial --format terraform --output policy.tf.json
+tfiam split ./infra --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --allow-partial --acknowledge-break-glass --output lifecycle-policies.json
 ```
 
-Input precedence is defaults, TF_VAR environment, terraform.tfvars, terraform.tfvars.json, lexical auto.tfvars files, explicit --var-file, then --var. This last grouping is a CLI convention; use saved plans for exact Terraform interleaved flag semantics. Direct references, simple string interpolation, locals, child inputs and outputs are supported. Sensitive variables and unsupported expressions remain unresolved. Each module call has its own context; installed remote sources are discovered from .terraform/modules/modules.json without downloading or executing anything. Local modules outside the root, dynamic module instances, arbitrary functions, complex expressions, provider aliases and runtime values require saved plan or review. The report contains module inventory and dependency reference edges, not raw variable values. Do not pass secret values on the shell command line.
+The planner contains read candidates; the applier contains ordinary mutation candidates; break-glass contains delegation and all catalog destroy actions. Shared update/delete APIs are conservatively treated as privileged even when needed during update. Backend lock cleanup also requires review. These are partitions, not independently sufficient execution roles. Keep policy provisioning separate from infrastructure deployment and approve privileged operations explicitly.
 
-## Catalog
-
-The packaged `tfiam/catalog/aws.json` stores independently authored resource and data-source rules; `schema.json` defines their schema. Each entry has lifecycle actions, optional attribute-triggered actions, references, validation status and exact tested provider versions. Catalog loading validates schema and rejects writable data rules. The current catalog contains 106 resource and 37 data-source entries; all are candidates, none has live version-specific validation. The report records the AWS provider lockfile version if available. This is not proof of version compatibility. Resource-level scope logic remains in the scanner; unknown dependencies must not be silently granted.
-
-## Expanded AWS catalog (M04)
-
-The catalog includes IAM, EKS access management, VPC networking, EC2, Auto Scaling, S3, KMS, ECR, ECS, RDS, Lambda, CloudWatch, CloudWatch Logs, ELB and Route 53. All entries remain candidate mappings. Lifecycle operation sets are distinct; each mapping links to the AWS Service Authorization Reference.
-
-Expanded entries use an explicit scope strategy. Where action-specific authorization or dependency scopes cannot be established, actions are omitted with a review warning rather than silently emitted at wildcard scope. Some legitimate account-level actions require wildcard scope (for example EC2 Describe operations and KMS CreateKey); these are not evidence that all actions in the service support wildcard-only authorization. Multi-resource dependencies and full per-action authorization remain M05 work. Do not treat mapping coverage as deployment-ready policy coverage.
-
-See [AWS catalog coverage](docs/aws-catalog.md).
-
-## Coverage and gates
-
-Root and reachable local modules, HCL and Terraform JSON, S3 state with lockfile/DynamoDB and optional KMS, local backend. Plan is read-oriented and may include backend locking mutations. Apply includes deletes for replacement; destroy includes read/delete. Variable defaults and direct references are only static approximations. Uninstalled remote modules, full expression evaluation, aliases and provider-specific dependencies remain incomplete. Do not use generated policies without review and isolated lifecycle testing. All scans currently remain PARTIAL. Exit codes: 0 completed; 1 input/error; 2 partial with --strict; 3 missing or denied candidate permissions with --fail-on-missing.
-
-## Roadmap
-
-1. AWS-only external catalog and risk diagnostics (this change).
-2. Saved Terraform plan JSON and lifecycle operations (M02); installed module inventory and full configuration resolution (M03).
-3. Expand AWS mappings with action-level ARN and IAM condition evidence; validate against pinned provider versions.
-4. Planner, applier and destructive-operation policy separation; scope-aware comparison and Access Analyzer.
-5. Live read-only IAM retrieval and CloudTrail evidence refinement.
-6. Standalone Linux distribution and signed releases after acceptance tests.
-
-See [reference architecture](docs/pike-reference.md). No live deployment validation has been performed.
-
-### Troubleshooting plan input
-
-Use the exported JSON, not the binary plan or streaming `terraform plan -json` output. Relative `--plan-json` paths resolve from the current shell directory, not the positional infrastructure directory. For example:
+## Security gates
 
 ```bash
-terraform -chdir=./infra plan -out=tfplan
-terraform -chdir=./infra show -json tfplan > plan.json
-tfiam scan ./infra --plan-json "$PWD/plan.json"
+tfiam scan ./infra --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --fail-on-risk CRITICAL --fail-on-unresolved --fail-on-unmapped --format json --output report.json
 ```
 
-The scanner accepts UTF-8 and BOM-encoded UTF-16/UTF-32 JSON exports and reports missing files, empty input and malformed JSON without echoing sensitive plan contents.
+Use `--fail-on-risk HIGH` for stricter approval policy. Risk findings are potential security impacts, not proof of exploitation. Generation stops when configured gates fail. `--strict` rejects partial coverage, and `--require-compatible-metadata` requires a compatible metadata audit.
 
-## Action-specific scope (M05)
+| Exit | Meaning |
+| --- | --- |
+| 0 | Command completed |
+| 1 | Input, execution or definite policy compatibility error |
+| 2 | Strict coverage/validation failure or bounded runtime retrieval truncated |
+| 3 | Missing or explicitly denied permissions with `--fail-on-missing` |
+| 4 | Configured security gate failed |
 
-The report includes `scope_summary` and `unresolved_permissions` for the action-specific engine. See [scope design and supported cases](docs/action-scope.md). Bounded future-ID wildcards are not global permissions; omitted dependencies still mean the generated policy may be insufficient.
-
-## Provider validation (M06)
-
-See [provider-version evidence and AWS metadata audit](docs/provider-validation.md). Use `tfiam catalog-audit --metadata-dir .aws-auth --refresh` to retrieve public AWS authorization metadata. Mapping coverage is reported separately from provider authorization confidence.
-
-## Security gates, lifecycle separation and live AWS integrations (M07–M11)
+## Compare existing permissions
 
 ```bash
-tfiam scan ./infra --fail-on-risk CRITICAL --fail-on-unresolved --fail-on-unmapped
-tfiam split ./infra --allow-partial --acknowledge-break-glass --output lifecycle-policies.json
-pip install -e '.[aws]'
-tfiam compare ./infra --role-name TerraformPipeline --aws-region us-east-1 --fail-on-missing
-tfiam validate-policy policy.json --aws-region us-east-1 --strict
-tfiam runtime-audit --role-arn "$PIPELINE_ROLE_ARN" --events cloudtrail.json --candidate report.json
+tfiam compare ./infra --existing existing-policy.json --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --output comparison.json
+tfiam compare ./infra --role-name TerraformPipeline --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --fail-on-missing --output live-comparison.json
 ```
 
-The split output separates read candidates, ordinary mutations, and high-risk delegation/destructive permissions; it does not certify that the separate policies independently suffice. Explicit approval is needed to emit the break-glass policy. Never attach all three automatically.
+Live comparison reads managed policy default versions and inline policies. Findings are deduplicated by action, scope and condition; source addresses are retained. The summary includes unique grant counts and per-service missing, denied and potentially excessive counts. Conditions, policy variables, boundaries, SCPs and session/resource policies may require manual evaluation. Never automatically remove grants based on the report.
 
-Live role comparison retrieves attached managed-policy default versions and inline policies using existing AWS credentials. It does not evaluate effective access through boundaries, SCPs, sessions or resource policies. Access Analyzer validates identity policy syntax and best practices. CloudTrail analysis accepts local exported events or uses region-specific management event history with --start and --end; it filters on exact session issuer role ARN, redacts request payloads, and never recommends removing unobserved actions.
+## AWS authorization and runtime evidence
 
-Security gates return exit 4 for threshold, unresolved, unmapped or metadata failures; strict partial coverage remains exit 2. Generation gates block output. Risk findings are heuristic and may require manual review.
+```bash
+tfiam catalog-audit --metadata-dir .aws-auth --refresh --strict --output catalog-audit.json
+tfiam scan ./infra --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --authorization-metadata .aws-auth --format json --output report.json
+tfiam validate-policy policy.json --aws-region "$AWS_REGION" --strict --output validation.json
+tfiam runtime-audit --role-arn "$PIPELINE_ROLE_ARN" --start "$(date -u -d '1 hour ago' +%FT%TZ)" --end "$(date -u +%FT%TZ)" --aws-region "$AWS_REGION" --candidate report.json --max-pages 20 --max-seconds 60 --output runtime-report.json
+```
 
-## Linux executable and release acceptance (M12–M13)
+Metadata refresh downloads public AWS service definitions; offline audits reuse the local snapshot. The runtime command filters by exact role issuer and accepts explicitly known session names. It defaults to 100 pages and a cooperative 120-second budget; a truncated report is visibly partial. Alternatively pass `--events cloudtrail.json` for offline exports. Zero observations never imply unused permissions are safe to remove.
 
-See [release process](docs/release-process.md). CI builds a standalone Linux x86_64 binary with checksums. Stable publication requires actual reviewed lifecycle evidence, signed artifact and reproducibility verification. No stable release is asserted by passing unit tests.
+Live read access requires IAM GetRole, ListAttachedRolePolicies, ListRolePolicies, GetPolicy, GetPolicyVersion and GetRolePolicy as applicable; Access Analyzer ValidatePolicy; and CloudTrail LookupEvents. Use a dedicated limited identity.
 
-### Bounded CloudTrail retrieval
+## Coverage and architecture
 
-Live runtime audit defaults to 100 pages and a 120-second cooperative time budget (an in-flight AWS request may exceed it). Progress is printed to stderr. If a limit is reached the partial JSON report is retained and exit code 2 is returned. Use `--max-pages`, `--max-seconds`, or narrow the time window. Optional `--session-name` applies a CloudTrail Username filter for an explicitly known STS session; repeat for multiple sessions. Session filtering cannot discover other sessions, so its coverage remains partial. Full role ARN matching still occurs locally. No role-name-to-session-name assumption is made. `--quiet` suppresses progress.
+The scanner reads root and reachable local modules plus previously installed remote modules without downloading them. Static input precedence is defaults, TF_VAR, terraform.tfvars, terraform.tfvars.json, lexical auto files, explicit var-files, then explicit vars. This grouping differs from interleaved Terraform CLI flags. Use saved plans for exact evaluation. Complex expressions, dynamic instances, aliases and unresolved dependencies remain review items.
+
+Local backend and S3 state with optional DynamoDB locking, S3 lockfiles and KMS are modeled; workspace prefixes and provider-specific behavior require verification. Reports distinguish mapping coverage, scoped permissions, unresolved actions, metadata compatibility and provider-version evidence. A recognized action or resource is not proof of authorization. All current scans are partial; exact provider-version lifecycle evidence is still required.
+
+- [AWS catalog coverage](docs/aws-catalog.md)
+- [Action-specific scope](docs/action-scope.md)
+- [Provider validation](docs/provider-validation.md)
+- [Release acceptance](docs/release-acceptance.md)
+- [Release process](docs/release-process.md)
+- [Security policy](SECURITY.md)
+
+## Linux distribution
+
+CI publishes build artifacts for Linux x86_64. Extract the artifact in a directory **outside the source checkout** (the binary name is also the Python package directory name).
+
+```bash
+sha256sum -c SHA256SUMS
+chmod +x tfiam
+./tfiam --help
+sudo install -m 0755 tfiam /usr/local/bin/tfiam
+```
+
+Stable release assets require reviewed lifecycle evidence, repeatability checks and signed provenance. Verify the release attestation with GitHub CLI: `gh attestation verify tfiam --repo sm-joe/tf-iam`. See the release process for details.
+
+## Development
+
+```bash
+python -m pip install '.[test,aws,packaging]'
+python -m pytest tests/ -q
+bash scripts/build-linux.sh
+```
+
+If installation fails because the package directory is a file, move the conflicting file outside the checkout and restore the tracked `tfiam/` directory. Never extract a binary over the source package.
+
+## Security and license
+
+Saved plans and reports can contain confidential infrastructure identifiers or unmarked secrets. Restrict access; do not commit real state, plans or evidence. Report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
+
+Distributed under the [MIT License](LICENSE).
