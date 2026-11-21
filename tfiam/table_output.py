@@ -36,8 +36,8 @@ def render(command,r):
         for x in r["permissions"]:
             key=(x["action"],x["scope"],json.dumps(x.get("condition"),sort_keys=True))
             groups.setdefault(key,set()).add(x["source"])
-        metrics("SUMMARY",{"Phase":r["phase"],"Coverage":r["coverage"],"Input":r["input"],"AWS provider":r["authorization_confidence"]["provider_version"],"Resources mapped":str(r["mapping_coverage"]["mapped_resources"])+"/"+str(r["mapping_coverage"]["eligible_resources"]),"Permission observations":len(r["permissions"]),"Unique grants":len(groups),"Metadata":r["authorization_metadata"]["status"],**r["scope_summary"]})
-        section("RESOURCES",["Status","Resource","Operations","Computed","Sensitive"],[(x["status"],x["address"],", ".join(x.get("operations",[])) or r["phase"],"Yes" if x.get("unknown_values") else "-","Yes" if x.get("sensitive_values") else "-") for x in r["resources"]],[14,60,20,10,10])
+        metrics("SUMMARY",{"Phase":r["phase"],"Coverage":r["coverage"],"Input":r["input"],"AWS provider":r["authorization_confidence"]["provider_version"],"Resources mapped":str(r["mapping_coverage"]["mapped_resources"])+"/"+str(r["mapping_coverage"]["eligible_resources"]),"Permission observations":len(r["permissions"]),"Unique grants":len(groups),"Metadata":r["authorization_metadata"]["status"],"Authorization":r["authorization_confidence"]["status"],"Source reviewed":r["authorization_confidence"]["source_reviewed_resources"],"Lifecycle verified":r["authorization_confidence"]["lifecycle_verified_resources"],**r["scope_summary"]})
+        section("RESOURCES",["Mapping","Resource","Authorization","Operations","Computed","Sensitive"],[(x.get("mapping_status",x["status"]),x["address"],x.get("validation_level","-"),", ".join(x.get("operations",[])) or r["phase"],"Yes" if x.get("unknown_values") else "-","Yes" if x.get("sensitive_values") else "-") for x in r["resources"]],[14,60,26,20,10,10])
         section("PERMISSIONS",["Action","Resource scope","Condition","Sources"],[(a,s,json.loads(c),len(v)) for (a,s,c),v in sorted(groups.items())],[38,63,48,8])
     elif command=="generate":
         metrics("SUMMARY",{"Statements":len(r["Statement"]),"Action grants":len(policy_rows(r)),"Status":"CANDIDATE — review required"})
@@ -56,6 +56,14 @@ def render(command,r):
         for k in ("missing_or_unverified","explicitly_denied"):
             section(k.replace("_"," ").upper(),["Action","Resource scope","Condition","Source"],grant_rows(r[k]),[38,60,45,45],100)
         section("POTENTIALLY EXCESSIVE",["Action","Resource scope","Reasons"],[(x["action"],x["scope"],", ".join(x["reasons"])) for x in r["potentially_excessive"]],[40,60,60],25)
+    elif command=="evidence-audit":
+        metrics("FIXTURE EVIDENCE",{"Fixture":r["fixture"],"Provider":r["provider_version"],"Status":r["status"],"Matched events":r["matched_events"],"Expected denial observed":r["negative_observed"]})
+        section("OBSERVATIONS",["API operation","IAM actions","Status","Count"],[(x["operation"],", ".join(x["actions"]),x["status"],x["count"]) for x in r["observations"]],[36,62,27,8])
+        section("BLOCKERS",["Reason"],[(x,) for x in r["blockers"]],[90])
+        section("MISSING POSITIVE OBSERVATIONS",["Action"],[(x,) for x in r["missing_required_observations"]],[55])
+    elif command=="provider-audit":
+        metrics("SOURCE RECONCILIATION",{"Provider":r["provider_version"],"Commit":r["provider_commit"],"Official pin":r["pin_verified"],"Status":r["status"],**r["counts"]})
+        section("SDK OPERATIONS",["Resource","API operation","IAM actions","Status"],[(item["resource"],op["operation"],", ".join(op["actions"]) or "-",op["status"]) for item in r["resources"] for op in item["operations"]],[48,35,66,24])
     elif command=="catalog-audit":
         metrics("CATALOG AUDIT",{k:r[k] for k in ("status","actions_total","actions_recognized","permission_observations_checked","missing_services")})
         section("FINDINGS",["Severity","Action","Code"],[(x["severity"],x["action"],x["code"]) for x in r["findings"]],[14,48,48],100)

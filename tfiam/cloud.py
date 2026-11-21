@@ -98,7 +98,13 @@ def lookup_events(trail,role_arn,start,end,*,session_names=None,max_pages=100,ma
 
 # API operation names need not equal IAM action names. Only explicit exceptions and
 # exact catalog-name candidates are accepted; observations never remove permissions.
-API_ALIASES={("s3.amazonaws.com","DeleteBucketOwnershipControls"):"s3:PutBucketOwnershipControls",
+API_ALIASES={("s3.amazonaws.com","HeadBucket"):"s3:ListBucket",
+             ("s3.amazonaws.com","GetPublicAccessBlock"):"s3:GetBucketPublicAccessBlock",
+             ("s3.amazonaws.com","PutPublicAccessBlock"):"s3:PutBucketPublicAccessBlock",
+             ("s3.amazonaws.com","DeletePublicAccessBlock"):"s3:PutBucketPublicAccessBlock",
+             ("s3.amazonaws.com","DeleteBucketPublicAccessBlock"):"s3:PutBucketPublicAccessBlock",
+             ("s3.amazonaws.com","ListBuckets"):"s3:ListAllMyBuckets",
+             ("s3.amazonaws.com","DeleteBucketOwnershipControls"):"s3:PutBucketOwnershipControls",
              ("s3.amazonaws.com","DeleteBucketLifecycle"):"s3:PutLifecycleConfiguration"}
 def refine(events,role_arn,actions):
     known={a.lower():a for a in actions}

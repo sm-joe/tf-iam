@@ -61,7 +61,7 @@ def main(argv=None):
     runtime=sub.add_parser('runtime-audit',help='Compare observed CloudTrail management operations with candidate actions')
     runtime.add_argument('--role-arn',required=True); runtime.add_argument('--events',type=Path); runtime.add_argument('--start'); runtime.add_argument('--end'); runtime.add_argument('--aws-profile'); runtime.add_argument('--aws-region'); runtime.add_argument('--candidate',type=Path,required=True); runtime.add_argument('--output',type=Path); runtime.add_argument('--session-name',action='append',default=[],help='Exact known STS session name; repeat for multiple sessions'); runtime.add_argument('--max-pages',type=int,default=100); runtime.add_argument('--max-seconds',type=int,default=120); runtime.add_argument('--quiet',action='store_true')
     for cmd in ('scan','generate','compare','split'):
-        p=sub.add_parser(cmd); p.add_argument('directory',type=Path,nargs='?'); p.add_argument('--plan-json',type=Path,help='Saved terraform show -json output; optional directory supplies backend, lockfile and direct source evidence for computed EKS role ARNs'); p.add_argument('--phase',choices=['plan','apply','destroy'],default='apply'); p.add_argument('--var-file',action='append',type=Path,default=[]); p.add_argument('--var',action='append',default=[],metavar='NAME=VALUE'); p.add_argument('--scope-resource-tags',action='store_true',help='Restrict supported existing-resource EC2 mutations to stable saved-plan tags'); p.add_argument('--aws-provider-version',help='Exact provider version if lockfile unavailable'); p.add_argument('--authorization-metadata',type=Path,help='Local AWS service authorization metadata'); p.add_argument('--aws-account'); p.add_argument('--aws-region'); p.add_argument('--aws-partition',default='aws'); p.add_argument('--backend-config',type=Path,help='JSON backend overrides'); p.add_argument('--output',type=Path); p.add_argument('--strict',action='store_true',help='Exit 2 when analysis is partial'); p.add_argument('--fail-on-risk',choices=list(LEVELS)); p.add_argument('--fail-on-unresolved',action='store_true'); p.add_argument('--fail-on-unmapped',action='store_true'); p.add_argument('--require-compatible-metadata',action='store_true')
+        p=sub.add_parser(cmd); p.add_argument('directory',type=Path,nargs='?'); p.add_argument('--plan-json',type=Path,help='Saved terraform show -json output; optional directory supplies backend, lockfile and direct source evidence for computed EKS role ARNs'); p.add_argument('--phase',choices=['plan','apply','destroy'],default='apply'); p.add_argument('--var-file',action='append',type=Path,default=[]); p.add_argument('--var',action='append',default=[],metavar='NAME=VALUE'); p.add_argument('--scope-resource-tags',action='store_true',help='Restrict supported existing-resource EC2 mutations to stable saved-plan tags'); p.add_argument('--aws-provider-version',help='Exact provider version if lockfile unavailable'); p.add_argument('--authorization-metadata',type=Path,help='Local AWS service authorization metadata'); p.add_argument('--aws-account'); p.add_argument('--aws-region'); p.add_argument('--aws-partition',default='aws'); p.add_argument('--backend-config',type=Path,help='JSON backend overrides'); p.add_argument('--output',type=Path); p.add_argument('--strict',action='store_true',help='Exit 2 when analysis is partial'); p.add_argument('--fail-on-risk',choices=list(LEVELS)); p.add_argument('--fail-on-unresolved',action='store_true'); p.add_argument('--fail-on-unmapped',action='store_true'); p.add_argument('--require-compatible-metadata',action='store_true'); p.add_argument('--require-lifecycle-verified',action='store_true',help='Block unless every applicable resource has exact-version lifecycle evidence and no unresolved permissions')
         p.add_argument('--show-table',action='store_true',help='Print table in addition to an output file')
         if cmd=='scan': p.add_argument('--format',choices=['text','json','table'],default='table')
         elif cmd in ('compare','split'): p.add_argument('--format',choices=['json','table'],default='json'); p.add_argument('--provider',default='aws',choices=['aws'])
@@ -74,6 +74,10 @@ def main(argv=None):
     for p in (catalog,validate,runtime):
         p.add_argument('--format',choices=['json','table'],default='json')
         p.add_argument('--show-table',action='store_true',help='Print table in addition to an output file')
+    provider=sub.add_parser('provider-audit',help='Reconcile pinned AWS provider source with AWS operation metadata')
+    provider.add_argument('--source-dir',type=Path,required=True); provider.add_argument('--aws-provider-version',required=True); provider.add_argument('--metadata-dir',type=Path,required=True); provider.add_argument('--resource',action='append'); provider.add_argument('--format',choices=['json','table'],default='table'); provider.add_argument('--output',type=Path); provider.add_argument('--show-table',action='store_true'); provider.add_argument('--strict',action='store_true')
+    evidence=sub.add_parser('evidence-audit',help='Reconcile completed S3 fixture, pinned source and CloudTrail evidence')
+    evidence.add_argument('--lifecycle',type=Path,required=True); evidence.add_argument('--source-report',type=Path,required=True); evidence.add_argument('--policy',type=Path,required=True); evidence.add_argument('--lockfile',type=Path,required=True); evidence.add_argument('--metadata-dir',type=Path,required=True); evidence.add_argument('--events',type=Path); evidence.add_argument('--aws-profile'); evidence.add_argument('--max-pages',type=int,default=100); evidence.add_argument('--max-seconds',type=int,default=120); evidence.add_argument('--format',choices=['json','table'],default='table'); evidence.add_argument('--output',type=Path); evidence.add_argument('--show-table',action='store_true'); evidence.add_argument('--strict',action='store_true')
     args=parser.parse_args(argv)
     def write_result(result,output=None):
         if args.format=='table': output=render(args.command,result)
@@ -83,6 +87,25 @@ def main(argv=None):
             if args.show_table and args.format!='table': print(render(args.command,result),file=sys.stderr)
         else: print(output)
     try:
+        if args.command=='evidence-audit':
+            from .evidence_audit import reconcile,read_events
+            run=json.loads(args.lifecycle.read_bytes()); source=json.loads(args.source_report.read_bytes())
+            retrieval={}
+            if args.events: events=read_events(args.events)
+            else:
+                events=cloud.lookup_events(cloud.client('cloudtrail',args.aws_profile,run['region']),run['role_arn'],cloud.parse_time(run['start']),cloud.parse_time(run['end']),max_pages=args.max_pages,max_seconds=args.max_seconds,stats=retrieval)
+            result=reconcile(run,args.policy.read_bytes(),args.lockfile,source,args.metadata_dir,events)
+            if retrieval:
+                result['retrieval']=retrieval
+                if not retrieval['complete']:
+                    result['status']='review'; result['blockers'].append('cloudtrail-retrieval-incomplete')
+            write_result(result)
+            return 2 if args.strict and result['status']!='fixture-evidence-reconciled' else 0
+        if args.command=='provider-audit':
+            from .provider_audit import audit_provider
+            result=audit_provider(args.source_dir,args.aws_provider_version,args.metadata_dir,args.resource)
+            write_result(result)
+            return 2 if args.strict and result['status']!='direct-calls-matched' else 0
         if args.command in ('validate-policy','runtime-audit'):
             if args.command=='validate-policy':
                 result=cloud.validate_policy(cloud.client('accessanalyzer',args.aws_profile,args.aws_region),json.loads(args.policy.read_bytes()))
@@ -128,7 +151,7 @@ def main(argv=None):
             variables.append((key,value))
         report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags,provider_version=args.aws_provider_version,authorization_metadata=args.authorization_metadata)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
-        report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved,args.fail_on_unmapped,args.require_compatible_metadata)
+        report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved,args.fail_on_unmapped,args.require_compatible_metadata,args.require_lifecycle_verified)
         if report['gate_failures']: status=4
         if args.command in ('generate','split') and (report['gate_failures'] or (args.strict and report['coverage']!='COMPLETE')):
             print('ERROR: policy generation blocked by security or coverage gate',file=sys.stderr); return status

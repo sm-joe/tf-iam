@@ -33,3 +33,24 @@ jobs:
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/tfiam-install/bin/python" -I -c 'import tfiam.cli; from importlib.resources import files; assert files("tfiam").joinpath("catalog/aws.json").is_file(); print(tfiam.cli.__file__)'
           "$RUNNER_TEMP/tfiam-install/bin/tfiam" --help
+
+  provider-source-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install .
+      - name: Fetch pinned public provider source
+        run: |
+          git clone --depth 1 --filter=blob:none --no-checkout --branch v6.73.0 https://github.com/hashicorp/terraform-provider-aws.git "$RUNNER_TEMP/provider-aws"
+      - name: Reconcile official AWS operation metadata and provider source
+        run: |
+          python -c 'from tfiam.authorization import download_snapshot; download_snapshot("'"$RUNNER_TEMP"'/aws-auth", {"s3","iam","eks"})'
+          tfiam provider-audit --source-dir "$RUNNER_TEMP/provider-aws" --aws-provider-version 6.73.0 --metadata-dir "$RUNNER_TEMP/aws-auth" --format json --show-table --output "$RUNNER_TEMP/provider-source-audit.json"
+          python -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["pin_verified"]; reviewed=[r for r in d["resources"] if r["source_review_record_matched"]]; assert {r["resource"] for r in reviewed}=={"aws_s3_bucket_versioning","aws_s3_bucket_public_access_block"}; assert all(r["operations"] and all(x["status"]=="MATCHED" for x in r["operations"]) for r in reviewed)' "$RUNNER_TEMP/provider-source-audit.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: provider-source-audit-6.73.0
+          path: ${{ runner.temp }}/provider-source-audit.json

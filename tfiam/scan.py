@@ -182,6 +182,13 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if rule.get('scope_strategy'):
                                 expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task,unresolved=omit)
                                 continue
+                            # v6.73.0 role description uses a separate SDK API.
+                            # A saved plan can omit it when the description is unchanged.
+                            if typ=='aws_iam_role' and task and operation=='update' and 'iam:UpdateRoleDescription' in acts:
+                                previous=task.get('before',{}).get('description')
+                                current=body.get('description')
+                                if previous==current and current is not None:
+                                    acts=[a for a in acts if a!='iam:UpdateRoleDescription']
                             attr_rules=[]
                             for attr in rule['attributes']:
                                 values=attribute_values(body,attr['path'])
@@ -300,9 +307,12 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     mapped=0; eligible=0; verified=0; reviewed=0
     used_actions=set()
     for entry in report['resources']:
-        if entry['status']=='SKIPPED': continue
+        if entry['status']=='SKIPPED':
+            entry['mapping_status']='SKIPPED'
+            continue
         eligible+=1
         rule=get_rule(entry['mode'],entry['type'],version) if entry['status']!='UNSUPPORTED' else None
+        entry['mapping_status']='MAPPED' if rule else 'UNMAPPED'
         status=evidence_status(rule,version)
         entry['validation_level']=status
         entry['provider_version_validated']=status=='lifecycle-verified'
@@ -314,7 +324,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
         verified+=status=='lifecycle-verified'
         reviewed+=status=='provider-source-reviewed'
     report['mapping_coverage']={'eligible_resources':eligible,'mapped_resources':mapped,'unmapped_resources':eligible-mapped,'mapping_percent':round(100*mapped/eligible,2) if eligible else None}
-    report['authorization_confidence']={'provider_version':version,'lifecycle_verified_resources':verified,'source_reviewed_resources':reviewed,'unvalidated_mapped_resources':mapped-verified-reviewed,'status':'unvalidated' if not verified else 'partial-evidence'}
+    report['authorization_confidence']={'provider_version':version,'lifecycle_verified_resources':verified,'source_reviewed_resources':reviewed,'unvalidated_mapped_resources':mapped-verified-reviewed,'status':'lifecycle-verified' if eligible and verified==eligible else 'partial-evidence' if verified else 'source-reviewed' if reviewed else 'unvalidated'}
     if not version: warn('AWS provider version unknown; supply the Terraform lockfile or --aws-provider-version')
     if provider_selection['lockfile_status']=='invalid-lockfile': warn('AWS provider lockfile could not be parsed')
     if mapped>verified: warn(f'AWS provider {version or "unknown"}: {mapped-verified} mapped resources lack exact-version lifecycle authorization evidence.')
