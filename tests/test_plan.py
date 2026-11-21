@@ -153,3 +153,22 @@ def test_fresh_eks_role_arn_fail_closed(tmp_path,case):
     r=run(doc=doc,root=None if case=="no_source" else tmp_path)
     assert not any(a=="iam:PassRole" for a,s in grants(r,"aws_eks_cluster.this"))
     assert any(x["source"]=="aws_eks_cluster.this" and x["action"]=="iam:PassRole" for x in r["unresolved_permissions"])
+
+def test_computed_values_and_resolved_dependencies_are_not_warnings(tmp_path):
+    doc=fresh_eks_plan(tmp_path)
+    report=run(doc=doc,root=tmp_path)
+    assert len(report["resolved_dependencies"])==3
+    assert any("computed or unknown" in x for x in report["information"])
+    assert not any("unknown values withheld" in x or "PassRole inferred" in x or "Starter catalog" in x for x in report["warnings"])
+    assert any("lifecycle authorization evidence" in x for x in report["warnings"])
+    assert not report["unresolved_permissions"]
+
+def test_unknown_tag_actions_and_missing_kms_scope(tmp_path):
+    doc=fresh_eks_plan(tmp_path)
+    change=doc["resource_changes"][1]["change"]
+    change["after_unknown"]["tags"]=True
+    change["after"]["encryption_config"]=[{"provider":[{"key_arn":None}]}]
+    report=run(doc=doc,root=tmp_path)
+    actions={p["action"] for p in report["permissions"] if p["source"]=="aws_eks_cluster.this"}
+    assert {"eks:TagResource","eks:UntagResource"} <= actions
+    assert {"kms:DescribeKey","kms:CreateGrant"} <= {x["action"] for x in report["unresolved_permissions"]}

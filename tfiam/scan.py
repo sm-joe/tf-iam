@@ -22,7 +22,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     has_root=root is not None
     root=Path(root or '.').resolve()
     if not root.is_dir(): raise ValueError('Terraform directory does not exist')
-    report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'backends':[], 'unresolved_permissions':[]}
+    report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'information':[], 'resolved_dependencies':[], 'backends':[], 'unresolved_permissions':[]}
     report['catalog']={'schema_version':CATALOG['schema_version'],'provider':CATALOG['provider'],'provider_version':None}
     provider_selection=selected_version(root if has_root else None,provider_version)
     version=provider_selection['version']
@@ -31,6 +31,8 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     visited=set(); records=set()
     def warn(msg):
         if msg not in report['warnings']: report['warnings'].append(msg)
+    def info(message):
+        if message not in report['information']: report['information'].append(message)
     def unresolved(source,action):
         row={'source':source,'action':action,'reason':'action-specific scope or dependency unresolved'}
         if row not in report['unresolved_permissions']: report['unresolved_permissions'].append(row)
@@ -45,7 +47,11 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
         entries,plan_tasks,plan_warnings,meta=parse_plan(plan,phase)
         report['input']='terraform-plan-json'; report['plan']=meta; report['resources']=entries
         for message in plan_warnings: warn(message)
-        warn('Saved-plan analysis is operation-specific, not a complete provider API trace; aliases and cross-account contexts require review')
+        unknown=sum(e['unknown_values'] for e in entries)
+        sensitive=sum(e['sensitive_values'] for e in entries)
+        if unknown: info(f'{unknown} planned resources contain computed or unknown values; masked values are not used for permission inference.')
+        if sensitive: info(f'{sensitive} planned resources contain marked sensitive values; those values are withheld.')
+        info('Saved-plan analysis uses planned operations, not a provider API trace.')
     else: report['input']='terraform-config'
     def backend(kind,b,src,readonly=False):
         if not readonly: b={**b,**(backend_config or {})}
@@ -175,8 +181,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             for attr in rule['attributes']:
                                 values=attribute_values(body,attr['path'])
                                 if resource_phase not in attr['phases'] or not values: continue
-                                if task and any(v is None for v in values): warn(address+': unknown or sensitive '+attr['path']+'; dependent actions may be incomplete')
-                                if attr['scope']=='resource': acts=sorted(set(acts+attr['actions']))
+                                if attr['scope']=='resource':
+                                    acts=sorted(set(acts+attr['actions']))
+                                    if task and any(v is None for v in values):
+                                        info(address+': '+attr['path']+' values are computed or masked; catalog actions included without inferring their values.')
                                 else: attr_rules.append((attr,values))
                             if category=='resource':
                                 for attr,values in attr_rules:
@@ -185,7 +193,8 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                         if arn and arn.startswith(f'arn:{partition}:kms:') and ':key/' in arn:
                                             add(p,[a for a in attr['actions'] if a!='kms:CreateGrant'],arn,address)
                                             if 'kms:CreateGrant' in attr['actions']: add(p,['kms:CreateGrant'],arn,address,condition={'Bool':{'kms:GrantIsForAWSResource':'true'}})
-                                        else: warn(address+': unresolved '+attr['path']+' ARN; dependent actions omitted')
+                                        else:
+                                            for action in attr['actions']: unresolved(address,action)
                             scope='*'
                             if p=='aws' and typ.startswith('aws_s3_'):
                                 bucket=resolve(body.get('bucket'))
@@ -199,7 +208,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 known=resolve(body.get('arn')); policy_name=resolve(body.get('name')); policy_path=resolve(body.get('path','/'))
                                 if known and re.fullmatch(r'arn:[a-z0-9-]+:iam::(?:[0-9]{12}|aws):policy/[^\s*?]+',known): scope=known
                                 elif account and policy_name and policy_path: scope=f'arn:{partition}:iam::{account}:policy{policy_path}{policy_name}'
-                                if scope=='*': warn(address+': unresolved IAM policy ARN; actions omitted'); acts=[]
+                                if scope=='*':
+                                    for action in acts: unresolved(address,action)
+                                    acts=[]
                             if typ=='aws_iam_role_policy_attachment':
                                 role=resolve(body.get('role'))
                                 # Resolve role paths from direct references when possible.
@@ -215,10 +226,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 for action in acts:
                                     if action in ('iam:AttachRolePolicy','iam:DetachRolePolicy'):
                                         if scope=='*' or not policy_arn or not policy_arn.startswith('arn:'):
-                                            warn(address+': unresolved role or policy ARN; attachment mutation omitted'); continue
+                                            unresolved(address,action); continue
                                         add(p,[action],scope,address,condition={'ArnEquals':{'iam:PolicyARN':policy_arn}})
                                     elif scope!='*': add(p,[action],scope,address)
-                                if scope=='*': warn(address+': exact role scope not inferred')
+                                    else: unresolved(address,action)
                                 continue
                             if typ in ('aws_eks_cluster','aws_eks_node_group','aws_eks_addon','aws_eks_pod_identity_association'):
                                 cluster=resolve(body.get('name' if typ=='aws_eks_cluster' else 'cluster_name'))
@@ -247,17 +258,20 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                         recovered=recover_role_arn(plan,address,field,definitions,account,partition)
                                     if kind!='addon' or body.get(field) or recovered:
                                         arn=resolve(body.get(field)) or recovered
-                                        if recovered: warn(address+': iam:PassRole inferred from matching direct source and saved-plan role dependency; verify provider account and lifecycle authorization')
+                                        if recovered:
+                                            item={'source':address,'action':'iam:PassRole','scope':recovered,'method':'direct source and saved-plan role dependency'}
+                                            if item not in report['resolved_dependencies']: report['resolved_dependencies'].append(item)
                                         if arn and re.fullmatch(r'arn:[a-z0-9-]+:iam::[0-9]{12}:role/[^\s*?]+',arn): add(p,['iam:PassRole'],arn,address,condition={'StringEquals':{'iam:PassedToService':service}})
                                         else: unresolved(address,'iam:PassRole')
                                     if kind in ('cluster','nodegroup'): warn(address+': verify first-use service-linked roles, optional encryption, access entries and provider-specific dependencies')
                                 if scope=='*': warn(address+': provide account, region and resolvable resource names')
                                 continue
                             if typ=='aws_iam_role' and scope=='*':
-                                if resource_phase=='apply' or resource_phase=='destroy': warn(address+': unresolved role ARN; IAM mutations omitted')
+                                for action in acts: unresolved(address,action)
                                 acts=[]
                             if scope=='*' and (typ.startswith('aws_s3_') or typ in ('aws_dynamodb_table','aws_sqs_queue')):
-                                warn(address+': named resource scope unresolved; actions omitted'); acts=[]
+                                for action in acts: unresolved(address,action)
+                                acts=[]
                             add(p,acts,scope,address)
                             if resource_phase!='plan' and typ in ('aws_iam_role','aws_iam_policy'): warn(address+': review privilege delegation and permissions boundaries')
                             if typ=='aws_instance' and body.get('iam_instance_profile'): warn(address+': instance profile PassRole dependency unresolved; permission omitted')
@@ -293,12 +307,12 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     report['authorization_confidence']={'provider_version':version,'lifecycle_verified_resources':verified,'source_reviewed_resources':reviewed,'unvalidated_mapped_resources':mapped-verified-reviewed,'status':'unvalidated' if not verified else 'partial-evidence'}
     if not version: warn('AWS provider version unknown; supply the Terraform lockfile or --aws-provider-version')
     if provider_selection['lockfile_status']=='invalid-lockfile': warn('AWS provider lockfile could not be parsed')
-    if version and mapped>verified: warn('AWS provider '+version+': one or more mappings lack exact-version lifecycle evidence')
+    if mapped>verified: warn(f'AWS provider {version or "unknown"}: {mapped-verified} mapped resources lack exact-version lifecycle authorization evidence.')
     if authorization_metadata is not None:
         report['authorization_metadata']=audit(used_actions,report['permissions'],authorization_metadata)
         if report['authorization_metadata']['status']!='compatible': warn('AWS authorization metadata audit contains findings; review authorization_metadata before generating a policy')
     else: report['authorization_metadata']={'status':'not-run'}
-    warn('Starter catalog is not provider-version validated; review all permissions with cloud audit evidence before production use.')
+
     report['permissions'].sort(key=lambda p:(p['provider'],p['action'],p['scope'],p['source']))
     report['scope_summary']={'global':sum(p['scope']=='*' for p in report['permissions']),'bounded_wildcard':sum(p['scope']!='*' and '*' in p['scope'] for p in report['permissions']),'exact':sum('*' not in p['scope'] and '?' not in p['scope'] for p in report['permissions']),'conditional':sum(bool(p.get('condition')) for p in report['permissions']),'unresolved':len(report['unresolved_permissions'])}
     report['unresolved_permissions'].sort(key=lambda x:(x['source'],x['action']))
