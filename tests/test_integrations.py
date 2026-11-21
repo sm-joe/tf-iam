@@ -18,8 +18,8 @@ def test_risk_severity_and_gate():
 def test_split_preserves_grants():
     rows=[row("iam:GetRole"),row("iam:PassRole","arn:aws:iam::123456789012:role/example",{"StringEquals":{"iam:PassedToService":"ec2.amazonaws.com"}}),row("ec2:CreateVpc"),row("ec2:DeleteVpc")]
     result=split_policies({"phase":"apply","coverage":"PARTIAL","permissions":rows},policy)
-    assert result["counts"]=={"planner":1,"applier":2,"break_glass":1}
-    assert result["policies"]["break_glass"]["Statement"][0]["Condition"]==rows[1]["condition"]
+    assert result["counts"]=={"planner":1,"applier":1,"break_glass":2}
+    assert any(s.get("Condition")==rows[1]["condition"] for s in result["policies"]["break_glass"]["Statement"])
 
 class Paginator:
     def __init__(self,pages): self.pages=pages
@@ -83,3 +83,24 @@ def test_cloudtrail_exhausted():
     stats={}
     list(cloud.lookup_events(Trail(),"arn:aws:iam::123456789012:role/example",cloud.parse_time("2026-01-01T00:00:00Z"),cloud.parse_time("2026-01-02T00:00:00Z"),stats=stats))
     assert stats["complete"] and stats["stop_reason"]=="exhausted"
+
+def test_all_catalog_destroy_actions_are_risky():
+    from tfiam.catalog_loader import CATALOG
+    actions={a for rule in CATALOG["resources"].values() for a in rule["delete"]}
+    result=split_policies({"phase":"apply","coverage":"PARTIAL","permissions":[row(a) for a in actions]},policy)
+    assert result["counts"]["break_glass"]==len(actions)
+    assert result["counts"]["applier"]==0
+
+def test_comparison_dedup_conditions_and_service_summary():
+    from tfiam.cli import compare
+    base=row("iam:PassRole","arn:aws:iam::123456789012:role/example",{"StringEquals":{"iam:PassedToService":"ec2.amazonaws.com"}})
+    report={"permissions":[base,{**base,"source":"second"}]}
+    stmt={"Effect":"Allow","Action":["IAM:PassRole","iam:PassRole","s3:GetObject"],"Resource":"*"}
+    result=compare(report,"aws",{"Statement":[stmt,stmt]})
+    assert result["summary"]["unique_candidates"]==1
+    assert result["summary"]["unique_existing_grants"]==2
+    assert result["summary"]["by_service"]["potentially_excessive"]=={"iam":1,"s3":1}
+    assert "missing-candidate-condition" in result["potentially_excessive"][0]["reasons"]
+    result=compare(report,"aws",{"Statement":[]})
+    assert result["missing_or_unverified"][0]["sources"]==["fixture","second"]
+    assert result["missing_or_unverified"][0]["observations"]==2

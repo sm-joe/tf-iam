@@ -18,4 +18,4 @@ def split_policies(report,render):
     policies={k:render({"permissions":v},"aws",k,None) if v else {"Version":"2012-10-17","Statement":[]} for k,v in groups.items()}
     return {"coverage":report["coverage"],"policies":policies,"counts":{k:len(v) for k,v in groups.items()},
             "unresolved_permissions":report.get("unresolved_permissions",[]),
-            "limitations":["Candidate partition, not independently sufficient lifecycle roles.","Applier may require planner reads and explicitly approved delegated operations.","Planner backend locking and service-specific non-read-prefixed discovery require separate review.","Break-glass is not automatically attached or deployed."]}
+            "limitations":["Candidate partition, not independently sufficient lifecycle roles.","Applier may require planner reads and explicitly approved delegated operations.","Planner backend locking and service-specific non-read-prefixed discovery require separate review.","Shared update/delete permissions are conservatively classified as break-glass, even when needed for an ordinary update.","Break-glass is not automatically attached or deployed."]}
