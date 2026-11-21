@@ -2,6 +2,7 @@ import json, re
 from pathlib import Path
 from .catalog_loader import get_rule, actions_for, operation_actions, attribute_values, CATALOG
 from .plan import parse_plan
+from .plan_roles import recover_role_arn
 from .risk import assess
 from .resolver import discover
 from .versioning import selected_version, evidence_status
@@ -241,8 +242,12 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     add(p,[action],target,address)
                                 if resource_phase=='apply' and category=='resource':
                                     field,service={'cluster':('role_arn','eks.amazonaws.com'),'nodegroup':('node_role_arn','eks.amazonaws.com'),'addon':('service_account_role_arn','eks.amazonaws.com'),'podidentityassociation':('role_arn','pods.eks.amazonaws.com')}[kind]
-                                    if kind!='addon' or body.get(field):
-                                        arn=resolve(body.get(field))
+                                    recovered=None
+                                    if task and has_root and not body.get(field):
+                                        recovered=recover_role_arn(plan,address,field,definitions,account,partition)
+                                    if kind!='addon' or body.get(field) or recovered:
+                                        arn=resolve(body.get(field)) or recovered
+                                        if recovered: warn(address+': iam:PassRole inferred from matching direct source and saved-plan role dependency; verify provider account and lifecycle authorization')
                                         if arn and re.fullmatch(r'arn:[a-z0-9-]+:iam::[0-9]{12}:role/[^\s*?]+',arn): add(p,['iam:PassRole'],arn,address,condition={'StringEquals':{'iam:PassedToService':service}})
                                         else: unresolved(address,'iam:PassRole')
                                     if kind in ('cluster','nodegroup'): warn(address+': verify first-use service-linked roles, optional encryption, access entries and provider-specific dependencies')

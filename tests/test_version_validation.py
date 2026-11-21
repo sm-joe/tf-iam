@@ -44,3 +44,13 @@ def test_catalog_cli_missing_metadata(tmp_path):
     assert main(["catalog-audit","--metadata-dir",str(tmp_path),"--strict"])==2
 def test_invalid_explicit_version():
     with pytest.raises(ValueError): selected_version(None,"~> 6.0")
+
+def test_eks_documented_global_metadata_fallback(tmp_path):
+    (tmp_path/"eks.json").write_text(json.dumps({"Name":"eks","Actions":[{"Name":"CreateCluster"},{"Name":"DescribeAddonVersions"},{"Name":"DescribeCluster"}]}))
+    actions=["eks:CreateCluster","eks:DescribeAddonVersions","eks:DescribeCluster"]
+    rows=[{"action":a,"scope":"*","source":"fixture"} for a in actions]
+    out=audit(actions,rows,tmp_path)
+    assert {x["action"] for x in out["reference_fallbacks"]}==set(actions[:2])
+    assert [x["action"] for x in out["findings"]]==["eks:DescribeCluster"]
+    rows[0]["scope"]="arn:aws:eks:us-east-1:123456789012:cluster/demo"
+    assert any(x["code"]=="action-requires-global-scope" for x in audit(actions,rows,tmp_path)["findings"])

@@ -113,3 +113,43 @@ def test_missing_plan_file(tmp_path, capsys):
     p=tmp_path/"missing.json"
     assert main(["scan","--plan-json",str(p)])==1
     assert "file not found" in capsys.readouterr().err
+
+def fresh_eks_plan(tmp_path):
+    roles=[("cluster","aws_eks_cluster.this","role_arn"),("node","aws_eks_node_group.managed","node_role_arn"),("pods","aws_eks_pod_identity_association.ebs_csi","role_arn")]
+    changes=[]; cfg=[]; resources={}
+    for name,address,field in roles:
+        target="aws_iam_role."+name
+        typ,instance=address.split(".")
+        resources.setdefault(typ,{})[instance]={field:"\u0024{"+target+".arn}"}
+        resources.setdefault("aws_iam_role",{})[name]={"name":name,"path":"/ci/"}
+        for addr,kind,after,unknown in [(target,"aws_iam_role",{"name":name,"path":"/ci/"},{"arn":True}),(address,typ,{"name":"demo","cluster_name":"demo","node_group_name":"nodes"},{"role_arn":True,"node_role_arn":True})]:
+            changes.append({"address":addr,"type":kind,"mode":"managed","provider_name":"registry.terraform.io/hashicorp/aws","change":{"actions":["create"],"before":None,"after":after,"after_unknown":unknown,"after_sensitive":{}}})
+        cfg.extend([{"address":target,"provider_config_key":"aws"},{"address":address,"provider_config_key":"aws","expressions":{field:{"references":[target+".arn",target]}}}])
+    (tmp_path/"main.tf.json").write_text(json.dumps({"resource":resources}))
+    return {"format_version":"1.2","terraform_version":"1.17.2","configuration":{"root_module":{"resources":cfg}},"resource_changes":changes}
+
+def test_fresh_eks_role_arn_recovery(tmp_path):
+    doc=fresh_eks_plan(tmp_path)
+    r=run(doc=doc,root=tmp_path)
+    expected={"aws_eks_cluster.this":"cluster","aws_eks_node_group.managed":"node","aws_eks_pod_identity_association.ebs_csi":"pods"}
+    for source,name in expected.items():
+        assert ("iam:PassRole","arn:aws:iam::123456789012:role/ci/"+name) in grants(r,source)
+    assert not any(x["action"]=="iam:PassRole" for x in r["unresolved_permissions"])
+    assert all(p["scope"]!="*" and p.get("condition") for p in r["permissions"] if p["action"]=="iam:PassRole")
+
+@pytest.mark.parametrize("case",["sensitive","unknown_name","unknown_path","alias","ambiguous","transformed","no_source"])
+def test_fresh_eks_role_arn_fail_closed(tmp_path,case):
+    doc=fresh_eks_plan(tmp_path)
+    change=doc["resource_changes"][1]["change"]
+    role=doc["resource_changes"][0]["change"]
+    if case=="sensitive": change["after_sensitive"]={"role_arn":True}
+    if case=="unknown_name": role["after_unknown"]["name"]=True
+    if case=="unknown_path": role["after_unknown"]["path"]=True
+    if case=="alias": doc["configuration"]["root_module"]["resources"][0]["provider_config_key"]="aws.other"
+    if case=="ambiguous": doc["configuration"]["root_module"]["resources"][1]["expressions"]["role_arn"]["references"].append("aws_iam_role.other.arn")
+    if case=="transformed":
+        p=tmp_path/"main.tf.json"; body=json.loads(p.read_text()); body["resource"]["aws_eks_cluster"]["this"]["role_arn"]="\u0024{replace(aws_iam_role.cluster.arn, \"a\", \"b\")}"
+        p.write_text(json.dumps(body))
+    r=run(doc=doc,root=None if case=="no_source" else tmp_path)
+    assert not any(a=="iam:PassRole" for a,s in grants(r,"aws_eks_cluster.this"))
+    assert any(x["source"]=="aws_eks_cluster.this" and x["action"]=="iam:PassRole" for x in r["unresolved_permissions"])

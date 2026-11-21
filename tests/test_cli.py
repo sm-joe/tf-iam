@@ -33,8 +33,21 @@ def test_eks_regression(capsys):
     assert all(s['Resource']!='*' and 'Condition' in s for s in statements if 'iam:PassRole' in s['Action'] or 'iam:AttachRolePolicy' in s['Action'])
     assert all(s['Resource']!='*' for s in statements if 'iam:CreateRole' in s['Action'])
     plan=scan(ROOT/'eks','plan','123456789012','us-east-1'); assert not any('Create' in x['action'] or x['action']=='iam:PassRole' for x in plan['permissions'])
-    assert main(['scan',str(ROOT/'eks'),'--phase','plan','--aws-account','123456789012','--aws-region','us-east-1'])==0
+    assert main(['scan',str(ROOT/'eks'),'--phase','plan','--format','text','--aws-account','123456789012','--aws-region','us-east-1'])==0
     output=capsys.readouterr().out; assert 'Unique grants:' in output; assert len([l for l in output.splitlines() if 'iam:ListAttachedRolePolicies [' in l])==3
 
 def test_unresolved_eks_no_wildcard_passrole():
     r=scan(ROOT/'eks'); assert not any(x['action'] in ('iam:PassRole','iam:AttachRolePolicy','iam:CreateRole') for x in r['permissions'])
+
+def test_table_output_and_json_side_by_side(tmp_path,capsys):
+    report=tmp_path/"report.json"
+    assert main(["scan",str(ROOT/"aws"),"--format","json","--show-table","--output",str(report)])==0
+    assert json.loads(report.read_text())["permissions"]
+    assert "PERMISSIONS" in capsys.readouterr().err
+    assert main(["scan",str(ROOT/"aws"),"--format","table"])==0
+    out=capsys.readouterr().out
+    assert "SUMMARY" in out and "Unique grants" in out and "PERMISSIONS" in out and "+---" in out
+    assert main(["generate",str(ROOT/"aws"),"--allow-partial","--format","table"])==0
+    assert "POLICY GRANTS" in capsys.readouterr().out
+    assert main(["compare",str(ROOT/"aws"),"--existing",str(ROOT/"existing-aws.json"),"--format","table"])==0
+    assert "BY AWS SERVICE" in capsys.readouterr().out
