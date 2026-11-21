@@ -43,13 +43,21 @@ Terraform JSON plans may contain plaintext secrets and confidential infrastructu
 
 Reference: [Terraform JSON output format](https://developer.hashicorp.com/terraform/internals/json-format).
 
+## Static inputs and modules (M03)
+
+```bash
+tfiam scan ./infra --var-file ./infra/prod.tfvars --var environment=prod --aws-account 123456789012 --aws-region us-east-1
+```
+
+Input precedence is defaults, TF_VAR environment, terraform.tfvars, terraform.tfvars.json, lexical auto.tfvars files, explicit --var-file, then --var. This last grouping is a CLI convention; use saved plans for exact Terraform interleaved flag semantics. Direct references, simple string interpolation, locals, child inputs and outputs are supported. Sensitive variables and unsupported expressions remain unresolved. Each module call has its own context; installed remote sources are discovered from .terraform/modules/modules.json without downloading or executing anything. Local modules outside the root, dynamic module instances, arbitrary functions, complex expressions, provider aliases and runtime values require saved plan or review. The report contains module inventory and dependency reference edges, not raw variable values. Do not pass secret values on the shell command line.
+
 ## Catalog
 
 The packaged `tfiam/catalog/aws.json` stores independently authored resource and data-source rules; `schema.json` defines their schema. Each entry has lifecycle actions, optional attribute-triggered actions, references, validation status and exact tested provider versions. Catalog loading validates schema and rejects writable data rules. The current catalog contains 17 resource and 10 data-source entries; all are candidates, none has live version-specific validation. The report records the AWS provider lockfile version if available. This is not proof of version compatibility. Resource-level scope logic remains in the scanner; unknown dependencies must not be silently granted.
 
 ## Coverage and gates
 
-Root and reachable local modules, HCL and Terraform JSON, S3 state with lockfile/DynamoDB and optional KMS, local backend. Plan is read-oriented and may include backend locking mutations. Apply includes deletes for replacement; destroy includes read/delete. Variable defaults and direct references are only static approximations. Remote modules, full tfvars evaluation, aliases and provider-specific dependencies remain incomplete. Do not use generated policies without review and isolated lifecycle testing. All scans currently remain PARTIAL. Exit codes: 0 completed; 1 input/error; 2 partial with --strict; 3 missing or denied candidate permissions with --fail-on-missing.
+Root and reachable local modules, HCL and Terraform JSON, S3 state with lockfile/DynamoDB and optional KMS, local backend. Plan is read-oriented and may include backend locking mutations. Apply includes deletes for replacement; destroy includes read/delete. Variable defaults and direct references are only static approximations. Uninstalled remote modules, full expression evaluation, aliases and provider-specific dependencies remain incomplete. Do not use generated policies without review and isolated lifecycle testing. All scans currently remain PARTIAL. Exit codes: 0 completed; 1 input/error; 2 partial with --strict; 3 missing or denied candidate permissions with --fail-on-missing.
 
 ## Roadmap
 
