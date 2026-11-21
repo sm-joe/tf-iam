@@ -149,6 +149,38 @@
             "type": "string",
             "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
           }
+        },
+        "scope_strategy": {
+          "enum": [
+            "role",
+            "oidc",
+            "profile",
+            "user",
+            "group",
+            "manual",
+            "eks-access",
+            "review",
+            "bucket",
+            "kms-key",
+            "kms-alias",
+            "ecr",
+            "ecs-cluster",
+            "ecs-service",
+            "ecs-task",
+            "rds-db",
+            "rds-cluster",
+            "rds-subgrp",
+            "rds-pg",
+            "rds-clpg",
+            "lambda",
+            "log-group",
+            "log-stream",
+            "alarm",
+            "dashboard",
+            "route-zone",
+            "route-record",
+            "policy"
+          ]
         }
       }
     }

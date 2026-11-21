@@ -141,13 +141,13 @@ class Context:
             kind,name,attr=parts
             body=self.resources.get(kind+"."+name)
             if body is None or "count" in body or "for_each" in body: return UNKNOWN
-            if attr=="arn" and kind in ("aws_iam_role","aws_iam_policy"):
+            if attr=="arn" and kind in ("aws_iam_role","aws_iam_policy","aws_iam_user","aws_iam_group"):
                 name=self.evaluate(body.get("name",UNKNOWN),seen)
                 path=self.evaluate(body.get("path","/"),seen)
                 if not self.account or not isinstance(name,str) or not isinstance(path,str): return UNKNOWN
                 if not re.fullmatch(r"[\w+=,.@-]+",name) or not path.startswith("/") or not path.endswith("/"): return UNKNOWN
                 if any(c in path for c in "*?"): return UNKNOWN
-                return f"arn:{self.partition}:iam::{self.account}:{'role' if kind=='aws_iam_role' else 'policy'}{path}{name}"
+                return f"arn:{self.partition}:iam::{self.account}:{kind.removeprefix('aws_iam_')}{path}{name}"
             # Only explicit config attributes, never pretend to know provider-generated values.
             if attr not in ("name","bucket","key","cluster_name","node_group_name","addon_name","path","policy_arn","role_arn"): return UNKNOWN
             return self.evaluate(body.get(attr,UNKNOWN),seen)
@@ -285,6 +285,13 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                                 if match and match.group(1).endswith(".name"):
                                     arn=ctx.reference(match.group(1)[:-5]+".arn",())
                                     if arn is not UNKNOWN: evaluated["_tfiam_role_arn"]=arn
+                            if kind in ("aws_iam_role_policy","aws_iam_user_policy","aws_iam_group_policy"):
+                                field=kind.split("_")[2]
+                                original=body.get(field)
+                                match=EXPR.fullmatch(original) if isinstance(original,str) else None
+                                if match and match.group(1).endswith(".name"):
+                                    resolved=ctx.reference(match.group(1)[:-5]+".arn",())
+                                    if resolved is not UNKNOWN: evaluated["_tfiam_identity_arn"]=resolved
                             mapped.setdefault(kind,{})[name]=sanitize(evaluated)
                 if mapped: transformed[category]=mapped
             result.append((src,ctx.path,transformed))

@@ -53,7 +53,15 @@ Input precedence is defaults, TF_VAR environment, terraform.tfvars, terraform.tf
 
 ## Catalog
 
-The packaged `tfiam/catalog/aws.json` stores independently authored resource and data-source rules; `schema.json` defines their schema. Each entry has lifecycle actions, optional attribute-triggered actions, references, validation status and exact tested provider versions. Catalog loading validates schema and rejects writable data rules. The current catalog contains 17 resource and 10 data-source entries; all are candidates, none has live version-specific validation. The report records the AWS provider lockfile version if available. This is not proof of version compatibility. Resource-level scope logic remains in the scanner; unknown dependencies must not be silently granted.
+The packaged `tfiam/catalog/aws.json` stores independently authored resource and data-source rules; `schema.json` defines their schema. Each entry has lifecycle actions, optional attribute-triggered actions, references, validation status and exact tested provider versions. Catalog loading validates schema and rejects writable data rules. The current catalog contains 106 resource and 37 data-source entries; all are candidates, none has live version-specific validation. The report records the AWS provider lockfile version if available. This is not proof of version compatibility. Resource-level scope logic remains in the scanner; unknown dependencies must not be silently granted.
+
+## Expanded AWS catalog (M04)
+
+The catalog includes IAM, EKS access management, VPC networking, EC2, Auto Scaling, S3, KMS, ECR, ECS, RDS, Lambda, CloudWatch, CloudWatch Logs, ELB and Route 53. All entries remain candidate mappings. Lifecycle operation sets are distinct; each mapping links to the AWS Service Authorization Reference.
+
+Expanded entries use an explicit scope strategy. Where action-specific authorization or dependency scopes cannot be established, actions are omitted with a review warning rather than silently emitted at wildcard scope. Some legitimate account-level actions require wildcard scope (for example EC2 Describe operations and KMS CreateKey); these are not evidence that all actions in the service support wildcard-only authorization. Multi-resource dependencies and full per-action authorization remain M05 work. Do not treat mapping coverage as deployment-ready policy coverage.
+
+See [AWS catalog coverage](docs/aws-catalog.md).
 
 ## Coverage and gates
 
