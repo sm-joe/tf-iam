@@ -118,3 +118,7 @@ Security gates return exit 4 for threshold, unresolved, unmapped or metadata fai
 ## Linux executable and release acceptance (M12–M13)
 
 See [release process](docs/release-process.md). CI builds a standalone Linux x86_64 binary with checksums. Stable publication requires actual reviewed lifecycle evidence, signed artifact and reproducibility verification. No stable release is asserted by passing unit tests.
+
+### Bounded CloudTrail retrieval
+
+Live runtime audit defaults to 100 pages and a 120-second cooperative time budget (an in-flight AWS request may exceed it). Progress is printed to stderr. If a limit is reached the partial JSON report is retained and exit code 2 is returned. Use `--max-pages`, `--max-seconds`, or narrow the time window. Optional `--session-name` applies a CloudTrail Username filter for an explicitly known STS session; repeat for multiple sessions. Session filtering cannot discover other sessions, so its coverage remains partial. Full role ARN matching still occurs locally. No role-name-to-session-name assumption is made. `--quiet` suppresses progress.

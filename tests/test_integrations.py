@@ -59,3 +59,27 @@ def test_gate_blocks_policy_output(tmp_path):
     output=tmp_path/"policy.json"
     assert main(["generate",str(tmp_path),"--aws-account","123456789012","--allow-partial","--fail-on-risk","HIGH","--output",str(output)])==4
     assert not output.exists()
+
+def test_cloudtrail_bounded_and_session_filtered(monkeypatch):
+    from tfiam import cloud
+    monkeypatch.setattr(cloud.time,"sleep",lambda _:None)
+    arn="arn:aws:iam::123456789012:role/example"
+    event={"eventID":"1","userIdentity":{"sessionContext":{"sessionIssuer":{"arn":arn}}}}
+    class Trail:
+        def __init__(self): self.calls=[]
+        def lookup_events(self,**kw):
+            self.calls.append(kw)
+            return {"Events":[{"CloudTrailEvent":json.dumps(event)}],"NextToken":"next"}
+    trail=Trail(); stats={}
+    start=cloud.parse_time("2026-01-01T00:00:00Z"); end=cloud.parse_time("2026-01-02T00:00:00Z")
+    assert len(list(cloud.lookup_events(trail,arn,start,end,session_names=["build-123"],max_pages=2,stats=stats)))==2
+    assert len(trail.calls)==2 and trail.calls[0]["LookupAttributes"]==[{"AttributeKey":"Username","AttributeValue":"build-123"}]
+    assert trail.calls[1]["NextToken"]=="next"
+    assert stats["complete"] is False and stats["stop_reason"]=="page-limit"
+def test_cloudtrail_exhausted():
+    from tfiam import cloud
+    class Trail:
+        def lookup_events(self,**kw): return {"Events":[]}
+    stats={}
+    list(cloud.lookup_events(Trail(),"arn:aws:iam::123456789012:role/example",cloud.parse_time("2026-01-01T00:00:00Z"),cloud.parse_time("2026-01-02T00:00:00Z"),stats=stats))
+    assert stats["complete"] and stats["stop_reason"]=="exhausted"
