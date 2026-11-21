@@ -267,8 +267,26 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 for action in acts:
                                     target='*' if action in ('eks:CreateCluster','eks:DescribeAddonVersions') else cluster_arn if action in ('eks:CreateNodegroup','eks:CreateAddon','eks:CreatePodIdentityAssociation') else scope
                                     if target=='*' and action not in ('eks:CreateCluster','eks:DescribeAddonVersions'): unresolved(address,action); continue
-                                    add(p,[action],target,address)
-                                if resource_phase=='apply' and category=='resource':
+                                    if action=='eks:AssociateEncryptionConfig' and task and (operation!='update' or task.get('before',{}).get('encryption_config')): continue
+                                    condition={'StringEquals':{'aws:RequestedRegion':region}} if action in ('eks:CreateCluster','eks:DescribeAddonVersions') and region else None
+                                    add(p,[action],target,address,condition=condition)
+                                if resource_phase=='apply' and category=='resource' and operation not in ('read','no-op'):
+                                    if kind in ('cluster','nodegroup') and (not task or operation=='create'):
+                                        service,role_name={'cluster':('eks.amazonaws.com','AWSServiceRoleForAmazonEKS'),'nodegroup':('eks-nodegroup.amazonaws.com','AWSServiceRoleForAmazonEKSNodegroup')}[kind]
+                                        if account:
+                                            add(p,['iam:CreateServiceLinkedRole'],f'arn:{partition}:iam::{account}:role/aws-service-role/{service}/{role_name}',address,condition={'StringEquals':{'iam:AWSServiceName':service}})
+                                            info(address+': service-linked role creation grant is only needed when the role does not already exist.')
+                                        else: unresolved(address,'iam:CreateServiceLinkedRole')
+                                    if kind=='cluster':
+                                        access=attribute_values(body,'access_config.authentication_mode')
+                                        old_access=attribute_values(task.get('before',{}),'access_config.authentication_mode') if task else []
+                                        if any(v in ('API','API_AND_CONFIG_MAP') for v in access) and (not task or operation=='create' or operation=='update' and access!=old_access):
+                                            if cluster_arn!='*': add(p,['eks:CreateAccessEntry'],cluster_arn,address)
+                                            else: unresolved(address,'eks:CreateAccessEntry')
+                                        elif any(v is None or isinstance(v,str) and v.startswith('${') for v in access):
+                                            unresolved(address,'eks:CreateAccessEntry')
+                                    if kind in ('addon','podidentityassociation') and (body.get('pod_identity_association') or body.get('target_role_arn')):
+                                        warn(address+': additional pod-identity role or association authorization requires explicit review; nested delegation is not inferred.')
                                     field,service={'cluster':('role_arn','eks.amazonaws.com'),'nodegroup':('node_role_arn','eks.amazonaws.com'),'addon':('service_account_role_arn','eks.amazonaws.com'),'podidentityassociation':('role_arn','pods.eks.amazonaws.com')}[kind]
                                     recovered=None
                                     if task and has_root and not body.get(field):
@@ -280,9 +298,25 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                             if item not in report['resolved_dependencies']: report['resolved_dependencies'].append(item)
                                         if arn and re.fullmatch(r'arn:[a-z0-9-]+:iam::[0-9]{12}:role/[^\s*?]+',arn): add(p,['iam:PassRole'],arn,address,condition={'StringEquals':{'iam:PassedToService':service}})
                                         else: unresolved(address,'iam:PassRole')
-                                    if kind in ('cluster','nodegroup'): warn(address+': verify first-use service-linked roles, optional encryption, access entries and provider-specific dependencies')
+                                    if kind=='cluster' and body.get('compute_config'): warn(address+': EKS Auto Mode compute role dependencies require separate review.')
                                 if scope=='*': warn(address+': provide account, region and resolvable resource names')
                                 continue
+                            if typ=='aws_iam_role' and scope!='*' and category=='resource' and resource_phase=='apply' and operation not in ('read','no-op'):
+                                boundary=resolve(body.get('permissions_boundary'))
+                                old_boundary=resolve(task.get('before',{}).get('permissions_boundary')) if task else None
+                                if body.get('permissions_boundary') and not boundary:
+                                    unresolved(address,'iam:PutRolePermissionsBoundary')
+                                elif boundary and not re.fullmatch(r'arn:[a-z0-9-]+:iam::(?:[0-9]{12}|aws):policy/[^\s*?]+',boundary):
+                                    unresolved(address,'iam:PutRolePermissionsBoundary')
+                                elif boundary:
+                                    if 'iam:CreateRole' in acts:
+                                        acts=[a for a in acts if a!='iam:CreateRole']
+                                        add(p,['iam:CreateRole'],scope,address,condition={'ArnEquals':{'iam:PermissionsBoundary':boundary}})
+                                    if not task or operation=='update' and boundary!=old_boundary:
+                                        add(p,['iam:PutRolePermissionsBoundary'],scope,address,condition={'ArnEquals':{'iam:PermissionsBoundary':boundary}})
+                                elif task and operation=='update' and old_boundary and 'permissions_boundary' in body and body['permissions_boundary'] in ('',None):
+                                    if body['permissions_boundary']=='': add(p,['iam:DeleteRolePermissionsBoundary'],scope,address)
+                                    else: unresolved(address,'iam:DeleteRolePermissionsBoundary')
                             if typ=='aws_iam_role' and scope=='*':
                                 for action in acts: unresolved(address,action)
                                 acts=[]
@@ -290,7 +324,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 for action in acts: unresolved(address,action)
                                 acts=[]
                             add(p,acts,scope,address)
-                            if resource_phase!='plan' and typ in ('aws_iam_role','aws_iam_policy'): warn(address+': review privilege delegation and permissions boundaries')
+                            # Delegation and boundary approval appear in the risk inventory.
                             if typ=='aws_instance' and body.get('iam_instance_profile'): warn(address+': instance profile PassRole dependency unresolved; permission omitted')
                             if scope=='*': warn(address+': exact resource scope not inferred')
         for src,doc in docs:
@@ -298,7 +332,13 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                 for group in blocks(doc,'terraform'):
                     for item in blocks(group,'backend'):
                         for kind,b in item.items(): backend(kind,b,src)
-            if doc.get('provider'): warn(src+': provider initialization, aliases, impersonation and registration require review')
+            for group in blocks(doc,'provider'):
+                if not isinstance(group,dict): continue
+                for provider_name,cfg in group.items():
+                    if provider_name!='aws': continue
+                    for item in cfg if isinstance(cfg,list) else [cfg]:
+                        if isinstance(item,dict) and any(k in item for k in ('alias','assume_role','assume_role_with_web_identity','endpoints','default_tags')):
+                            warn(src+': AWS provider alias, assumed identity, custom endpoint or default tags requires explicit context review')
         if is_root and not report['backends']:
             if backend_config: backend('s3',backend_config,'explicit-backend')
             elif has_root and docs and not any('cloud' in group for _,doc in docs for group in blocks(doc,'terraform')) and len(docs)==len(files): backend('local',{},'implicit-local')

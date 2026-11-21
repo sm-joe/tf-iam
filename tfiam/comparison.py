@@ -34,12 +34,18 @@ def compare(report,provider,existing):
         if r["source"] not in item["sources"]: item["sources"].append(r["source"])
     for r in unique.values():
         r["sources"].sort(); r["source"]=r["sources"][0]
-    grants=set(); denies=set(); uncertain=[]; complex_denies=False
+    grants=set(); denies=set(); conditional=[]; uncertain=[]; complex_denies=False
     for index,s in enumerate(arr(existing["Statement"])):
         if not isinstance(s,dict) or s.get("Effect") not in ("Allow","Deny"): raise ValueError("Invalid IAM statement")
         if s.get("Condition") or any(k in s for k in ("NotAction","NotResource","Principal","NotPrincipal")):
             uncertain.append("Statement "+str(index+1)+": complex AWS statement requires manual evaluation")
             if s["Effect"]=="Deny": complex_denies=True
+            elif s.get("Condition") and not any(k in s for k in ("NotAction","NotResource","Principal","NotPrincipal")):
+                for a in arr(s.get("Action",[])):
+                    for scope in arr(s.get("Resource",[])):
+                        if isinstance(a,str) and isinstance(scope,str) and "${" not in scope:
+                            conditional.append(((a.lower(),scope,"management"),s["Condition"]))
+            else: conditional.append((None,None))
             continue
         actions=arr(s.get("Action",[])); scopes=arr(s.get("Resource",[]))
         if not actions or not scopes or not all(isinstance(x,str) and x for x in actions+scopes): raise ValueError("Invalid IAM action or resource")
@@ -50,12 +56,14 @@ def compare(report,provider,existing):
         target=grants if s["Effect"]=="Allow" else denies
         for a in actions:
             for scope in scopes: target.add((a.lower(),scope,"management"))
-    missing=[]; blocked=[]; covered=[]
+    missing=[]; unverified=[]; blocked=[]; covered=[]
     for _,r in sorted(unique.items()):
         # A complex deny may intersect an otherwise covered grant; fail closed.
         if any(covers(g,r) for g in denies): blocked.append(r)
-        elif complex_denies or not any(covers(g,r) for g in grants): missing.append(r)
-        else: covered.append(r)
+        elif complex_denies: unverified.append({**r,"comparison_reason":"complex-deny"})
+        elif any(covers(g,r) for g in grants) or any(g and covers(g,r) and r.get("condition")==c for g,c in conditional): covered.append(r)
+        elif any(g is None or covers(g,r) for g,c in conditional): unverified.append({**r,"comparison_reason":"conditional-or-complex-allow"})
+        else: missing.append({**r,"comparison_reason":"no-matching-identity-allow"})
     excess=[]
     for a,s,p in sorted(grants):
         matching=[r for r in unique.values() if covers((a,s,p),r)]
@@ -67,9 +75,9 @@ def compare(report,provider,existing):
         if reasons: excess.append({"action":a,"scope":s,"plane":p,"reasons":reasons})
     def services(items):
         return dict(sorted(Counter(r["action"].split(":",1)[0] for r in items).items()))
-    return {"coverage":"PARTIAL","missing_or_unverified":missing,"explicitly_denied":blocked,
+    return {"coverage":"PARTIAL","missing":missing,"unverified":unverified,"missing_or_unverified":missing+unverified,"explicitly_denied":blocked,
             "potentially_excessive":excess,"summary":{"candidate_observations":len(rows),"unique_candidates":len(unique),
-            "covered_candidates":len(covered),"missing_or_unverified":len(missing),"explicitly_denied":len(blocked),
+            "covered_candidates":len(covered),"missing":len(missing),"unverified":len(unverified),"missing_or_unverified":len(missing)+len(unverified),"explicitly_denied":len(blocked),
             "unique_existing_grants":len(grants),"potentially_excessive":len(excess),"complex_statements":len(uncertain),
-            "by_service":{"missing_or_unverified":services(missing),"explicitly_denied":services(blocked),"potentially_excessive":services(excess)}},
+            "by_service":{"missing_or_unverified":services(missing+unverified),"explicitly_denied":services(blocked),"potentially_excessive":services(excess)}},
             "warnings":uncertain+["Static comparison only; inherited policies, conditions, boundaries, SCPs, assignments and unknown resources are not evaluated. Do not automatically revoke permissions."]}

@@ -126,3 +126,36 @@ def test_generate_simple_default_and_unmapped_gate(tmp_path):
     assert main(["generate",str(tmp_path),"--output",str(output)])==4
     assert not output.exists()
     assert main(["generate",str(tmp_path),"--allow-partial","--output",str(output)])==0
+
+def test_eks_bootstrap_encryption_and_region(tmp_path):
+    from tfiam.scan import scan
+    cfg={"resource":{"aws_eks_cluster":{"c":{"name":"demo","role_arn":"arn:aws:iam::123456789012:role/cluster","access_config":{"authentication_mode":"API"},"encryption_config":{"provider":{"key_arn":"arn:aws:kms:us-east-1:123456789012:key/test-key"}}}}}}
+    (tmp_path/"main.tf.json").write_text(json.dumps(cfg))
+    report=scan(tmp_path,account="123456789012",region="us-east-1")
+    rows={p["action"]:p for p in report["permissions"]}
+    assert rows["iam:CreateServiceLinkedRole"]["scope"].endswith("eks.amazonaws.com/AWSServiceRoleForAmazonEKS")
+    assert rows["iam:CreateServiceLinkedRole"]["condition"]=={"StringEquals":{"iam:AWSServiceName":"eks.amazonaws.com"}}
+    assert rows["eks:CreateCluster"]["condition"]=={"StringEquals":{"aws:RequestedRegion":"us-east-1"}}
+    assert rows["eks:CreateAccessEntry"]["scope"].endswith("cluster/demo")
+    assert rows["eks:AssociateEncryptionConfig"]["scope"].endswith("cluster/demo")
+    assert rows["kms:CreateGrant"]["scope"].endswith("key/test-key")
+    assert not any(p["action"]=="iam:CreateServiceLinkedRole" for p in scan(tmp_path,"destroy","123456789012","us-east-1")["permissions"])
+
+def test_boundary_and_self_comparison(tmp_path):
+    from tfiam.scan import scan
+    from tfiam.cli import compare
+    boundary="arn:aws:iam::123456789012:policy/Boundary"
+    (tmp_path/"main.tf.json").write_text(json.dumps({"resource":{"aws_iam_role":{"r":{"name":"fixture","permissions_boundary":boundary}}}}))
+    report=scan(tmp_path,account="123456789012")
+    rows={p["action"]:p for p in report["permissions"]}
+    assert rows["iam:CreateRole"]["condition"]=={"ArnEquals":{"iam:PermissionsBoundary":boundary}}
+    assert rows["iam:PutRolePermissionsBoundary"]["condition"]==rows["iam:CreateRole"]["condition"]
+    result=compare(report,"aws",policy(report,"aws","test",None))
+    assert result["summary"]["missing_or_unverified"]==0
+
+def test_comparison_distinguishes_missing_and_uncertain():
+    from tfiam.cli import compare
+    report={"permissions":[row("s3:GetObject","arn:aws:s3:::bucket/key"),row("s3:DeleteObject","arn:aws:s3:::bucket/key")]}
+    doc={"Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"*","Condition":{"StringEquals":{"aws:PrincipalTag/Team":"test"}}}]}
+    result=compare(report,"aws",doc)
+    assert result["summary"]["missing"]==1 and result["summary"]["unverified"]==1

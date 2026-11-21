@@ -512,6 +512,16 @@
             "kms:CreateGrant"
           ],
           "scope": "literal_arn"
+        },
+        {
+          "path": "encryption_config.provider.key_arn",
+          "phases": [
+            "apply"
+          ],
+          "actions": [
+            "eks:AssociateEncryptionConfig"
+          ],
+          "scope": "resource"
         }
       ],
       "create": [

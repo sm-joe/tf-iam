@@ -76,7 +76,7 @@ def render(command,r,compact=False):
         by=summary["by_service"]
         services=sorted(set().union(*(x.keys() for x in by.values())))
         section("BY AWS SERVICE",["Service","Missing / unverified","Denied","Potentially excessive"],[(s,by["missing_or_unverified"].get(s,0),by["explicitly_denied"].get(s,0),by["potentially_excessive"].get(s,0)) for s in services],[28,22,12,22])
-        for k in ("missing_or_unverified","explicitly_denied"):
+        for k in (("missing","unverified","explicitly_denied") if "missing" in r else ("missing_or_unverified","explicitly_denied")):
             section(k.replace("_"," ").upper(),["Action","Resource scope","Condition","Source"],grant_rows(r[k]),[38,60,45,45],100)
         section("POTENTIALLY EXCESSIVE",["Action","Resource scope","Reasons"],[(x["action"],x["scope"],", ".join(x["reasons"])) for x in r["potentially_excessive"]],[40,60,60],25)
     elif command=="evidence-audit":
@@ -104,6 +104,7 @@ def render(command,r,compact=False):
         def risk_decision(x):
             a=set(x["actions"])
             if x["kind"]=="combination": return "Privilege combination","Review together; restrict role/policy targets and separate planner from applier."
+            if "iam:CreateServiceLinkedRole" in a: return "AWS service role bootstrap","Needed only if the exact service-linked role does not exist; verify account prerequisites."
             if "iam:PassRole" in a: return "Service role delegation","Approve only intended roles and iam:PassedToService conditions."
             if "iam:AttachRolePolicy" in a: return "Policy attachment","Approve exact target role and allowed policy ARNs."
             if "iam:UpdateAssumeRolePolicy" in a: return "Trust change","Review trusted principals and conditions in Terraform."
