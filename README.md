@@ -179,3 +179,7 @@ Static scans read all root `.tf` and `.tf.json` files, including newly added S3 
 ### Catalog maintenance
 
 The catalog is maintained and reviewed in repository CI. Source audits and lifecycle evidence tools are repository-only, documented in [maintainer validation](docs/provider-validation.md). End users do not download external provider source or run maintenance tools. Provider version is detected from the existing lockfile and the corresponding packaged mapping is selected automatically.
+
+### Engineer decision reports
+
+`generate` always prints a bordered decision report to stderr, leaving the IAM JSON on stdout or in the selected output file. The default is a compact decision view with mapping coverage, unresolved grants, metadata compatibility, lifecycle evidence, security approval targets and next actions. Use `--show-table` for the complete policy grant inventory, or `--format table` for a human-readable report instead of IAM JSON. A blocked generation prints the blocking checks and does not write a new policy. PASS on mapping or metadata is not proof of deployment authorization. Risk findings describe permission capabilities, not observed attacks or confirmed vulnerabilities. Static apply includes destroy capabilities; use a saved plan to narrow the actual operation set.

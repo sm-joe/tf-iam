@@ -163,10 +163,13 @@ def main(argv=None, *, maintainer=False):
         report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved or require_complete_mapping,args.fail_on_unmapped or require_complete_mapping,args.require_compatible_metadata,args.require_lifecycle_verified)
         if report['gate_failures']: status=4
         if args.command in ('generate','split') and (report['gate_failures'] or (args.strict and report['coverage']!='COMPLETE')):
-            print('ERROR: policy generation blocked by security or coverage gate',file=sys.stderr); return status
+            print(render('generate',{**report,'generation_status':'BLOCKED','policy_output':'Not written'},compact=True),file=sys.stderr); return status
         if args.command in ('generate','split') and report.get('source_only_resources'):
-            print('ERROR: current configuration has AWS resources absent from saved plan; regenerate terraform plan and export JSON.',file=sys.stderr); return 4
-        if args.command in ('generate','split') and report['authorization_metadata']['status']=='issues': raise ValueError('AWS authorization metadata audit reports invalid actions or resource scopes; review scan findings before generating')
+            report['gate_failures'].append({'kind':'stale-plan','count':len(report['source_only_resources'])})
+            print(render('generate',{**report,'generation_status':'BLOCKED','policy_output':'Not written'},compact=True),file=sys.stderr); return 4
+        if args.command in ('generate','split') and report['authorization_metadata']['status']=='issues':
+            report['gate_failures'].append({'kind':'metadata','status':'issues'})
+            print(render('generate',{**report,'generation_status':'BLOCKED','policy_output':'Not written'},compact=True),file=sys.stderr); return 1
         if args.command=='split':
             if not args.acknowledge_break_glass: raise ValueError('Split requires --acknowledge-break-glass to emit a separate destructive/delegation policy')
             from .lifecycle import split_policies
@@ -189,10 +192,6 @@ def main(argv=None, *, maintainer=False):
             lines.extend('GATE: '+json.dumps(g,sort_keys=True) for g in report['gate_failures']); lines.extend('REVIEW: '+w for w in report['warnings']); output='\n'.join(lines)
         elif args.command=='scan': result=report; output=json.dumps(report,indent=2)
         elif args.command=='generate':
-            if args.format!='table' and not (args.show_table and args.output):
-                print(f'REVIEW: {len(report["warnings"])} scan warnings; run scan for details.',file=sys.stderr)
-                for risk in report['risks']:
-                    if risk['provider']==args.provider: print('RISK: '+', '.join(risk['actions'])+' — '+risk['message'],file=sys.stderr)
             result=policy(report,args.provider,args.name,args.scope)
             if args.format=='terraform': output=json.dumps(terraform(result,args.provider,args.name,args.scope),indent=2)
             else: output=json.dumps(result,indent=2)
@@ -200,10 +199,14 @@ def main(argv=None, *, maintainer=False):
             existing,identity=cloud.role_policies(cloud.client('iam',args.aws_profile,args.aws_region),args.role_name) if args.role_name else (json.loads(args.existing.read_text()),None)
             result=compare(report,args.provider,existing); result['identity']=identity; result['gate_failures']=report['gate_failures']; result['scan_warnings']=report['warnings']; result['information']=report['information']; result['resolved_dependencies']=report['resolved_dependencies']; result['unresolved_permissions']=report['unresolved_permissions']; result['scope_summary']=report['scope_summary']; result['mapping_coverage']=report['mapping_coverage']; result['authorization_confidence']=report['authorization_confidence']; result['authorization_metadata']=report['authorization_metadata']; result['input']=report['input']; result['plan']=report.get('plan'); result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
             if args.fail_on_missing and (result['missing_or_unverified'] or result['explicitly_denied']) and status!=4: status=3
-        if args.command=='generate' and (args.format=='table' or (args.show_table and args.output)):
-            # Attach diagnostics only to the display, never to the IAM JSON payload.
-            display={**result,**{k:report[k] for k in ('warnings','information','resolved_dependencies','unresolved_permissions','risks','authorization_metadata')}}
-            write_result(display,output)
+        if args.command=='generate':
+            display={**report,**result,'policy_output':str(args.output) if args.output else 'stdout','generation_status':'GENERATED'}
+            if args.format=='table':
+                write_result(display)
+            else:
+                if args.output: args.output.write_text(output+'\n',encoding='utf-8')
+                else: print(output)
+                print(render('generate',display,compact=not args.show_table),file=sys.stderr)
         else: write_result(result,output)
         return status
     except (ValueError,OSError,TypeError,AttributeError,KeyError) as e:

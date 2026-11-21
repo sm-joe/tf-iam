@@ -86,3 +86,27 @@ def test_empty_table_has_enclosed_placeholder():
     lines=table(["Source","Reason"],[],[10,10]).splitlines()
     assert len(lines)==5 and lines[0]==lines[2]==lines[4]
     assert "None" in lines[3]
+
+def test_generation_default_decision_grid(tmp_path,capsys):
+    (tmp_path/"main.tf.json").write_text(json.dumps({"resource":{"aws_s3_bucket_versioning":{"x":{"bucket":"fixture-bucket","versioning_configuration":{"status":"Enabled"}}}}}))
+    dest=tmp_path/"policy.json"
+    assert main(["generate",str(tmp_path),"--output",str(dest)])==0
+    captured=capsys.readouterr()
+    assert not captured.out
+    assert set(json.loads(dest.read_text()))=={"Version","Statement"}
+    assert "ENGINEER DECISION" in captured.err and "GENERATED" in captured.err
+    assert "Versioning settings" in captured.err
+    assert "RISK:" not in captured.err and "REVIEW:" not in captured.err
+    assert "POLICY GRANTS" not in captured.err
+    assert main(["generate",str(tmp_path)])==0
+    captured=capsys.readouterr()
+    assert json.loads(captured.out)["Statement"]
+    assert "ENGINEER DECISION" in captured.err
+
+def test_generation_blocked_decision_grid(tmp_path,capsys):
+    (tmp_path/"main.tf.json").write_text(json.dumps({"resource":{"aws_unknown_fixture":{"x":{}}}}))
+    dest=tmp_path/"policy.json"
+    assert main(["generate",str(tmp_path),"--output",str(dest)])==4
+    assert not dest.exists()
+    out=capsys.readouterr().err
+    assert "BLOCKED" in out and "BLOCKING CHECKS" in out and "DO NOT DEPLOY" in out
