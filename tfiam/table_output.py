@@ -16,7 +16,8 @@ def table(headers,rows,limits):
     def line(values):
         chunks=[textwrap.wrap(v,width=w,break_long_words=True,break_on_hyphens=False) or [""] for v,w in zip(values,widths)]
         return ["| "+" | ".join((c[i] if i<len(c) else "").ljust(w) for c,w in zip(chunks,widths))+" |" for i in range(max(map(len,chunks)))]
-    return "\n".join([sep,*line(headers),sep,*(s for r in rows for s in line(r)),sep])
+    # Keep wrapped lines together inside a distinct border for each logical row.
+    return "\n".join([sep,*line(headers),sep,*(s for r in rows for s in (*line(r),sep))])
 
 def render(command,r):
     parts=["tf-iam | "+command.upper()]

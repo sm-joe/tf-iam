@@ -63,3 +63,26 @@ def test_review_and_validation_are_tables(capsys,monkeypatch,tmp_path):
     assert set(json.loads(target.read_text()))=={"Version","Statement"}
     output=capsys.readouterr().err
     assert "REVIEW REQUIREMENTS" in output and "REVIEW:" not in output
+
+def test_table_borders_each_logical_row():
+    from tfiam.table_output import table
+    output=table(["Action","Scope"],[("Read","first"),("Write","second"),("Delete","third")],[20,20])
+    lines=output.splitlines()
+    assert len(lines)==9
+    assert all(lines[i]==lines[0] for i in (0,2,4,6,8))
+    assert all(lines[i].startswith("|") and lines[i].endswith("|") for i in (1,3,5,7))
+
+def test_table_wrapped_row_has_single_enclosing_border():
+    from tfiam.table_output import table
+    lines=table(["Action","Scope"],[("Read","abcdefghijklmnopqrstuvwxyz"),("Write","short")],[8,8]).splitlines()
+    borders=[i for i,line in enumerate(lines) if line.startswith("+")]
+    assert borders==[0,2,7,9]
+    assert all(len(line)==len(lines[0]) for line in lines)
+    assert "Read" in lines[3] and "Write" in lines[8]
+    assert all(line.startswith("|") and line.endswith("|") for line in lines[3:7])
+
+def test_empty_table_has_enclosed_placeholder():
+    from tfiam.table_output import table
+    lines=table(["Source","Reason"],[],[10,10]).splitlines()
+    assert len(lines)==5 and lines[0]==lines[2]==lines[4]
+    assert "None" in lines[3]
