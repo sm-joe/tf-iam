@@ -74,6 +74,8 @@ def main(argv=None):
     for p in (catalog,validate,runtime):
         p.add_argument('--format',choices=['json','table'],default='json')
         p.add_argument('--show-table',action='store_true',help='Print table in addition to an output file')
+    provider=sub.add_parser('provider-audit',help='Reconcile pinned AWS provider source with AWS operation metadata')
+    provider.add_argument('--source-dir',type=Path,required=True); provider.add_argument('--aws-provider-version',required=True); provider.add_argument('--metadata-dir',type=Path,required=True); provider.add_argument('--resource',action='append'); provider.add_argument('--format',choices=['json','table'],default='table'); provider.add_argument('--output',type=Path); provider.add_argument('--show-table',action='store_true'); provider.add_argument('--strict',action='store_true')
     args=parser.parse_args(argv)
     def write_result(result,output=None):
         if args.format=='table': output=render(args.command,result)
@@ -83,6 +85,11 @@ def main(argv=None):
             if args.show_table and args.format!='table': print(render(args.command,result),file=sys.stderr)
         else: print(output)
     try:
+        if args.command=='provider-audit':
+            from .provider_audit import audit_provider
+            result=audit_provider(args.source_dir,args.aws_provider_version,args.metadata_dir,args.resource)
+            write_result(result)
+            return 2 if args.strict and result['status']!='direct-calls-matched' else 0
         if args.command in ('validate-policy','runtime-audit'):
             if args.command=='validate-policy':
                 result=cloud.validate_policy(cloud.client('accessanalyzer',args.aws_profile,args.aws_region),json.loads(args.policy.read_bytes()))

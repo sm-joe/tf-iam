@@ -300,9 +300,12 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     mapped=0; eligible=0; verified=0; reviewed=0
     used_actions=set()
     for entry in report['resources']:
-        if entry['status']=='SKIPPED': continue
+        if entry['status']=='SKIPPED':
+            entry['mapping_status']='SKIPPED'
+            continue
         eligible+=1
         rule=get_rule(entry['mode'],entry['type'],version) if entry['status']!='UNSUPPORTED' else None
+        entry['mapping_status']='MAPPED' if rule else 'UNMAPPED'
         status=evidence_status(rule,version)
         entry['validation_level']=status
         entry['provider_version_validated']=status=='lifecycle-verified'
