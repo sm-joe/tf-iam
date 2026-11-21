@@ -1,0 +1,507 @@
+{
+  "schema_version": 1,
+  "provider": "registry.terraform.io/hashicorp/aws",
+  "resources": {
+    "aws_s3_bucket": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "s3:ListBucket",
+        "s3:GetBucketLocation",
+        "s3:GetBucketTagging",
+        "s3:GetBucketVersioning",
+        "s3:GetBucketAcl",
+        "s3:GetBucketPolicy",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetEncryptionConfiguration",
+        "s3:GetBucketOwnershipControls",
+        "s3:GetBucketLogging",
+        "s3:GetLifecycleConfiguration",
+        "s3:GetReplicationConfiguration",
+        "s3:GetBucketCORS",
+        "s3:GetBucketWebsite",
+        "s3:GetBucketRequestPayment",
+        "s3:GetAccelerateConfiguration",
+        "s3:GetBucketObjectLockConfiguration"
+      ],
+      "write": [
+        "s3:CreateBucket",
+        "s3:PutBucketTagging"
+      ],
+      "delete": [
+        "s3:DeleteBucket"
+      ],
+      "attributes": []
+    },
+    "aws_s3_bucket_versioning": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "s3:GetBucketVersioning"
+      ],
+      "write": [
+        "s3:PutBucketVersioning"
+      ],
+      "delete": [
+        "s3:PutBucketVersioning"
+      ],
+      "attributes": []
+    },
+    "aws_s3_bucket_public_access_block": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "s3:GetBucketPublicAccessBlock"
+      ],
+      "write": [
+        "s3:PutBucketPublicAccessBlock"
+      ],
+      "delete": [
+        "s3:PutBucketPublicAccessBlock"
+      ],
+      "attributes": []
+    },
+    "aws_s3_bucket_server_side_encryption_configuration": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "s3:GetEncryptionConfiguration"
+      ],
+      "write": [
+        "s3:PutEncryptionConfiguration"
+      ],
+      "delete": [
+        "s3:PutEncryptionConfiguration"
+      ],
+      "attributes": []
+    },
+    "aws_s3_object": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "s3:GetObject",
+        "s3:GetObjectTagging"
+      ],
+      "write": [
+        "s3:PutObject",
+        "s3:PutObjectTagging"
+      ],
+      "delete": [
+        "s3:DeleteObject"
+      ],
+      "attributes": []
+    },
+    "aws_sqs_queue": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "sqs:GetQueueAttributes",
+        "sqs:GetQueueUrl",
+        "sqs:ListQueueTags"
+      ],
+      "write": [
+        "sqs:CreateQueue",
+        "sqs:SetQueueAttributes",
+        "sqs:TagQueue",
+        "sqs:UntagQueue"
+      ],
+      "delete": [
+        "sqs:DeleteQueue"
+      ],
+      "attributes": []
+    },
+    "aws_dynamodb_table": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "dynamodb:DescribeTable",
+        "dynamodb:ListTagsOfResource",
+        "dynamodb:DescribeTimeToLive",
+        "dynamodb:DescribeContinuousBackups"
+      ],
+      "write": [
+        "dynamodb:CreateTable",
+        "dynamodb:UpdateTable",
+        "dynamodb:TagResource",
+        "dynamodb:UntagResource",
+        "dynamodb:UpdateTimeToLive",
+        "dynamodb:UpdateContinuousBackups"
+      ],
+      "delete": [
+        "dynamodb:DeleteTable"
+      ],
+      "attributes": []
+    },
+    "aws_vpc": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "ec2:DescribeVpcs",
+        "ec2:DescribeVpcAttribute",
+        "ec2:DescribeTags"
+      ],
+      "write": [
+        "ec2:CreateVpc",
+        "ec2:ModifyVpcAttribute",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "delete": [
+        "ec2:DeleteVpc"
+      ],
+      "attributes": []
+    },
+    "aws_subnet": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "ec2:DescribeSubnets",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeTags"
+      ],
+      "write": [
+        "ec2:CreateSubnet",
+        "ec2:ModifySubnetAttribute",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "delete": [
+        "ec2:DeleteSubnet"
+      ],
+      "attributes": []
+    },
+    "aws_instance": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceAttribute",
+        "ec2:DescribeVolumes",
+        "ec2:DescribeTags",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeImages",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeSecurityGroups"
+      ],
+      "write": [
+        "ec2:RunInstances",
+        "ec2:ModifyInstanceAttribute",
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "ec2:StartInstances",
+        "ec2:StopInstances"
+      ],
+      "delete": [
+        "ec2:TerminateInstances"
+      ],
+      "attributes": []
+    },
+    "aws_iam_role": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "iam:GetRole",
+        "iam:ListRoleTags",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies"
+      ],
+      "write": [
+        "iam:CreateRole",
+        "iam:UpdateRole",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:TagRole",
+        "iam:UntagRole"
+      ],
+      "delete": [
+        "iam:DeleteRole"
+      ],
+      "attributes": []
+    },
+    "aws_iam_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion",
+        "iam:ListPolicyVersions",
+        "iam:ListPolicyTags"
+      ],
+      "write": [
+        "iam:CreatePolicy",
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicyVersion",
+        "iam:TagPolicy",
+        "iam:UntagPolicy"
+      ],
+      "delete": [
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion"
+      ],
+      "attributes": []
+    },
+    "aws_iam_role_policy_attachment": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "iam:ListAttachedRolePolicies"
+      ],
+      "write": [
+        "iam:AttachRolePolicy"
+      ],
+      "delete": [
+        "iam:DetachRolePolicy"
+      ],
+      "attributes": []
+    },
+    "aws_eks_cluster": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonelastickubernetesservice.html",
+      "read": [
+        "eks:DescribeCluster"
+      ],
+      "write": [
+        "eks:CreateCluster",
+        "eks:UpdateClusterConfig",
+        "eks:UpdateClusterVersion",
+        "eks:DescribeUpdate"
+      ],
+      "delete": [
+        "eks:DeleteCluster"
+      ],
+      "attributes": [
+        {
+          "path": "tags",
+          "phases": [
+            "apply"
+          ],
+          "actions": [
+            "eks:TagResource",
+            "eks:UntagResource"
+          ],
+          "scope": "resource"
+        },
+        {
+          "path": "encryption_config.provider.key_arn",
+          "phases": [
+            "apply"
+          ],
+          "actions": [
+            "kms:DescribeKey",
+            "kms:CreateGrant"
+          ],
+          "scope": "literal_arn"
+        }
+      ]
+    },
+    "aws_eks_node_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonelastickubernetesservice.html",
+      "read": [
+        "eks:DescribeNodegroup"
+      ],
+      "write": [
+        "eks:CreateNodegroup",
+        "eks:UpdateNodegroupConfig",
+        "eks:UpdateNodegroupVersion",
+        "eks:DescribeUpdate"
+      ],
+      "delete": [
+        "eks:DeleteNodegroup"
+      ],
+      "attributes": [
+        {
+          "path": "tags",
+          "phases": [
+            "apply"
+          ],
+          "actions": [
+            "eks:TagResource",
+            "eks:UntagResource"
+          ],
+          "scope": "resource"
+        }
+      ]
+    },
+    "aws_eks_addon": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonelastickubernetesservice.html",
+      "read": [
+        "eks:DescribeAddon",
+        "eks:DescribeAddonVersions"
+      ],
+      "write": [
+        "eks:CreateAddon",
+        "eks:UpdateAddon",
+        "eks:DescribeUpdate"
+      ],
+      "delete": [
+        "eks:DeleteAddon"
+      ],
+      "attributes": [
+        {
+          "path": "tags",
+          "phases": [
+            "apply"
+          ],
+          "actions": [
+            "eks:TagResource",
+            "eks:UntagResource"
+          ],
+          "scope": "resource"
+        }
+      ]
+    },
+    "aws_eks_pod_identity_association": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonelastickubernetesservice.html",
+      "read": [
+        "eks:DescribePodIdentityAssociation"
+      ],
+      "write": [
+        "eks:CreatePodIdentityAssociation",
+        "eks:UpdatePodIdentityAssociation"
+      ],
+      "delete": [
+        "eks:DeletePodIdentityAssociation"
+      ],
+      "attributes": [
+        {
+          "path": "tags",
+          "phases": [
+            "apply"
+          ],
+          "actions": [
+            "eks:TagResource",
+            "eks:UntagResource"
+          ],
+          "scope": "resource"
+        }
+      ]
+    }
+  },
+  "data": {
+    "aws_caller_identity": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "sts:GetCallerIdentity"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": []
+    },
+    "aws_ami": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "ec2:DescribeImages"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": []
+    },
+    "aws_eks_cluster": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "eks:DescribeCluster"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": []
+    },
+    "aws_eks_addon": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "eks:DescribeAddon"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": []
+    },
+    "aws_eks_node_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "eks:DescribeNodegroup"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": []
+    },
+    "aws_iam_role": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "iam:GetRole"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": []
+    },
+    "aws_vpc": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "ec2:DescribeVpcs"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": []
+    },
+    "aws_subnet": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [
+        "ec2:DescribeSubnets"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": []
+    },
+    "aws_region": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [],
+      "write": [],
+      "delete": [],
+      "attributes": []
+    },
+    "aws_partition": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
+      "read": [],
+      "write": [],
+      "delete": [],
+      "attributes": []
+    }
+  }
+}

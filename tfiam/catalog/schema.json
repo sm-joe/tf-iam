@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "provider",
+    "resources",
+    "data"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "provider": {
+      "const": "registry.terraform.io/hashicorp/aws"
+    },
+    "resources": {
+      "$ref": "#/$defs/map"
+    },
+    "data": {
+      "$ref": "#/$defs/map"
+    }
+  },
+  "$defs": {
+    "map": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^aws_[a-z0-9_]+$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validation",
+        "provider_versions",
+        "reference",
+        "read",
+        "write",
+        "delete",
+        "attributes"
+      ],
+      "properties": {
+        "validation": {
+          "enum": [
+            "candidate",
+            "validated"
+          ]
+        },
+        "provider_versions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+          }
+        },
+        "reference": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "read": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
+          }
+        },
+        "write": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
+          }
+        },
+        "delete": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
+          }
+        },
+        "attributes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "phases",
+              "actions",
+              "scope"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_]+(\\.[a-zA-Z0-9_]+)*$"
+              },
+              "phases": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "plan",
+                    "apply",
+                    "destroy"
+                  ]
+                },
+                "minItems": 1,
+                "uniqueItems": true
+              },
+              "actions": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
+                }
+              },
+              "scope": {
+                "enum": [
+                  "resource",
+                  "literal_arn"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

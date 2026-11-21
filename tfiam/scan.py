@@ -1,6 +1,6 @@
 import json, re
 from pathlib import Path
-from .rules import RULES, EXTRA
+from .catalog_loader import get_rule, actions_for, attribute_values, CATALOG
 from .risk import assess
 
 def blocks(doc, key):
@@ -14,6 +14,7 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
     root=Path(root).resolve()
     if not root.is_dir(): raise ValueError('Terraform directory does not exist')
     report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'backends':[]}
+    report['catalog']={'schema_version':CATALOG['schema_version'],'provider':CATALOG['provider'],'provider_version':None}
     visited=set(); records=set()
     def warn(msg):
         if msg not in report['warnings']: report['warnings'].append(msg)
@@ -41,17 +42,6 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
                 if kms and kms.startswith(f'arn:{partition}:kms:'): add('aws',['kms:Decrypt']+([] if readonly else ['kms:Encrypt','kms:GenerateDataKey']),kms,src)
                 else: warn(src+': unresolved KMS key ARN')
             warn(src+': default workspace only; verify workspace prefix and optional bucket policy conditions')
-        elif kind=='gcs':
-            bucket=literal(b.get('bucket'))
-            if not bucket: warn(src+': unresolved GCS bucket; backend omitted'); return
-            add('gcp',['storage.objects.get','storage.objects.list']+([] if readonly else ['storage.objects.create','storage.objects.delete','storage.objects.update']), 'bucket:'+bucket,src)
-            warn(src+': grant backend role at bucket scope; verify encryption and prefix restrictions')
-        elif kind=='azurerm':
-            names=[literal(b.get(k)) for k in ('resource_group_name','storage_account_name','container_name')]
-            if not all(names): warn(src+': Azure backend scope incomplete; backend omitted'); return
-            scope='container:'+'/'.join(names)
-            add('azure',['Microsoft.Storage/storageAccounts/blobServices/containers/blobs/read']+([] if readonly else ['Microsoft.Storage/storageAccounts/blobServices/containers/blobs/write','Microsoft.Storage/storageAccounts/blobServices/containers/blobs/delete']),scope,src,'data')
-            warn(src+': use Entra ID backend authentication; container assignment and management-plane lookup may be required')
         elif kind not in ('local',): warn(src+': unsupported backend '+kind)
     def visit(folder,is_root=False):
         folder=folder.resolve()
@@ -109,9 +99,25 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
                             address=f'{src}:{category}.{typ}.{name}'
                             if typ=='terraform_remote_state' and category=='data':
                                 backend(body.get('backend','unknown'),body.get('config',{}),address,True); continue
-                            entry={'address':address,'type':typ,'status':'PARTIAL' if typ in RULES else 'UNSUPPORTED'}; report['resources'].append(entry)
-                            if typ not in RULES: warn(address+': no permission mapping'); continue
-                            p,r,w,d=RULES[typ]; acts=r if category=='data' or phase=='plan' else r+w+d if phase=='apply' else r+d
+                            rule=get_rule(category,typ)
+                            entry={'address':address,'type':typ,'mode':category,'status':'PARTIAL' if rule else 'UNSUPPORTED'}; report['resources'].append(entry)
+                            if not rule: warn(address+': no AWS '+category+' permission mapping'); continue
+                            entry['validation']=rule['validation']; entry['reference']=rule['reference']
+                            p='aws'; acts=actions_for(rule, 'plan' if category=='data' else phase)
+                            attr_rules=[]
+                            for attr in rule['attributes']:
+                                values=attribute_values(body,attr['path'])
+                                if phase not in attr['phases'] or not values: continue
+                                if attr['scope']=='resource': acts=sorted(set(acts+attr['actions']))
+                                else: attr_rules.append((attr,values))
+                            if category=='resource':
+                                for attr,values in attr_rules:
+                                    for value in values:
+                                        arn=resolve(value)
+                                        if arn and arn.startswith(f'arn:{partition}:kms:') and ':key/' in arn:
+                                            add(p,[a for a in attr['actions'] if a!='kms:CreateGrant'],arn,address)
+                                            if 'kms:CreateGrant' in attr['actions']: add(p,['kms:CreateGrant'],arn,address,condition={'Bool':{'kms:GrantIsForAWSResource':'true'}})
+                                        else: warn(address+': unresolved '+attr['path']+' ARN; dependent actions omitted')
                             scope='*'
                             if p=='aws' and typ.startswith('aws_s3_'):
                                 bucket=literal(body.get('bucket'))
@@ -135,7 +141,7 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
                                     elif scope!='*': add(p,[action],scope,address)
                                 if scope=='*': warn(address+': exact role scope not inferred')
                                 continue
-                            if typ.startswith('aws_eks_'):
+                            if typ in ('aws_eks_cluster','aws_eks_node_group','aws_eks_addon','aws_eks_pod_identity_association'):
                                 cluster=resolve(body.get('name' if typ=='aws_eks_cluster' else 'cluster_name'))
                                 prefix=f'arn:{partition}:eks:{region}:{account}:' if region and account and cluster else None
                                 cluster_arn=prefix+'cluster/'+cluster if prefix else '*'
@@ -146,8 +152,8 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
                                 elif prefix and name: scope=prefix+kind+'/'+cluster+'/'+name+'/*'
                                 else: scope='*'
                                 for action in acts:
-                                    target='*' if action=='eks:CreateCluster' else cluster_arn if action in ('eks:CreateNodegroup','eks:CreateAddon','eks:CreatePodIdentityAssociation') else scope
-                                    if target=='*' and action!='eks:CreateCluster': warn(address+': unresolved EKS scope; '+action+' omitted'); continue
+                                    target='*' if action in ('eks:CreateCluster','eks:DescribeAddonVersions') else cluster_arn if action in ('eks:CreateNodegroup','eks:CreateAddon','eks:CreatePodIdentityAssociation') else scope
+                                    if target=='*' and action not in ('eks:CreateCluster','eks:DescribeAddonVersions'): warn(address+': unresolved EKS scope; '+action+' omitted'); continue
                                     add(p,[action],target,address)
                                 if phase=='apply' and category=='resource':
                                     field,service={'cluster':('role_arn','eks.amazonaws.com'),'nodegroup':('node_role_arn','eks.amazonaws.com'),'addon':('service_account_role_arn','eks.amazonaws.com'),'podidentityassociation':('role_arn','pods.eks.amazonaws.com')}[kind]
@@ -162,10 +168,8 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
                                 if phase=='apply' or phase=='destroy': warn(address+': unresolved role ARN; IAM mutations omitted')
                                 acts=[]
                             add(p,acts,scope,address)
-                            if typ in EXTRA:
-                                extra,note=EXTRA[typ]; warn(address+': '+note)
-                                if extra and phase=='apply' and category=='resource':
-                                    if typ=='google_compute_instance' or body.get('iam_instance_profile'): add(p,[extra],'*',address)
+                            if typ in ('aws_iam_role','aws_iam_policy'): warn(address+': review privilege delegation and permissions boundaries')
+                            if typ=='aws_instance' and body.get('iam_instance_profile'): warn(address+': instance profile PassRole dependency unresolved; permission omitted')
                             if scope=='*': warn(address+': exact resource scope not inferred')
             for group in blocks(doc,'module'):
                 for name,body in group.items():
@@ -180,7 +184,18 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
                     for item in blocks(group,'backend'):
                         for kind,b in item.items(): backend(kind,b,src)
             if doc.get('provider'): warn(src+': provider initialization, aliases, impersonation and registration require review')
+    lock=root/'.terraform.lock.hcl'
+    if lock.is_file():
+        try:
+            import hcl2
+            with lock.open() as handle: locked=hcl2.load(handle)
+            for group in blocks(locked,'provider'):
+                if CATALOG['provider'] in group: report['catalog']['provider_version']=group[CATALOG['provider']].get('version')
+        except Exception: warn('AWS provider lockfile could not be parsed')
     visit(root,True)
+    for entry in report['resources']:
+        rule=get_rule(entry['mode'],entry['type'])
+        if rule: entry['provider_version_validated']=rule['validation']=='validated' and report['catalog']['provider_version'] in rule['provider_versions']
     warn('Starter catalog is not provider-version validated; review all permissions with cloud audit evidence before production use.')
     report['permissions'].sort(key=lambda p:(p['provider'],p['action'],p['scope'],p['source']))
     report['risks'] = assess(report['permissions'])
