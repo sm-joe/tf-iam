@@ -89,3 +89,7 @@ tfiam scan ./infra --plan-json "$PWD/plan.json"
 ```
 
 The scanner accepts UTF-8 and BOM-encoded UTF-16/UTF-32 JSON exports and reports missing files, empty input and malformed JSON without echoing sensitive plan contents.
+
+## Action-specific scope (M05)
+
+The report includes `scope_summary` and `unresolved_permissions` for the action-specific engine. See [scope design and supported cases](docs/action-scope.md). Bounded future-ID wildcards are not global permissions; omitted dependencies still mean the generated policy may be insufficient.

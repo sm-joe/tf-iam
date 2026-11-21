@@ -93,6 +93,7 @@ def main(argv=None):
                 key=(r['provider'],r['action'],r['scope'],json.dumps(r.get('condition'),sort_keys=True))
                 groups.setdefault(key,set()).add(r['source'])
             lines[1]+=f' | Unique grants: {len(groups)}'
+            ss=report['scope_summary']; lines.append(f"Scopes: {ss['exact']} exact | {ss['bounded_wildcard']} bounded wildcard | {ss['global']} global | {ss['conditional']} conditional | {ss['unresolved']} unresolved")
             for (provider,action,scope,condition),sources in sorted(groups.items()):
                 lines.append(f'{provider:5} {action} [{scope}] ({len(sources)} sources)'+(' '+condition if condition!='null' else ''))
             lines.extend('RISK: '+r['provider']+' '+', '.join(r['actions'])+' — '+r['message'] for r in report['risks'])
@@ -106,7 +107,7 @@ def main(argv=None):
             if args.format=='terraform': result=terraform(result,args.provider,args.name,args.scope)
             output=json.dumps(result,indent=2)
         else:
-            result=compare(report,args.provider,json.loads(args.existing.read_text())); result['scan_warnings']=report['warnings']; result['input']=report['input']; result['plan']=report.get('plan'); result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
+            result=compare(report,args.provider,json.loads(args.existing.read_text())); result['scan_warnings']=report['warnings']; result['unresolved_permissions']=report['unresolved_permissions']; result['scope_summary']=report['scope_summary']; result['input']=report['input']; result['plan']=report.get('plan'); result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
             if args.fail_on_missing and (result['missing_or_unverified'] or result['explicitly_denied']): status=3
         if args.output: args.output.write_text(output+'\n',encoding='utf-8')
         else: print(output)

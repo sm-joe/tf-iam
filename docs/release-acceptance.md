@@ -11,3 +11,5 @@
 Unit tests and mapping coverage are not equivalent to live acceptance.
 
 - [ ] Validate each expanded AWS service family with provider-version-pinned lifecycle fixtures and action-specific resource authorization; recognized mappings alone do not satisfy acceptance.
+
+- [ ] Verify M05 multi-resource authorization, tag conditions, KMS before/after keys and EKS identity scopes in isolated AWS lifecycle executions. Confirm all omissions are resolved before production release.
