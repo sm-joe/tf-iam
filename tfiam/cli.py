@@ -129,7 +129,7 @@ def main(argv=None):
             from .lifecycle import split_policies
             result=split_policies(report,policy); output=json.dumps(result,indent=2)
         elif args.command=='scan' and args.format=='text':
-            lines=[f'TF IAM Scope | {report["phase"]} | {report["coverage"]}',f'Resources: {len(report["resources"])} | Permission observations: {len(report["permissions"])}']
+            lines=[f'tf-iam | {report["phase"]} | {report["coverage"]}',f'Resources: {len(report["resources"])} | Permission observations: {len(report["permissions"])}']
             mc=report['mapping_coverage']; ac=report['authorization_confidence']; lines.append(f"AWS provider: {ac['provider_version'] or 'unknown'} | Mappings: {mc['mapped_resources']}/{mc['eligible_resources']} | Lifecycle verified: {ac['lifecycle_verified_resources']} | Metadata: {report['authorization_metadata']['status']}")
             if report.get('plan'): lines.append('Input: Terraform plan JSON | Terraform '+report['plan']['terraform_version'])
             for r in report['resources']: lines.append(f'{r["status"]:11} {r["address"]}'+(' ('+' → '.join(r['operations'])+')' if 'operations' in r else ''))

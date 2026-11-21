@@ -9,7 +9,7 @@ def client(service,profile=None,region=None):
     try:
         import boto3
     except ImportError:
-        raise ValueError("Install the AWS extra: pip install 'tf-iam-scope[aws]'") from None
+        raise ValueError("Install the AWS extra: pip install 'tf-iam[aws]'") from None
     return boto3.Session(profile_name=profile,region_name=region).client(service)
 
 def policy_object(value):
