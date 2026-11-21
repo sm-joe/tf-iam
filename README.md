@@ -70,7 +70,7 @@ umask 077
 terraform -chdir=./infra plan -out=tfplan
 terraform -chdir=./infra show -json tfplan > plan.json
 tfiam scan ./infra --plan-json plan.json --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --format json --output report.json
-tfiam generate ./infra --plan-json plan.json --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --allow-partial --output policy.json
+tfiam generate ./infra --plan-json plan.json --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --output policy.json
 ```
 
 The directory supplies backend and lockfile data in plan mode, plus direct source-expression evidence for computed EKS role ARNs; it does not add static resource changes. For fresh EKS creates, a missing ARN can be derived from the exact planned role name and path only when the corresponding root source is an unambiguous direct role ARN reference, the saved plan confirms that reference and both resources use the default AWS provider. Use the same unchanged configuration that produced the plan. Unknown or sensitive names/paths, aliases, indexed/module instances and ambiguous expressions remain unresolved; no wildcard PassRole is emitted. Plan paths resolve relative to the current shell. Use exported JSON, not a binary plan or streaming UI JSON. UTF-8 and BOM-encoded UTF-16/32 are accepted. No-op resources emit read candidates; replacements retain before/after identities. Destroy mode rejects plans with managed create/update operations. Imports, drift, deferred changes and unknowns require review.
@@ -79,9 +79,11 @@ Static scanning also supports `--phase plan`, `--phase apply` and `--phase destr
 
 ## Policy generation and separation
 
+Generation works without special acknowledgement when mappings and scopes are resolved. It blocks unmapped resources or unresolved permissions by default; `--allow-partial` deliberately overrides only those default checks. Explicit security gates and definite metadata incompatibilities still block output. Generated policies remain candidates, not guaranteed effective authorization.
+
 ```bash
-tfiam generate ./infra --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --allow-partial --format terraform --output policy.tf.json
-tfiam split ./infra --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --allow-partial --acknowledge-break-glass --output lifecycle-policies.json
+tfiam generate ./infra --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --format terraform --output policy.tf.json
+tfiam split ./infra --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --acknowledge-break-glass --output lifecycle-policies.json
 ```
 
 The planner contains read candidates; the applier contains ordinary mutation candidates; break-glass contains delegation and all catalog destroy actions. Shared update/delete APIs are conservatively treated as privileged even when needed during update. Backend lock cleanup also requires review. These are partitions, not independently sufficient execution roles. Keep policy provisioning separate from infrastructure deployment and approve privileged operations explicitly.
@@ -119,7 +121,7 @@ tfiam validate-policy policy.json --aws-region "$AWS_REGION" --strict --output v
 tfiam runtime-audit --role-arn "$PIPELINE_ROLE_ARN" --start "$(date -u -d '1 hour ago' +%FT%TZ)" --end "$(date -u +%FT%TZ)" --aws-region "$AWS_REGION" --candidate report.json --max-pages 20 --max-seconds 60 --output runtime-report.json
 ```
 
-Built distributions automatically audit permissions against packaged AWS metadata. An existing local snapshot can optionally override it. A source checkout without packaged metadata reports `not-run`; it never downloads anything to compensate. Metadata acquisition and provider-source review are internal build/maintenance tasks. The runtime command filters by exact role issuer and accepts explicitly known session names. It defaults to 100 pages and a cooperative 120-second budget; a truncated report is visibly partial. Alternatively pass `--events cloudtrail.json` for offline exports. Zero observations never imply unused permissions are safe to remove.
+Built distributions automatically audit permissions against packaged AWS metadata. An existing local snapshot can optionally override it. A source checkout without packaged metadata reports `not-run`; it never downloads anything to compensate. Metadata acquisition and provider-source review are internal build/maintenance tasks. The runtime command filters by exact role issuer and accepts explicitly known session names. It defaults to 100 pages and a cooperative 120-second budget; a truncated report is visibly partial. Alternatively pass `--events cloudtrail.json` for offline exports. Runtime audit separates observed actions outside the static candidates and ambiguous operation-to-action mappings. It never automatically adds or removes grants. Zero observations never imply unused permissions are safe to remove.
 
 Live read access requires IAM GetRole, ListAttachedRolePolicies, ListRolePolicies, GetPolicy, GetPolicyVersion and GetRolePolicy as applicable; Access Analyzer ValidatePolicy; and CloudTrail LookupEvents. Use a dedicated limited identity.
 

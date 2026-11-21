@@ -106,9 +106,29 @@ API_ALIASES={("s3.amazonaws.com","HeadBucket"):"s3:ListBucket",
              ("s3.amazonaws.com","ListBuckets"):"s3:ListAllMyBuckets",
              ("s3.amazonaws.com","DeleteBucketOwnershipControls"):"s3:PutBucketOwnershipControls",
              ("s3.amazonaws.com","DeleteBucketLifecycle"):"s3:PutLifecycleConfiguration"}
-def refine(events,role_arn,actions):
-    known={a.lower():a for a in actions}
-    observations={}; unknown=set(); seen=set(); count=0
+def refine(events,role_arn,actions,metadata_dir=None):
+    from .authorization import all_catalog_actions, bundled_metadata, load_snapshot, operation_index
+    actions=set(actions)
+    known={a.lower():a for a in all_catalog_actions() | actions}
+    candidates={a.lower() for a in actions}
+    folder=metadata_dir if metadata_dir is not None else bundled_metadata()
+    indexes={}
+    observations={}; unknown=set(); ambiguous={}; seen=set(); count=0
+    def resolve(source,name):
+        prefix=source.split(".")[0]
+        if prefix not in indexes:
+            snapshots,_,_=load_snapshot(folder,{prefix}) if folder is not None else ({},{},[])
+            doc=snapshots.get(prefix,{})
+            indexes[prefix]=operation_index(doc)
+            known.update({(prefix+":"+a["Name"]).lower():prefix+":"+a["Name"] for a in doc.get("Actions",[])})
+        possible=indexes[prefix].get(name,set())
+        alias=API_ALIASES.get((source,name))
+        if alias and (not possible or possible=={alias}): return alias
+        if len(possible)>1 or (alias and possible and alias not in possible):
+            ambiguous[(source,name)]=sorted(possible|({alias} if alias else set()))
+            return None
+        if len(possible)==1: return next(iter(possible))
+        return known.get((prefix+":"+name).lower())
     for event in events:
         if not isinstance(event,dict): continue
         if event.get("userIdentity",{}).get("sessionContext",{}).get("sessionIssuer",{}).get("arn")!=role_arn: continue
@@ -118,10 +138,11 @@ def refine(events,role_arn,actions):
         count+=1
         source=event.get("eventSource",""); name=event.get("eventName","")
         if not isinstance(source,str) or not isinstance(name,str) or not re.fullmatch(r"[a-z0-9-]+\.amazonaws\.com",source) or not re.fullmatch(r"[A-Za-z0-9]+",name): continue
-        candidate=API_ALIASES.get((source,name),source.split(".")[0]+":"+name)
-        action=known.get(candidate.lower())
+        action=resolve(source,name)
         if not action:
-            unknown.add((source,name)); continue
+            if (source,name) not in ambiguous: unknown.add((source,name))
+            continue
+        action=known.get(action.lower(),action)
         item=observations.setdefault(action,{"action":action,"successful":0,"denied":0,"other_errors":0})
         error=event.get("errorCode")
         if not error: item["successful"]+=1
@@ -129,5 +150,7 @@ def refine(events,role_arn,actions):
         else: item["other_errors"]+=1
     return {"matched_events":count,"observations":sorted(observations.values(),key=lambda x:x["action"]),
             "unmapped_operations":[{"service":s,"operation":n} for s,n in sorted(unknown)],
-            "unobserved_candidates":sorted(set(actions)-set(observations)),
+            "unobserved_candidates":sorted(a for a in actions if a.lower() not in {o.lower() for o in observations}),
+            "observed_outside_candidates":[o for o in sorted(observations.values(),key=lambda x:x["action"]) if o["action"].lower() not in candidates],
+            "conditional_operations":[{"service":s,"operation":n,"possible_actions":v} for (s,n),v in sorted(ambiguous.items())],
             "limitation":"Observed API events are not complete IAM authorization evidence. Unobserved permissions are not safe to remove. CloudTrail history omits data events and can be delayed."}

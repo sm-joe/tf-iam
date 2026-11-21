@@ -73,6 +73,8 @@ def render(command,r):
     elif command=="runtime-audit":
         metrics("RUNTIME AUDIT",{"Coverage":r.get("coverage"),"Matched events":r["matched_events"],"Unobserved candidates":len(r["unobserved_candidates"]),**r.get("retrieval",{})})
         section("OBSERVED ACTIONS",["Action","Successful","Denied","Other errors"],[(x["action"],x["successful"],x["denied"],x["other_errors"]) for x in r["observations"]],[50,14,12,14])
+        section("OBSERVED OUTSIDE STATIC CANDIDATES",["Action","Successful","Denied","Other errors"],[(x["action"],x["successful"],x["denied"],x["other_errors"]) for x in r.get("observed_outside_candidates",[])],[50,14,12,14])
+        section("CONDITIONAL API MAPPINGS",["Operation","Possible IAM actions"],[(x["service"]+":"+x["operation"],", ".join(x["possible_actions"])) for x in r.get("conditional_operations",[])],[55,65])
         section("UNOBSERVED CANDIDATES",["Action"],[(a,) for a in r["unobserved_candidates"]],[62])
         section("UNMAPPED OPERATIONS",["Service","Operation"],[(x["service"],x["operation"]) for x in r["unmapped_operations"]],[40,55])
     if "risks" in r:

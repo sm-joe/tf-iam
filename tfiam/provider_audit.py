@@ -7,7 +7,7 @@ import hashlib
 import re
 import subprocess
 from pathlib import Path
-from .authorization import load_snapshot
+from .authorization import load_snapshot, operation_index
 from .catalog_loader import get_rule
 from .versioning import VERSION
 
@@ -53,20 +53,6 @@ def direct_calls(source):
         for op in CALL.findall(line)+PAGER.findall(line):
             found.setdefault(op,[]).append(n)
     return found
-
-def operation_index(doc):
-    result={}
-    for op in doc.get("Operations",[]):
-        if not isinstance(op,dict) or not isinstance(op.get("Name"),str): continue
-        actions=op.get("AuthorizedActions")
-        if not isinstance(actions,list): continue
-        names=set()
-        for a in actions:
-            if isinstance(a,dict) and isinstance(a.get("Service"),str) and isinstance(a.get("Name"),str):
-                if re.fullmatch(r"[a-z0-9-]+",a["Service"]) and re.fullmatch(r"[A-Za-z0-9]+",a["Name"]):
-                    names.add(a["Service"]+":"+a["Name"])
-        if names: result.setdefault(op["Name"],set()).update(names)
-    return result
 
 def git(root,*args):
     try:

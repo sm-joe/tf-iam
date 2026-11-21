@@ -146,7 +146,7 @@ def audit(actions,permissions,folder):
     return {"status":"issues" if any(f["severity"]=="error" for f in findings) else "review" if findings else "compatible",
             "actions_total":len(actions),"actions_recognized":valid,"permission_observations_checked":checked,
             "reference_fallbacks":[{"action":a,"resource_scope":"global","reference":EKS_REFERENCE} for a in sorted(reference_fallbacks)],"missing_services":missing,"metadata_directory":str(Path(folder).resolve()),"evidence":evidence,"findings":findings,
-            "diagnostics":(["Missing service snapshots; run catalog-audit with --refresh in the intended directory."] if missing else []),
+            "diagnostics":(["Missing service snapshots; use an updated official distribution or a complete offline snapshot."] if missing else []),
             "limitation":"Metadata compatibility only; required multi-resource groups, condition values, provider API calls and effective IAM authorization are not established."}
 
 
@@ -181,3 +181,18 @@ def bundled_metadata():
         if hashlib.sha256(path.read_bytes()).hexdigest()!=record.get("sha256"):
             raise ValueError("Packaged AWS metadata digest mismatch: "+service)
     return root
+
+
+def operation_index(doc):
+    result={}
+    for op in doc.get("Operations",[]):
+        if not isinstance(op,dict) or not isinstance(op.get("Name"),str): continue
+        actions=op.get("AuthorizedActions")
+        if not isinstance(actions,list): continue
+        names=set()
+        for a in actions:
+            if isinstance(a,dict) and isinstance(a.get("Service"),str) and isinstance(a.get("Name"),str):
+                if re.fullmatch(r"[a-z0-9-]+",a["Service"]) and re.fullmatch(r"[A-Za-z0-9]+",a["Name"]):
+                    names.add(a["Service"]+":"+a["Name"])
+        if names: result.setdefault(op["Name"],set()).update(names)
+    return result

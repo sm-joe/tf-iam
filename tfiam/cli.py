@@ -67,10 +67,10 @@ def main(argv=None, *, maintainer=False):
         elif cmd in ('compare','split'): p.add_argument('--format',choices=['json','table'],default='json'); p.add_argument('--provider',default='aws',choices=['aws'])
         else: p.add_argument('--provider',default='aws',choices=['aws'])
         if cmd=='generate':
-            p.add_argument('--format',choices=['json','terraform','table'],default='json'); p.add_argument('--name',default='TerraformPipeline'); p.add_argument('--scope'); p.add_argument('--allow-partial',action='store_true',required=True,help='Explicitly accept candidate-only policy generation')
+            p.add_argument('--format',choices=['json','terraform','table'],default='json'); p.add_argument('--name',default='TerraformPipeline'); p.add_argument('--scope'); p.add_argument('--allow-partial',action='store_true',help='Permit generation despite unresolved permissions or unmapped resources; review before use')
         if cmd=='compare':
             source=p.add_mutually_exclusive_group(required=True); source.add_argument('--existing',type=Path); source.add_argument('--role-name'); p.add_argument('--aws-profile'); p.add_argument('--fail-on-missing',action='store_true')
-        if cmd=='split': p.add_argument('--allow-partial',action='store_true',required=True); p.add_argument('--acknowledge-break-glass',action='store_true',help='Include destructive/delegation grants in a separately gated policy')
+        if cmd=='split': p.add_argument('--allow-partial',action='store_true'); p.add_argument('--acknowledge-break-glass',action='store_true',help='Include destructive/delegation grants in a separately gated policy')
     for p in (catalog,validate,runtime):
         p.add_argument('--format',choices=['json','table'],default='json')
         p.add_argument('--show-table',action='store_true',help='Print table in addition to an output file')
@@ -159,7 +159,8 @@ def main(argv=None, *, maintainer=False):
             variables.append((key,value))
         report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags,provider_version=args.aws_provider_version,authorization_metadata=args.authorization_metadata)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
-        report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved,args.fail_on_unmapped,args.require_compatible_metadata,args.require_lifecycle_verified)
+        require_complete_mapping=args.command in ('generate','split') and not args.allow_partial
+        report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved or require_complete_mapping,args.fail_on_unmapped or require_complete_mapping,args.require_compatible_metadata,args.require_lifecycle_verified)
         if report['gate_failures']: status=4
         if args.command in ('generate','split') and (report['gate_failures'] or (args.strict and report['coverage']!='COMPLETE')):
             print('ERROR: policy generation blocked by security or coverage gate',file=sys.stderr); return status
