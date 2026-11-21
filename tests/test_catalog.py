@@ -1,3 +1,4 @@
+from tfiam.catalog_loader import operation_actions
 import json
 from pathlib import Path
 from tfiam.catalog_loader import load_catalog, get_rule, actions_for, attribute_values
@@ -11,7 +12,14 @@ def test_catalog_and_lifecycle():
     assert "eks:CreateCluster" in actions_for(r,"apply")
     assert "eks:CreateCluster" not in actions_for(r,"plan")
     assert "eks:CreateCluster" not in actions_for(r,"destroy")
-    assert get_rule("data","aws_s3_bucket") is None
+    bucket_data=get_rule("data","aws_s3_bucket")
+    bucket_resource=get_rule("resource","aws_s3_bucket")
+    assert bucket_data is not bucket_resource
+    assert bucket_data["read"]
+    assert not any(bucket_data[k] for k in ("create","update","write","delete"))
+    assert "s3:CreateBucket" in operation_actions(bucket_resource,"create")
+    assert "s3:CreateBucket" not in operation_actions(bucket_data,"read")
+    assert get_rule("data","aws_iam_role_policy_attachment") is None
     assert get_rule("data","aws_eks_cluster")["write"]==[]
 
 def test_nested_attributes():
