@@ -61,3 +61,15 @@ Root and reachable local modules, HCL and Terraform JSON, S3 state with lockfile
 6. Standalone Linux distribution and signed releases after acceptance tests.
 
 See [reference architecture](docs/pike-reference.md). No live deployment validation has been performed.
+
+### Troubleshooting plan input
+
+Use the exported JSON, not the binary plan or streaming `terraform plan -json` output. Relative `--plan-json` paths resolve from the current shell directory, not the positional infrastructure directory. For example:
+
+```bash
+terraform -chdir=./infra plan -out=tfplan
+terraform -chdir=./infra show -json tfplan > plan.json
+tfiam scan ./infra --plan-json "$PWD/plan.json"
+```
+
+The scanner accepts UTF-8 and BOM-encoded UTF-16/UTF-32 JSON exports and reports missing files, empty input and malformed JSON without echoing sensitive plan contents.

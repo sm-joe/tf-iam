@@ -38,6 +38,30 @@ def compare(report,provider,existing):
     excess=[{'action':a,'scope':s,'plane':p} for a,s,p in grants if '*' in a or '?' in a or not any(covers((a,s,p),r) for r in rows) or (provider=='aws' and s=='*' and any(covers((a,s,p),r) and r['scope']!='*' for r in rows))]
     return {'coverage':'PARTIAL','missing_or_unverified':missing,'explicitly_denied':blocked,'potentially_excessive':excess,'warnings':uncertain+['Static comparison only; inherited policies, conditions, boundaries, SCPs, assignments and unknown resources are not evaluated. Do not automatically revoke permissions.']}
 
+def read_plan_json(path):
+    """Read a saved JSON plan, including BOM-encoded Windows exports."""
+    try:
+        raw=path.read_bytes()
+    except FileNotFoundError:
+        raise ValueError(f"Plan JSON file not found: {path.absolute()} (paths are relative to the current working directory)") from None
+    except IsADirectoryError:
+        raise ValueError(f"Plan JSON path is a directory: {path.absolute()}") from None
+    except OSError as exc:
+        raise ValueError(f"Cannot open plan JSON file: {path.absolute()} (OS error {exc.errno})") from None
+    if not raw.strip():
+        raise ValueError("Plan JSON file is empty; regenerate with terraform show -json tfplan > plan.json")
+    try:
+        # json.loads(bytes) detects UTF-8, UTF-16 and UTF-32, including BOMs.
+        plan=json.loads(raw)
+    except UnicodeError:
+        raise ValueError("Plan file is not valid JSON text; export with terraform show -json tfplan > plan.json") from None
+    except json.JSONDecodeError as exc:
+        # Do not echo input or excerpts: plans can contain secrets.
+        raise ValueError(f"Invalid plan JSON at line {exc.lineno}, column {exc.colno}; regenerate with terraform show -json tfplan > plan.json (not terraform plan -json)") from None
+    if not isinstance(plan,dict):
+        raise ValueError("Expected a saved Terraform plan JSON object")
+    return plan
+
 def main(argv=None):
     parser=argparse.ArgumentParser(prog='tfiam',description='Terraform IAM candidate policy analyzer')
     sub=parser.add_subparsers(dest='command',required=True)
@@ -52,9 +76,7 @@ def main(argv=None):
     try:
         config=json.loads(args.backend_config.read_text()) if args.backend_config else None
         if args.directory is None and args.plan_json is None: raise ValueError('Provide a Terraform directory or --plan-json')
-        try: plan=json.loads(args.plan_json.read_text(encoding='utf-8')) if args.plan_json else None
-        except (ValueError,OSError): raise ValueError('Unable to read saved Terraform plan JSON') from None
-        if args.plan_json and not isinstance(plan,dict): raise ValueError('Expected a saved Terraform plan JSON object')
+        plan=read_plan_json(args.plan_json) if args.plan_json else None
         report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config,plan=plan)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
         if args.command=='scan' and args.format=='text':

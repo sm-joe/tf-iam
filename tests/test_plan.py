@@ -93,3 +93,23 @@ def test_cli_outputs(tmp_path):
     assert main(["compare",*args,"--existing",str(existing),"--output",str(report)])==0
     assert json.loads(report.read_text())["input"]=="terraform-plan-json"
     assert main(["scan"])==1
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig", "utf-16", "utf-32"])
+def test_plan_file_encodings(tmp_path, encoding):
+    p=tmp_path/"plan.json"
+    p.write_bytes(json.dumps(load()).encode(encoding))
+    assert main(["scan","--plan-json",str(p),"--format","json"])==0
+
+@pytest.mark.parametrize("raw, message", [(b"", "empty"), (b"not-json-secret", "line 1, column 1"), (b'{"x":', "line 1"), (b"[]", "JSON object")])
+def test_invalid_plan_file(tmp_path, capsys, raw, message):
+    p=tmp_path/"plan.json"
+    p.write_bytes(raw)
+    assert main(["scan","--plan-json",str(p)])==1
+    err=capsys.readouterr().err
+    assert message in err
+    assert "not-json-secret" not in err
+
+def test_missing_plan_file(tmp_path, capsys):
+    p=tmp_path/"missing.json"
+    assert main(["scan","--plan-json",str(p)])==1
+    assert "file not found" in capsys.readouterr().err
