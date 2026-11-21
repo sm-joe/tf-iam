@@ -381,7 +381,44 @@
         "iam:UpdateAssumeRolePolicy",
         "iam:TagRole",
         "iam:UntagRole"
-      ]
+      ],
+      "version_overrides": {
+        "6.73.0": {
+          "validation": "candidate",
+          "read": [
+            "iam:GetRole",
+            "iam:ListRoleTags",
+            "iam:ListAttachedRolePolicies",
+            "iam:ListRolePolicies",
+            "iam:GetRolePolicy"
+          ],
+          "write": [
+            "iam:CreateRole",
+            "iam:TagRole",
+            "iam:UpdateRole",
+            "iam:UpdateAssumeRolePolicy",
+            "iam:UntagRole",
+            "iam:UpdateRoleDescription"
+          ],
+          "create": [
+            "iam:CreateRole",
+            "iam:TagRole"
+          ],
+          "update": [
+            "iam:UpdateRole",
+            "iam:UpdateAssumeRolePolicy",
+            "iam:TagRole",
+            "iam:UntagRole",
+            "iam:UpdateRoleDescription"
+          ],
+          "delete": [
+            "iam:DeleteRole",
+            "iam:ListInstanceProfilesForRole"
+          ],
+          "attributes": [],
+          "evidence": []
+        }
+      }
     },
     "aws_iam_policy": {
       "validation": "candidate",

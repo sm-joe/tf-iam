@@ -34,6 +34,8 @@ DESTROY_ACTIONS = {a.lower() for rule in CATALOG["resources"].values()
                    for a in variant.get("delete",[])}
 def destructive(row):
     action=row["action"].lower()
+    # Provider role deletion performs a read-only dependency inventory first.
+    if action=="iam:listinstanceprofilesforrole": return False
     return action in DESTROY_ACTIONS or action in {a.lower() for a in DESTRUCTIVE}
 
 def assess(rows):
@@ -64,7 +66,7 @@ def assess(rows):
             add("destructive",[evidence[0]["action"]],"HIGH","Permission is used by a destroy lifecycle or destructive API; require explicit approval. Shared update/delete APIs are treated conservatively.")
     return findings
 
-def gate(report,threshold=None,unresolved=False,unmapped=False,metadata=False):
+def gate(report,threshold=None,unresolved=False,unmapped=False,metadata=False,lifecycle_verified=False):
     failures=[]
     if threshold:
         findings=[f for f in report["risks"] if LEVELS[f["severity"]]>=LEVELS[threshold]]
@@ -75,4 +77,9 @@ def gate(report,threshold=None,unresolved=False,unmapped=False,metadata=False):
         failures.append({"kind":"unmapped","count":report["mapping_coverage"]["unmapped_resources"]})
     if metadata and report["authorization_metadata"]["status"]!="compatible":
         failures.append({"kind":"metadata","status":report["authorization_metadata"]["status"]})
+    if lifecycle_verified:
+        ac=report["authorization_confidence"]
+        total=report["mapping_coverage"]["eligible_resources"]
+        if not ac["provider_version"] or not total or ac["lifecycle_verified_resources"]!=total or report.get("unresolved_permissions"):
+            failures.append({"kind":"lifecycle-evidence","provider_version":ac["provider_version"],"eligible_resources":total,"verified_resources":ac["lifecycle_verified_resources"]})
     return failures

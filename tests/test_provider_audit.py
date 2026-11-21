@@ -31,3 +31,24 @@ def test_provider_audit_uses_tag_not_worktree(tmp_path):
     assert out["status"]=="review" # tag is not independently pinned
     assert out["resources"][0]["operations"][0]["operation"]=="DeletePublicAccessBlock"
     assert len(out["resources"][0]["sha256"])==64
+
+def test_role_source_corrections_are_version_specific(tmp_path):
+    from tfiam.catalog_loader import get_rule
+    from tfiam.scan import scan
+    from tfiam.risk import destructive
+    role=get_rule("resource","aws_iam_role","6.73.0")
+    assert "iam:ListInstanceProfilesForRole" in role["delete"]
+    assert "iam:UpdateRoleDescription" in role["update"]
+    assert "iam:GetRolePolicy" in role["read"]
+    assert "iam:ListInstanceProfilesForRole" not in get_rule("resource","aws_iam_role","6.72.0")["delete"]
+    assert not destructive({"action":"iam:ListInstanceProfilesForRole"})
+    (tmp_path/"main.tf.json").write_text(json.dumps({"resource":{"aws_iam_role":{"r":{"name":"fixture","path":"/"}}}}))
+    report=scan(tmp_path,"destroy","123456789012","us-east-1",provider_version="6.73.0")
+    assert any(p["action"]=="iam:ListInstanceProfilesForRole" and p["scope"]=="arn:aws:iam::123456789012:role/fixture" for p in report["permissions"])
+
+def test_verified_only_policy_mode_blocks_unverified(tmp_path):
+    from tfiam.cli import main
+    (tmp_path/"main.tf.json").write_text(json.dumps({"resource":{"aws_s3_bucket":{"b":{"bucket":"test-bucket"}}}}))
+    dest=tmp_path/"policy.json"
+    assert main(["generate",str(tmp_path),"--aws-provider-version","6.73.0","--allow-partial","--require-lifecycle-verified","--output",str(dest)])==4
+    assert not dest.exists()
