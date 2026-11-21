@@ -1,8 +1,6 @@
 """Heuristic risk indicators, not an effective-access or escalation proof."""
 RULES = {
     "aws": {"iam:PassRole", "iam:AttachRolePolicy", "iam:PutRolePolicy", "iam:UpdateAssumeRolePolicy", "iam:CreatePolicyVersion", "iam:SetDefaultPolicyVersion", "iam:CreateAccessKey", "iam:PutUserPolicy", "iam:AttachUserPolicy"},
-    "gcp": {"iam.serviceAccounts.actAs", "iam.serviceAccounts.getAccessToken", "iam.serviceAccounts.signBlob", "iam.serviceAccounts.setIamPolicy", "resourcemanager.projects.setIamPolicy", "iam.roles.update"},
-    "azure": {"Microsoft.Authorization/roleAssignments/write", "Microsoft.Authorization/roleDefinitions/write"},
 }
 COMBINATIONS = {"aws": [("iam:PassRole", "ec2:RunInstances"), ("iam:PassRole", "lambda:CreateFunction"), ("iam:PassRole", "eks:CreateCluster")]}
 def assess(rows):

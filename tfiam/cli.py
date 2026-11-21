@@ -1,4 +1,4 @@
-import argparse, json, sys, fnmatch, re
+import argparse, json, sys, fnmatch
 from pathlib import Path
 from .scan import scan
 
@@ -30,7 +30,7 @@ def compare(report,provider,existing):
     else: raise ValueError('Only AWS is supported')
     def covers(g,r):
         a,s,p=g
-        return p==r['plane'] and matches(a,r['action']) and (provider!='aws' or (s=='*' or s==r['scope'] or ('*' not in r['scope'] and matches(s,r['scope']))))
+        return p==r['plane'] and matches(a,r['action']) and (provider!='aws' or (s=='*' or s==r['scope'] or ('*' not in r['scope'] and fnmatch.fnmatchcase(r['scope'],s))))
     missing=[]; blocked=[]
     for r in rows:
         if any(covers(g,r) for g in denies): blocked.append(r)

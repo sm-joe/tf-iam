@@ -12,8 +12,5 @@ def test_delegation_combination():
 def test_read_only():
     assert assess([row("iam:GetRole")]) == []
 
-def test_azure_case_insensitive():
-    assert assess([row("microsoft.authorization/roleassignments/write", "azure")])
-
 def test_no_cross_provider_combination():
     assert not any(f["kind"] == "combination" for f in assess([row("iam:PassRole"), row("ec2:RunInstances", "gcp")]))
