@@ -13,6 +13,10 @@ from .catalog_loader import CATALOG, get_rule
 BASE="https://servicereference.us-east-1.amazonaws.com"
 SERVICE=re.compile(r"[a-z0-9-]+")
 MAX_BYTES=32*1024*1024
+# Official SAR explicitly lists no resource types for these EKS actions.
+# Only fill an absent Resources field; never override a conflicting snapshot.
+DOCUMENTED_GLOBAL={"eks:createcluster","eks:describeaddonversions"}
+EKS_REFERENCE="https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html"
 
 def catalog_actions(version=None):
     out=set()
@@ -99,15 +103,19 @@ def audit(actions,permissions,folder):
         if action.lower() not in by_action: issue("unknown-action",action); continue
         valid+=1
     checked=0
+    reference_fallbacks=set()
     for p in permissions:
         action=p["action"]; service=action.split(":",1)[0]; meta=by_action.get(action.lower())
         if not meta: continue
         source=p["source"]; scope=p["scope"]; doc=docs[service]
         refs=meta.get("Resources")
         resources=doc.get("Resources")
-        if not isinstance(refs,list) or not isinstance(resources,list):
+        if "Resources" not in meta and action.lower() in DOCUMENTED_GLOBAL:
+            refs=[]
+            reference_fallbacks.add(action)
+        if not isinstance(refs,list) or (refs and not isinstance(resources,list)):
             issue("resource-metadata-unavailable",action,source,"unknown"); continue
-        definitions={r.get("Name"):r for r in resources if isinstance(r,dict)}
+        definitions={r.get("Name"):r for r in (resources or []) if isinstance(r,dict)}
         names=[r.get("Name") for r in refs if isinstance(r,dict)]
         matched=[]
         if scope=="*":
@@ -136,6 +144,6 @@ def audit(actions,permissions,folder):
     findings.sort(key=lambda f:(f["action"],f.get("source",""),f["code"],f.get("condition_key","")))
     return {"status":"issues" if any(f["severity"]=="error" for f in findings) else "review" if findings else "compatible",
             "actions_total":len(actions),"actions_recognized":valid,"permission_observations_checked":checked,
-            "missing_services":missing,"metadata_directory":str(Path(folder).resolve()),"evidence":evidence,"findings":findings,
+            "reference_fallbacks":[{"action":a,"resource_scope":"global","reference":EKS_REFERENCE} for a in sorted(reference_fallbacks)],"missing_services":missing,"metadata_directory":str(Path(folder).resolve()),"evidence":evidence,"findings":findings,
             "diagnostics":(["Missing service snapshots; run catalog-audit with --refresh in the intended directory."] if missing else []),
             "limitation":"Metadata compatibility only; required multi-resource groups, condition values, provider API calls and effective IAM authorization are not established."}
