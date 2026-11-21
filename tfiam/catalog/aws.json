@@ -60,7 +60,36 @@
       ],
       "update": [
         "s3:PutBucketVersioning"
-      ]
+      ],
+      "version_overrides": {
+        "6.73.0": {
+          "validation": "candidate",
+          "read": [
+            "s3:GetBucketVersioning"
+          ],
+          "write": [
+            "s3:PutBucketVersioning"
+          ],
+          "create": [
+            "s3:PutBucketVersioning"
+          ],
+          "update": [
+            "s3:PutBucketVersioning"
+          ],
+          "delete": [
+            "s3:PutBucketVersioning"
+          ],
+          "attributes": [],
+          "evidence": [
+            {
+              "provider_version": "6.73.0",
+              "level": "provider-source-reviewed",
+              "reference": "https://github.com/hashicorp/terraform-provider-aws/blob/22e15d8b32e0c8bac1378a058b6d087c0191c1da/internal/service/s3/bucket_versioning.go",
+              "sha256": "ea990ade2e5e7b1cdacaaf9f43492371fc4517381655df10e16730e0b6ad8f6d"
+            }
+          ]
+        }
+      }
     },
     "aws_s3_bucket_public_access_block": {
       "validation": "candidate",
@@ -81,7 +110,36 @@
       ],
       "update": [
         "s3:PutBucketPublicAccessBlock"
-      ]
+      ],
+      "version_overrides": {
+        "6.73.0": {
+          "validation": "candidate",
+          "read": [
+            "s3:GetBucketPublicAccessBlock"
+          ],
+          "write": [
+            "s3:PutBucketPublicAccessBlock"
+          ],
+          "create": [
+            "s3:PutBucketPublicAccessBlock"
+          ],
+          "update": [
+            "s3:PutBucketPublicAccessBlock"
+          ],
+          "delete": [
+            "s3:PutBucketPublicAccessBlock"
+          ],
+          "attributes": [],
+          "evidence": [
+            {
+              "provider_version": "6.73.0",
+              "level": "provider-source-reviewed",
+              "reference": "https://github.com/hashicorp/terraform-provider-aws/blob/22e15d8b32e0c8bac1378a058b6d087c0191c1da/internal/service/s3/bucket_public_access_block.go",
+              "sha256": "3cfff05240d3d52c502035704c510ffc0cbfbde5cc3083068eb8dadcb5929667"
+            }
+          ]
+        }
+      }
     },
     "aws_s3_bucket_server_side_encryption_configuration": {
       "validation": "candidate",

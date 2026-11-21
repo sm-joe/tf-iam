@@ -76,6 +76,8 @@ def main(argv=None):
         p.add_argument('--show-table',action='store_true',help='Print table in addition to an output file')
     provider=sub.add_parser('provider-audit',help='Reconcile pinned AWS provider source with AWS operation metadata')
     provider.add_argument('--source-dir',type=Path,required=True); provider.add_argument('--aws-provider-version',required=True); provider.add_argument('--metadata-dir',type=Path,required=True); provider.add_argument('--resource',action='append'); provider.add_argument('--format',choices=['json','table'],default='table'); provider.add_argument('--output',type=Path); provider.add_argument('--show-table',action='store_true'); provider.add_argument('--strict',action='store_true')
+    evidence=sub.add_parser('evidence-audit',help='Reconcile completed S3 fixture, pinned source and CloudTrail evidence')
+    evidence.add_argument('--lifecycle',type=Path,required=True); evidence.add_argument('--source-report',type=Path,required=True); evidence.add_argument('--policy',type=Path,required=True); evidence.add_argument('--lockfile',type=Path,required=True); evidence.add_argument('--metadata-dir',type=Path,required=True); evidence.add_argument('--events',type=Path); evidence.add_argument('--aws-profile'); evidence.add_argument('--max-pages',type=int,default=100); evidence.add_argument('--max-seconds',type=int,default=120); evidence.add_argument('--format',choices=['json','table'],default='table'); evidence.add_argument('--output',type=Path); evidence.add_argument('--show-table',action='store_true'); evidence.add_argument('--strict',action='store_true')
     args=parser.parse_args(argv)
     def write_result(result,output=None):
         if args.format=='table': output=render(args.command,result)
@@ -85,6 +87,20 @@ def main(argv=None):
             if args.show_table and args.format!='table': print(render(args.command,result),file=sys.stderr)
         else: print(output)
     try:
+        if args.command=='evidence-audit':
+            from .evidence_audit import reconcile,read_events
+            run=json.loads(args.lifecycle.read_bytes()); source=json.loads(args.source_report.read_bytes())
+            retrieval={}
+            if args.events: events=read_events(args.events)
+            else:
+                events=cloud.lookup_events(cloud.client('cloudtrail',args.aws_profile,run['region']),run['role_arn'],cloud.parse_time(run['start']),cloud.parse_time(run['end']),max_pages=args.max_pages,max_seconds=args.max_seconds,stats=retrieval)
+            result=reconcile(run,args.policy.read_bytes(),args.lockfile,source,args.metadata_dir,events)
+            if retrieval:
+                result['retrieval']=retrieval
+                if not retrieval['complete']:
+                    result['status']='review'; result['blockers'].append('cloudtrail-retrieval-incomplete')
+            write_result(result)
+            return 2 if args.strict and result['status']!='fixture-evidence-reconciled' else 0
         if args.command=='provider-audit':
             from .provider_audit import audit_provider
             result=audit_provider(args.source_dir,args.aws_provider_version,args.metadata_dir,args.resource)

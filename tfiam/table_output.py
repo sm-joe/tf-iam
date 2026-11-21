@@ -56,6 +56,11 @@ def render(command,r):
         for k in ("missing_or_unverified","explicitly_denied"):
             section(k.replace("_"," ").upper(),["Action","Resource scope","Condition","Source"],grant_rows(r[k]),[38,60,45,45],100)
         section("POTENTIALLY EXCESSIVE",["Action","Resource scope","Reasons"],[(x["action"],x["scope"],", ".join(x["reasons"])) for x in r["potentially_excessive"]],[40,60,60],25)
+    elif command=="evidence-audit":
+        metrics("FIXTURE EVIDENCE",{"Fixture":r["fixture"],"Provider":r["provider_version"],"Status":r["status"],"Matched events":r["matched_events"],"Expected denial observed":r["negative_observed"]})
+        section("OBSERVATIONS",["API operation","IAM actions","Status","Count"],[(x["operation"],", ".join(x["actions"]),x["status"],x["count"]) for x in r["observations"]],[36,62,27,8])
+        section("BLOCKERS",["Reason"],[(x,) for x in r["blockers"]],[90])
+        section("MISSING POSITIVE OBSERVATIONS",["Action"],[(x,) for x in r["missing_required_observations"]],[55])
     elif command=="provider-audit":
         metrics("SOURCE RECONCILIATION",{"Provider":r["provider_version"],"Commit":r["provider_commit"],"Official pin":r["pin_verified"],"Status":r["status"],**r["counts"]})
         section("SDK OPERATIONS",["Resource","API operation","IAM actions","Status"],[(item["resource"],op["operation"],", ".join(op["actions"]) or "-",op["status"]) for item in r["resources"] for op in item["operations"]],[48,35,66,24])

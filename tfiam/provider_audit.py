@@ -30,6 +30,12 @@ S3_DOC="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-poli
 # AWS operation metadata may be conditional, cross-service, or resource-specific.
 GENERAL_S3={
     "HeadBucket":"ListBucket",
+    "CreateBucket":"CreateBucket",
+    "DeleteBucket":"DeleteBucket",
+    "ListBuckets":"ListAllMyBuckets",
+    "GetBucketPublicAccessBlock":"GetBucketPublicAccessBlock",
+    "PutBucketPublicAccessBlock":"PutBucketPublicAccessBlock",
+    "DeleteBucketPublicAccessBlock":"PutBucketPublicAccessBlock",
     "GetPublicAccessBlock":"GetBucketPublicAccessBlock",
     "PutPublicAccessBlock":"PutBucketPublicAccessBlock",
     "DeletePublicAccessBlock":"PutBucketPublicAccessBlock",
@@ -117,8 +123,13 @@ def audit_provider(root,version,metadata_dir,resources=None):
         raw=git(root,"show",commit+":"+path)
         if len(raw)>4*1024*1024: raise ValueError("Provider source exceeds size limit")
         rows=reconcile(kind,raw.decode("utf-8"),docs[FILES[kind].split("/")[0]],version)
+        digest=hashlib.sha256(raw).hexdigest()
+        rule=get_rule("resource",kind,version)
+        records=[e for e in rule.get("evidence",[]) if e["provider_version"]==version and e["level"]=="provider-source-reviewed"]
+        if records and not any(e["sha256"]==digest and e["reference"]==PROVIDER+"/blob/"+commit+"/"+path for e in records):
+            raise ValueError("Reviewed provider source digest mismatch for "+kind)
         reports.append({"resource":kind,"reference":PROVIDER+"/blob/"+commit+"/"+path,
-                        "sha256":hashlib.sha256(raw).hexdigest(),"operations":rows})
+                        "sha256":digest,"source_review_record_matched":bool(records),"operations":rows})
     counts={}
     for row in reports:
         for op in row["operations"]: counts[op["status"]]=counts.get(op["status"],0)+1

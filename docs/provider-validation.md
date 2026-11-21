@@ -47,3 +47,22 @@ The runner checks exact identity policy grants, assumed-role identity and the se
 ## Runtime reconciliation and reviewed catalog (M16–M17)
 
 Collect positive CloudTrail observations for the same dedicated role and interval after the events are available. CloudTrail does not log every authorization decision (notably PassRole) and regional history excludes data events. Inspect denied and unknown operations. Retain source review, AWS metadata, exact configuration/plan digests, reviewed roles and lifecycle reports. A maintainer reviews these before committing version-specific evidence; no unreviewed run automatically changes the packaged catalog. Broader EKS/IAM fixture coverage and catalog-wide verification remain required.
+
+The source-reviewed v6.73.0 overrides for general-purpose S3 public access block and versioning are pinned to the actual provider file digests. Create/update/delete retain the documented operation actions; versioning deletion suspends versioning, while DeletePublicAccessBlock authorizes PutBucketPublicAccessBlock. Directory buckets and MFA-specific cases are not covered by the fixture. Both entries remain candidate mappings, not lifecycle-verified.
+
+### Reconcile live results
+
+Run the new evidence command after CloudTrail history has ingested the test events:
+
+```bash
+tfiam evidence-audit \
+  --lifecycle /tmp/tfiam-s3-fixture/lifecycle-evidence.json \
+  --policy /tmp/tfiam-s3-fixture/candidate-policy.json \
+  --lockfile /tmp/tfiam-s3-fixture/.terraform.lock.hcl \
+  --source-report provider-source-audit.json \
+  --metadata-dir /tmp/tfiam-aws-auth \
+  --aws-profile tfiam-audit \
+  --strict --format json --show-table --output s3-evidence-audit.json
+```
+
+Offline `--events` supports CloudTrail Records or LookupEvents exports. Matching requires the exact session ARN and role issuer ARN, the fixture time window, the pinned provider version, matching candidate and lockfile digests, all six expected lifecycle plan shapes, and matching metadata digests. The result also requires positive create, delete, public-access-block and versioning observations and the expected ListAllMyBuckets denial. Unmapped and conditional operations are surfaced. The report is a review gate for this fixture only, not an automatic catalog promotion.

@@ -177,3 +177,5 @@ Static scans read all root `.tf` and `.tf.json` files, including newly added S3 
 ### Provider source reconciliation
 
 `provider-audit` reads SDK call sites from the exact versioned Git object of the official Terraform AWS provider, resolves operations through AWS service reference `Operations[].AuthorizedActions`, and reports catalog differences, conditional alternatives and missing metadata. Provider v6.73.0 is pinned to the official commit. Other local tags are explicitly unverified. The audit does not execute provider code, modify the catalog or infer that every possible authorized action is required. It covers an initial nine resource types (S3, EKS and IAM). See docs/provider-validation.md.
+
+The source-backed lifecycle acceptance harness and `evidence-audit` command are documented in [Provider validation](docs/provider-validation.md). Use a dedicated isolated AWS account and exact generated policy; no IAM mutation or infrastructure apply occurs during normal scans. Successful fixture evidence is not equivalent to universal provider coverage.
