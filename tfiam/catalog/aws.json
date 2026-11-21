@@ -1609,7 +1609,7 @@
     "aws_s3_bucket_ownership_controls": {
       "validation": "candidate",
       "provider_versions": [],
-      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "reference": "https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucketOwnershipControls.html",
       "read": [
         "s3:GetBucketOwnershipControls"
       ],
@@ -1617,7 +1617,7 @@
         "s3:PutBucketOwnershipControls"
       ],
       "delete": [
-        "s3:DeleteBucketOwnershipControls"
+        "s3:PutBucketOwnershipControls"
       ],
       "attributes": [],
       "create": [
