@@ -172,3 +172,40 @@ def test_unknown_tag_actions_and_missing_kms_scope(tmp_path):
     actions={p["action"] for p in report["permissions"] if p["source"]=="aws_eks_cluster.this"}
     assert {"eks:TagResource","eks:UntagResource"} <= actions
     assert {"kms:DescribeKey","kms:CreateGrant"} <= {x["action"] for x in report["unresolved_permissions"]}
+
+def test_s3_fresh_plan_and_stale_configuration(tmp_path):
+    names=["aws_s3_bucket.example","aws_s3_bucket_public_access_block.example","aws_s3_bucket_versioning.example"]
+    target=names[0]
+    resources={"aws_s3_bucket":{"example":{"bucket":"my-unique-app-bucket-2026"}}}
+    config=[]; changes=[]
+    for address in names:
+        typ=address.split(".")[0]
+        after={"bucket":"my-unique-app-bucket-2026"} if address==target else {}
+        unknown={"id":True} if address==target else {"bucket":True}
+        config.append({"address":address,"provider_config_key":"aws","expressions":{} if address==target else {"bucket":{"references":[target+".id",target]}}})
+        changes.append({"address":address,"type":typ,"mode":"managed","provider_name":"registry.terraform.io/hashicorp/aws","change":{"actions":["create"],"after":after,"before":None,"after_unknown":unknown}})
+        if address!=target: resources[typ]={"example":{"bucket":"\u0024{"+target+".id}"}}
+    (tmp_path/"main.tf.json").write_text(json.dumps({"resource":resources}))
+    doc={"format_version":"1.2","terraform_version":"1.17.2","configuration":{"root_module":{"resources":config}},"resource_changes":changes}
+    report=run(doc=doc,root=tmp_path)
+    for source,action in zip(names,["s3:CreateBucket","s3:PutBucketPublicAccessBlock","s3:PutBucketVersioning"]):
+        assert (action,"arn:aws:s3:::my-unique-app-bucket-2026") in grants(report,source)
+    assert not report["unresolved_permissions"]
+    doc["configuration"]["root_module"]["resources"]=config[:1]
+    doc["resource_changes"]=changes[:1]
+    report=run(doc=doc,root=tmp_path)
+    assert report["source_only_resources"]==sorted(names[1:])
+    assert not grants(report,names[1])
+    p=tmp_path/"plan.json"; p.write_text(json.dumps(doc))
+    out=tmp_path/"policy.json"
+    assert main(["generate",str(tmp_path),"--plan-json",str(p),"--allow-partial","--output",str(out)])==4
+    assert not out.exists()
+
+def test_s3_plan_dependency_rejects_masked_identity(tmp_path):
+    from tfiam.plan_buckets import recover_bucket
+    target="aws_s3_bucket.example"; addr="aws_s3_bucket_versioning.example"
+    cfg=[{"address":target,"provider_config_key":"aws"},{"address":addr,"provider_config_key":"aws","expressions":{"bucket":{"references":[target+".id",target]}}}]
+    def row(a,t,change):
+        return {"address":a,"type":t,"mode":"managed","provider_name":"registry.terraform.io/hashicorp/aws","change":change}
+    doc={"configuration":{"root_module":{"resources":cfg}},"resource_changes":[row(target,"aws_s3_bucket",{"actions":["create"],"after":{"bucket":"private-bucket"},"after_sensitive":{"bucket":True}}),row(addr,"aws_s3_bucket_versioning",{"actions":["create"],"after":{},"after_unknown":{"bucket":True}})]}
+    assert recover_bucket(doc,addr,{addr:{"bucket":"\u0024{"+target+".id}"}}) is None

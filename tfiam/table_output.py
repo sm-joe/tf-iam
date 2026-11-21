@@ -71,6 +71,8 @@ def render(command,r):
     if "unresolved_permissions" in r:
         section("UNRESOLVED PERMISSIONS",["Source","Action","Reason"],[(x["source"],x["action"],x["reason"]) for x in r["unresolved_permissions"]],[60,40,60])
     if r.get("gate_failures"): metrics("SECURITY GATES",{str(i+1):x for i,x in enumerate(r["gate_failures"])})
+    if r.get("source_only_resources"):
+        section("RESOURCES NOT IN SAVED PLAN",["Resource","Status"],[(x,"REPLAN REQUIRED") for x in r["source_only_resources"]],[70,20])
     if "resolved_dependencies" in r:
         section("RESOLVED DEPENDENCIES",["Resource","Action","Resolved scope","Status"],[(x["source"],x["action"],x["scope"],"RESOLVED") for x in r["resolved_dependencies"]],[52,30,63,12])
     metadata=r.get("authorization_metadata",{})

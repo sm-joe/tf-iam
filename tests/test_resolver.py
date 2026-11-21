@@ -49,3 +49,35 @@ def test_role_attachment_path(tmp_path):
     put(tmp_path,"main.tf.json",{"resource":{"aws_iam_role":{"r":{"name":"runner","path":"/ci/"}},"aws_iam_role_policy_attachment":{"a":{"role":"${aws_iam_role.r.name}","policy_arn":"arn:aws:iam::aws:policy/ReadOnlyAccess"}}}})
     r=scan(tmp_path,"apply","123456789012","us-east-1")
     assert any(p["action"]=="iam:AttachRolePolicy" and p["scope"].endswith("/ci/runner") for p in r["permissions"])
+
+def test_s3_hcl_id_dependencies_new_file(tmp_path):
+    (tmp_path/"main.tf").write_text('resource "aws_sqs_queue" "q" { name = "test-queue" }\n')
+    (tmp_path/"s3.tf").write_text("""
+resource "aws_s3_bucket" "example" {
+  bucket = "my-unique-app-bucket-2026"
+  tags = { Name = "MyAppBucket", Environment = "Production" }
+}
+resource "aws_s3_bucket_public_access_block" "example" {
+  bucket = aws_s3_bucket.example.id
+  block_public_acls = true
+  block_public_policy = true
+  ignore_public_acls = true
+  restrict_public_buckets = true
+}
+resource "aws_s3_bucket_versioning" "example" {
+  bucket = aws_s3_bucket.example.id
+  versioning_configuration { status = "Enabled" }
+}
+""")
+    r=scan(tmp_path,account="123456789012",region="us-east-1")
+    expected={"aws_s3_bucket.example":"s3:CreateBucket","aws_s3_bucket_public_access_block.example":"s3:PutBucketPublicAccessBlock","aws_s3_bucket_versioning.example":"s3:PutBucketVersioning"}
+    for source,action in expected.items():
+        assert any(x["address"]==source for x in r["resources"])
+        assert any(p["source"]==source and p["action"]==action and p["scope"]=="arn:aws:s3:::my-unique-app-bucket-2026" for p in r["permissions"])
+    assert not r["unresolved_permissions"]
+
+def test_s3_generated_or_sensitive_bucket_id_not_guessed(tmp_path):
+    put(tmp_path,"main.tf.json",{"variable":{"secret":{"default":"private-bucket","sensitive":True}},"resource":{"aws_s3_bucket":{"prefix":{"bucket_prefix":"random-"},"hidden":{"bucket":"\u0024{var.secret}"}},"aws_s3_bucket_versioning":{"a":{"bucket":"\u0024{aws_s3_bucket.prefix.id}"},"b":{"bucket":"\u0024{aws_s3_bucket.hidden.id}"}}}})
+    r=scan(tmp_path)
+    assert not r["permissions"]
+    assert "private-bucket" not in json.dumps(r)
