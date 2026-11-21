@@ -17,3 +17,4 @@ jobs:
       - run: python -c 'import hcl2'
       - run: python -m pytest -q
       - run: tfiam scan examples/aws-hcl --format json
+      - run: tfiam scan --plan-json examples/plans/mixed.plan.json --aws-account 123456789012 --aws-region us-east-1 --format json

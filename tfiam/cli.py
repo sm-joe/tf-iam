@@ -42,7 +42,7 @@ def main(argv=None):
     parser=argparse.ArgumentParser(prog='tfiam',description='Terraform IAM candidate policy analyzer')
     sub=parser.add_subparsers(dest='command',required=True)
     for cmd in ('scan','generate','compare'):
-        p=sub.add_parser(cmd); p.add_argument('directory',type=Path); p.add_argument('--phase',choices=['plan','apply','destroy'],default='apply'); p.add_argument('--aws-account'); p.add_argument('--aws-region'); p.add_argument('--aws-partition',default='aws'); p.add_argument('--backend-config',type=Path,help='JSON backend overrides'); p.add_argument('--output',type=Path); p.add_argument('--strict',action='store_true',help='Exit 2 when analysis is partial')
+        p=sub.add_parser(cmd); p.add_argument('directory',type=Path,nargs='?'); p.add_argument('--plan-json',type=Path,help='Saved terraform show -json output; optional directory supplies backend and lockfile'); p.add_argument('--phase',choices=['plan','apply','destroy'],default='apply'); p.add_argument('--aws-account'); p.add_argument('--aws-region'); p.add_argument('--aws-partition',default='aws'); p.add_argument('--backend-config',type=Path,help='JSON backend overrides'); p.add_argument('--output',type=Path); p.add_argument('--strict',action='store_true',help='Exit 2 when analysis is partial')
         if cmd=='scan': p.add_argument('--format',choices=['text','json'],default='text')
         else: p.add_argument('--provider',default='aws',choices=['aws'])
         if cmd=='generate':
@@ -51,11 +51,16 @@ def main(argv=None):
     args=parser.parse_args(argv)
     try:
         config=json.loads(args.backend_config.read_text()) if args.backend_config else None
-        report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config)
+        if args.directory is None and args.plan_json is None: raise ValueError('Provide a Terraform directory or --plan-json')
+        try: plan=json.loads(args.plan_json.read_text(encoding='utf-8')) if args.plan_json else None
+        except (ValueError,OSError): raise ValueError('Unable to read saved Terraform plan JSON') from None
+        if args.plan_json and not isinstance(plan,dict): raise ValueError('Expected a saved Terraform plan JSON object')
+        report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config,plan=plan)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
         if args.command=='scan' and args.format=='text':
             lines=[f'TF IAM Scope | {report["phase"]} | {report["coverage"]}',f'Resources: {len(report["resources"])} | Permission observations: {len(report["permissions"])}']
-            for r in report['resources']: lines.append(f'{r["status"]:11} {r["address"]}')
+            if report.get('plan'): lines.append('Input: Terraform plan JSON | Terraform '+report['plan']['terraform_version'])
+            for r in report['resources']: lines.append(f'{r["status"]:11} {r["address"]}'+(' ('+' → '.join(r['operations'])+')' if 'operations' in r else ''))
             groups={}
             for r in report['permissions']:
                 key=(r['provider'],r['action'],r['scope'],json.dumps(r.get('condition'),sort_keys=True))
@@ -74,7 +79,7 @@ def main(argv=None):
             if args.format=='terraform': result=terraform(result,args.provider,args.name,args.scope)
             output=json.dumps(result,indent=2)
         else:
-            result=compare(report,args.provider,json.loads(args.existing.read_text())); result['scan_warnings']=report['warnings']; result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
+            result=compare(report,args.provider,json.loads(args.existing.read_text())); result['scan_warnings']=report['warnings']; result['input']=report['input']; result['plan']=report.get('plan'); result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
             if args.fail_on_missing and (result['missing_or_unverified'] or result['explicitly_denied']): status=3
         if args.output: args.output.write_text(output+'\n',encoding='utf-8')
         else: print(output)
