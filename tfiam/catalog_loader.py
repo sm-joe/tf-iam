@@ -2,6 +2,7 @@
 import json
 from importlib.resources import files
 from jsonschema import Draft202012Validator
+from .versioning import rule_for_version
 
 def load_catalog():
     root = files("tfiam").joinpath("catalog")
@@ -10,8 +11,15 @@ def load_catalog():
     Draft202012Validator(schema).validate(catalog)
     for category in ("resources", "data"):
         for name, rule in catalog[category].items():
-            if rule["validation"] == "validated" and not rule["provider_versions"]:
-                raise ValueError(f"Validated rule {name} must identify tested provider versions")
+            for effective in [rule]+[rule_for_version(rule,v) for v in rule.get("version_overrides",{})]:
+                if effective["validation"]=="validated":
+                    verified={e["provider_version"] for e in effective.get("evidence",[]) if e["level"]=="lifecycle-verified"}
+                    if not effective["provider_versions"] or not set(effective["provider_versions"])<=verified:
+                        raise ValueError(f"Validated rule {name} requires exact-version lifecycle evidence")
+                if set(effective["write"])!=set(effective["create"]+effective["update"]):
+                    raise ValueError(f"Version-specific operation mappings inconsistent for {name}")
+                if category=="data" and (effective["write"] or effective["delete"] or effective["attributes"]):
+                    raise ValueError(f"Version-specific data rule {name} must be read-only")
             if set(rule["write"]) != set(rule["create"] + rule["update"]):
                 raise ValueError(f"Operation mappings do not cover write actions for {name}")
             if category == "data" and (rule["write"] or rule["delete"] or rule["attributes"]):
@@ -20,8 +28,9 @@ def load_catalog():
 
 CATALOG = load_catalog()
 
-def get_rule(category, resource_type):
-    return CATALOG["resources" if category == "resource" else "data"].get(resource_type)
+def get_rule(category, resource_type, version=None):
+    if category not in ("resource","data"): return None
+    return rule_for_version(CATALOG["resources" if category == "resource" else "data"].get(resource_type),version)
 
 def attribute_values(body, path):
     values = [body]

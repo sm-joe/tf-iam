@@ -4,6 +4,8 @@ from .catalog_loader import get_rule, actions_for, operation_actions, attribute_
 from .plan import parse_plan
 from .risk import assess
 from .resolver import discover
+from .versioning import selected_version, evidence_status
+from .authorization import audit
 from .expanded_scope import expand
 from .action_scope import network, elb, EC2_TYPES, ELB_TYPES, EC2_GLOBAL
 
@@ -14,13 +16,17 @@ def blocks(doc, key):
 def literal(v):
     return v if isinstance(v,str) and v and not any(c in v for c in ('${','%{','*','?')) else None
 
-def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None, scope_resource_tags=False):
+def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None, scope_resource_tags=False, provider_version=None, authorization_metadata=None):
     if root is None and plan is None: raise ValueError('Provide a Terraform directory or saved plan JSON')
     has_root=root is not None
     root=Path(root or '.').resolve()
     if not root.is_dir(): raise ValueError('Terraform directory does not exist')
     report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'backends':[], 'unresolved_permissions':[]}
     report['catalog']={'schema_version':CATALOG['schema_version'],'provider':CATALOG['provider'],'provider_version':None}
+    provider_selection=selected_version(root if has_root else None,provider_version)
+    version=provider_selection['version']
+    report['catalog']['provider_version']=version
+    report['catalog']['provider_selection']=provider_selection
     visited=set(); records=set()
     def warn(msg):
         if msg not in report['warnings']: report['warnings'].append(msg)
@@ -144,7 +150,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             resource_phase=('plan' if operation=='read' else 'destroy' if operation=='delete' else 'apply') if task else phase
                             if typ=='terraform_remote_state' and category=='data':
                                 backend(body.get('backend','unknown'),body.get('config',{}),address,True); continue
-                            rule=get_rule(category,typ)
+                            rule=get_rule(category,typ,version)
                             entry=task['entry'] if task else {'address':address,'type':typ,'mode':category,'status':'PARTIAL' if rule else 'UNSUPPORTED'}
                             if not task: entry['file']=source; report['resources'].append(entry)
                             if not rule: entry['status']='UNSUPPORTED'
@@ -261,18 +267,32 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
             if backend_config: backend('s3',backend_config,'explicit-backend')
             elif has_root and docs and not any('cloud' in group for _,doc in docs for group in blocks(doc,'terraform')) and len(docs)==len(files): backend('local',{},'implicit-local')
             else: warn('Backend could not be determined; supply the Terraform directory or explicit S3 backend config')
-    lock=root/'.terraform.lock.hcl'
-    if has_root and lock.is_file():
-        try:
-            import hcl2
-            with lock.open() as handle: locked=hcl2.load(handle)
-            for group in blocks(locked,'provider'):
-                if CATALOG['provider'] in group: report['catalog']['provider_version']=group[CATALOG['provider']].get('version')
-        except Exception: warn('AWS provider lockfile could not be parsed')
     visit(root,True)
+    mapped=0; eligible=0; verified=0; reviewed=0
+    used_actions=set()
     for entry in report['resources']:
-        rule=get_rule(entry['mode'],entry['type'])
-        if rule: entry['provider_version_validated']=rule['validation']=='validated' and report['catalog']['provider_version'] in rule['provider_versions']
+        if entry['status']=='SKIPPED': continue
+        eligible+=1
+        rule=get_rule(entry['mode'],entry['type'],version) if entry['status']!='UNSUPPORTED' else None
+        status=evidence_status(rule,version)
+        entry['validation_level']=status
+        entry['provider_version_validated']=status=='lifecycle-verified'
+        if rule:
+            mapped+=1
+            for field in ('read','write','delete'): used_actions.update(rule[field])
+            for attr in rule['attributes']: used_actions.update(attr['actions'])
+            entry['validation_evidence']=[e for e in rule.get('evidence',[]) if e['provider_version']==version]
+        verified+=status=='lifecycle-verified'
+        reviewed+=status=='provider-source-reviewed'
+    report['mapping_coverage']={'eligible_resources':eligible,'mapped_resources':mapped,'unmapped_resources':eligible-mapped,'mapping_percent':round(100*mapped/eligible,2) if eligible else None}
+    report['authorization_confidence']={'provider_version':version,'lifecycle_verified_resources':verified,'source_reviewed_resources':reviewed,'unvalidated_mapped_resources':mapped-verified-reviewed,'status':'unvalidated' if not verified else 'partial-evidence'}
+    if not version: warn('AWS provider version unknown; supply the Terraform lockfile or --aws-provider-version')
+    if provider_selection['lockfile_status']=='invalid-lockfile': warn('AWS provider lockfile could not be parsed')
+    if version and mapped>verified: warn('AWS provider '+version+': one or more mappings lack exact-version lifecycle evidence')
+    if authorization_metadata is not None:
+        report['authorization_metadata']=audit(used_actions,report['permissions'],authorization_metadata)
+        if report['authorization_metadata']['status']!='compatible': warn('AWS authorization metadata audit contains findings; review authorization_metadata before generating a policy')
+    else: report['authorization_metadata']={'status':'not-run'}
     warn('Starter catalog is not provider-version validated; review all permissions with cloud audit evidence before production use.')
     report['permissions'].sort(key=lambda p:(p['provider'],p['action'],p['scope'],p['source']))
     report['scope_summary']={'global':sum(p['scope']=='*' for p in report['permissions']),'bounded_wildcard':sum(p['scope']!='*' and '*' in p['scope'] for p in report['permissions']),'exact':sum('*' not in p['scope'] and '?' not in p['scope'] for p in report['permissions']),'conditional':sum(bool(p.get('condition')) for p in report['permissions']),'unresolved':len(report['unresolved_permissions'])}

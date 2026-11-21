@@ -1,6 +1,8 @@
 import argparse, json, sys, fnmatch
 from pathlib import Path
 from .scan import scan
+from .authorization import catalog_actions, download_snapshot, audit
+from .versioning import selected_version
 
 def policy(report,provider,name,scope):
     rows=[r for r in report['permissions'] if r['provider']==provider]
@@ -65,8 +67,14 @@ def read_plan_json(path):
 def main(argv=None):
     parser=argparse.ArgumentParser(prog='tfiam',description='Terraform IAM candidate policy analyzer')
     sub=parser.add_subparsers(dest='command',required=True)
+    catalog=sub.add_parser('catalog-audit',help='Audit catalog action names using AWS service authorization snapshots')
+    catalog.add_argument('--metadata-dir',type=Path,required=True)
+    catalog.add_argument('--refresh',action='store_true',help='Download public AWS service metadata')
+    catalog.add_argument('--aws-provider-version')
+    catalog.add_argument('--output',type=Path)
+    catalog.add_argument('--strict',action='store_true')
     for cmd in ('scan','generate','compare'):
-        p=sub.add_parser(cmd); p.add_argument('directory',type=Path,nargs='?'); p.add_argument('--plan-json',type=Path,help='Saved terraform show -json output; optional directory supplies backend and lockfile'); p.add_argument('--phase',choices=['plan','apply','destroy'],default='apply'); p.add_argument('--var-file',action='append',type=Path,default=[]); p.add_argument('--var',action='append',default=[],metavar='NAME=VALUE'); p.add_argument('--scope-resource-tags',action='store_true',help='Restrict supported existing-resource EC2 mutations to stable saved-plan tags'); p.add_argument('--aws-account'); p.add_argument('--aws-region'); p.add_argument('--aws-partition',default='aws'); p.add_argument('--backend-config',type=Path,help='JSON backend overrides'); p.add_argument('--output',type=Path); p.add_argument('--strict',action='store_true',help='Exit 2 when analysis is partial')
+        p=sub.add_parser(cmd); p.add_argument('directory',type=Path,nargs='?'); p.add_argument('--plan-json',type=Path,help='Saved terraform show -json output; optional directory supplies backend and lockfile'); p.add_argument('--phase',choices=['plan','apply','destroy'],default='apply'); p.add_argument('--var-file',action='append',type=Path,default=[]); p.add_argument('--var',action='append',default=[],metavar='NAME=VALUE'); p.add_argument('--scope-resource-tags',action='store_true',help='Restrict supported existing-resource EC2 mutations to stable saved-plan tags'); p.add_argument('--aws-provider-version',help='Exact provider version if lockfile unavailable'); p.add_argument('--authorization-metadata',type=Path,help='Local AWS service authorization metadata'); p.add_argument('--aws-account'); p.add_argument('--aws-region'); p.add_argument('--aws-partition',default='aws'); p.add_argument('--backend-config',type=Path,help='JSON backend overrides'); p.add_argument('--output',type=Path); p.add_argument('--strict',action='store_true',help='Exit 2 when analysis is partial')
         if cmd=='scan': p.add_argument('--format',choices=['text','json'],default='text')
         else: p.add_argument('--provider',default='aws',choices=['aws'])
         if cmd=='generate':
@@ -74,6 +82,15 @@ def main(argv=None):
         if cmd=='compare': p.add_argument('--existing',required=True,type=Path); p.add_argument('--fail-on-missing',action='store_true')
     args=parser.parse_args(argv)
     try:
+        if args.command=='catalog-audit':
+            version=selected_version(None,args.aws_provider_version)['version']
+            actions=catalog_actions(version)
+            if args.refresh: download_snapshot(args.metadata_dir,{a.split(':',1)[0] for a in actions})
+            result=audit(actions,[],args.metadata_dir)
+            output=json.dumps(result,indent=2)
+            if args.output: args.output.write_text(output+'\n',encoding='utf-8')
+            else: print(output)
+            return 2 if args.strict and result['status']!='compatible' else 0
         config=json.loads(args.backend_config.read_text()) if args.backend_config else None
         if args.directory is None and args.plan_json is None: raise ValueError('Provide a Terraform directory or --plan-json')
         plan=read_plan_json(args.plan_json) if args.plan_json else None
@@ -82,10 +99,12 @@ def main(argv=None):
             key,sep,value=item.partition('=')
             if not sep or not key: raise ValueError('--var requires NAME=VALUE')
             variables.append((key,value))
-        report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags)
+        report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags,provider_version=args.aws_provider_version,authorization_metadata=args.authorization_metadata)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
+        if args.command=='generate' and report['authorization_metadata']['status']=='issues': raise ValueError('AWS authorization metadata audit reports invalid actions or resource scopes; review scan findings before generating')
         if args.command=='scan' and args.format=='text':
             lines=[f'TF IAM Scope | {report["phase"]} | {report["coverage"]}',f'Resources: {len(report["resources"])} | Permission observations: {len(report["permissions"])}']
+            mc=report['mapping_coverage']; ac=report['authorization_confidence']; lines.append(f"AWS provider: {ac['provider_version'] or 'unknown'} | Mappings: {mc['mapped_resources']}/{mc['eligible_resources']} | Lifecycle verified: {ac['lifecycle_verified_resources']} | Metadata: {report['authorization_metadata']['status']}")
             if report.get('plan'): lines.append('Input: Terraform plan JSON | Terraform '+report['plan']['terraform_version'])
             for r in report['resources']: lines.append(f'{r["status"]:11} {r["address"]}'+(' ('+' → '.join(r['operations'])+')' if 'operations' in r else ''))
             groups={}
@@ -107,7 +126,7 @@ def main(argv=None):
             if args.format=='terraform': result=terraform(result,args.provider,args.name,args.scope)
             output=json.dumps(result,indent=2)
         else:
-            result=compare(report,args.provider,json.loads(args.existing.read_text())); result['scan_warnings']=report['warnings']; result['unresolved_permissions']=report['unresolved_permissions']; result['scope_summary']=report['scope_summary']; result['input']=report['input']; result['plan']=report.get('plan'); result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
+            result=compare(report,args.provider,json.loads(args.existing.read_text())); result['scan_warnings']=report['warnings']; result['unresolved_permissions']=report['unresolved_permissions']; result['scope_summary']=report['scope_summary']; result['mapping_coverage']=report['mapping_coverage']; result['authorization_confidence']=report['authorization_confidence']; result['authorization_metadata']=report['authorization_metadata']; result['input']=report['input']; result['plan']=report.get('plan'); result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
             if args.fail_on_missing and (result['missing_or_unverified'] or result['explicitly_denied']): status=3
         if args.output: args.output.write_text(output+'\n',encoding='utf-8')
         else: print(output)
