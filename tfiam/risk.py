@@ -26,6 +26,16 @@ DESTRUCTIVE={
     "ecr:DeleteRepository","logs:DeleteLogGroup","lambda:DeleteFunction",
     "sqs:DeleteQueue","route53:DeleteHostedZone","elasticloadbalancing:DeleteLoadBalancer",
 }
+# All catalog destroy actions are security-sensitive, including APIs also used
+# for ordinary updates. IAM policy cannot distinguish Terraform's intent.
+from .catalog_loader import CATALOG
+DESTROY_ACTIONS = {a.lower() for rule in CATALOG["resources"].values()
+                   for variant in [rule]+list(rule.get("version_overrides",{}).values())
+                   for a in variant.get("delete",[])}
+def destructive(row):
+    action=row["action"].lower()
+    return action in DESTROY_ACTIONS or action in {a.lower() for a in DESTRUCTIVE}
+
 def assess(rows):
     grouped={}
     for row in rows:
@@ -39,7 +49,7 @@ def assess(rows):
         evidence=grouped.get(action.lower(),[])
         if not evidence: continue
         if action=="iam:PassRole":
-            unrestricted=any(r["scope"]=="*" or "*" in r["scope"] or "?" in r["scope"] or not any("iam:PassedToService" in keys for keys in r.get("condition",{}).values()) for r in evidence)
+            unrestricted=any(r["scope"]=="*" or "*" in r["scope"] or "?" in r["scope"] or not any(isinstance(v,str) and v and "*" not in v and "?" not in v and v.endswith(".amazonaws.com") for v in [r.get("condition",{}).get("StringEquals",{}).get("iam:PassedToService")]) for r in evidence)
             severity="CRITICAL" if unrestricted else "HIGH"
             message="Potential unrestricted role delegation." if unrestricted else "Scoped role delegation; verify effective target role privileges."
         elif "PermissionsBoundary" in action: message="Permissions boundary modification or removal; review independent enforcement."
@@ -49,8 +59,9 @@ def assess(rows):
     for combo in COMBOS:
         if all(a.lower() in grouped for a in combo):
             add("combination",combo,"HIGH","Potential delegation combination; exploitability depends on scope, identity and conditions.")
-    for action in sorted(DESTRUCTIVE):
-        if action.lower() in grouped: add("destructive",[action],"HIGH","Destructive infrastructure or data permission; require explicit approval.")
+    for key, evidence in sorted(grouped.items()):
+        if any(destructive(row) for row in evidence):
+            add("destructive",[evidence[0]["action"]],"HIGH","Permission is used by a destroy lifecycle or destructive API; require explicit approval. Shared update/delete APIs are treated conservatively.")
     return findings
 
 def gate(report,threshold=None,unresolved=False,unmapped=False,metadata=False):

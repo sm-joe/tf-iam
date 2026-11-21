@@ -1,23 +1,25 @@
 # Release acceptance gates
 
-- [x] Real EKS no-op saved plan: user reported all 13 resources recognized and read-only candidates.
-- [ ] Real Terraform create, update, delete and both replacement orders: verify generated policy matches the exact planned operation.
-- [ ] Execute isolated AWS Terraform lifecycle with generated restricted CI/CD identities; capture CloudTrail and authorization failures.
-- [ ] Validate policy actions, ARN types and conditions using AWS IAM Access Analyzer and provider-version-specific evidence.
-- [ ] Validate module inputs, nested and installed modules against Terraform plan output.
-- [ ] Verify no silent privilege wildcard fallback, backend locks and state access, strict coverage gates and secret redaction.
-- [ ] Signed reproducible Linux CLI release and passing CI.
- 
-Unit tests and mapping coverage are not equivalent to live acceptance.
+## Evidence reported by the maintainer
 
-- [ ] Validate each expanded AWS service family with provider-version-pinned lifecycle fixtures and action-specific resource authorization; recognized mappings alone do not satisfy acceptance.
+- [x] EKS no-op saved plan: 13 mapped resources, read-only candidates, exact Pod Identity ARN.
+- [x] EKS destroy plan: 13 mapped resources and five conditional detach permissions; no resources destroyed.
+- [x] AWS catalog action-name audit: 442 recognized actions, zero findings.
+- [x] AWS provider lockfile extraction (6.73.0).
+- [x] IAM Access Analyzer integration returned zero findings for the submitted policy.
+- [x] Live IAM policy retrieval and comparison against an existing read-only role.
+- [x] CloudTrail connectivity and empty-result handling; the selected role was not used in the period.
+- [x] CI and standalone binary build on prior merged commits.
 
-- [ ] Verify M05 multi-resource authorization, tag conditions, KMS before/after keys and EKS identity scopes in isolated AWS lifecycle executions. Confirm all omissions are resolved before production release.
+## Outstanding stable-release requirements
 
-- [ ] M06: retain exact provider version, source review and lifecycle evidence digests; validate all supported mappings against AWS authorization metadata.
+- [ ] Exact final commit CI and binary smoke test.
+- [ ] Real isolated AWS create, update, delete and both replacement order tests using restricted Terraform identities.
+- [ ] Verify provider-version-specific API calls and action/ARN/condition compatibility across supported service families.
+- [ ] Positive CloudTrail role activity and denial observations; verify no false claim of unused permissions.
+- [ ] Validate module resolution, backend locking, privilege separation, security gates and secret redaction with reviewed evidence.
+- [ ] Verify binary repeatability and signed build provenance.
+- [ ] Digest-verified acceptance manifest linked to the exact release commit.
+- [ ] Publish stable release only after review.
 
-- [x] Real EKS destroy-plan candidate analysis: all 13 resources recognized, exact Pod Identity ARN and five conditional detachment grants; no live destroy performed.
-- [ ] M07 risk thresholds and M08 separated policy roles validated against real scoped AWS identities.
-- [ ] M09 IAM retrieval, M10 Access Analyzer, M11 CloudTrail tested in the acceptance account.
-- [ ] M12 acceptance manifest contains reviewed, digest-verified artifacts for tested commit and exact AWS provider version.
-- [ ] M13 standalone binary smoke-tested, reproducibility verified and artifact signed before stable release.
+Unit tests and metadata compatibility do not substitute for live authorization verification. No production IAM policy should be attached solely on the basis of these reports.

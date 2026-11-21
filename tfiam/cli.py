@@ -1,4 +1,4 @@
-import argparse, json, sys, fnmatch
+import argparse, json, sys
 from pathlib import Path
 from .scan import scan
 from .authorization import catalog_actions, download_snapshot, audit
@@ -20,27 +20,7 @@ def terraform(p,provider,name,scope):
     else: raise ValueError('Only AWS is supported')
     return {'resource':{typ:{'candidate':body}}}
 
-def matches(pattern,value): return fnmatch.fnmatchcase(value.lower(),pattern.lower())
-def arr(x): return x if isinstance(x,list) else [x]
-def compare(report,provider,existing):
-    rows=[r for r in report['permissions'] if r['provider']==provider]; grants=[]; uncertain=[]; denies=[]
-    if provider=='aws':
-        for s in arr(existing.get('Statement',[])):
-            if s.get('Condition') or 'NotAction' in s or 'NotResource' in s or 'Principal' in s:
-                uncertain.append('Complex AWS statement requires manual evaluation'); continue
-            target=grants if s.get('Effect')=='Allow' else denies
-            for a in arr(s.get('Action',[])):
-                for r in arr(s.get('Resource',[])): target.append((a,r,'management'))
-    else: raise ValueError('Only AWS is supported')
-    def covers(g,r):
-        a,s,p=g
-        return p==r['plane'] and matches(a,r['action']) and (provider!='aws' or (s=='*' or s==r['scope'] or ('*' not in r['scope'] and fnmatch.fnmatchcase(r['scope'],s))))
-    missing=[]; blocked=[]
-    for r in rows:
-        if any(covers(g,r) for g in denies): blocked.append(r)
-        elif not any(covers(g,r) for g in grants): missing.append(r)
-    excess=[{'action':a,'scope':s,'plane':p} for a,s,p in grants if '*' in a or '?' in a or not any(covers((a,s,p),r) for r in rows) or (provider=='aws' and s=='*' and any(covers((a,s,p),r) and r['scope']!='*' for r in rows))]
-    return {'coverage':'PARTIAL','missing_or_unverified':missing,'explicitly_denied':blocked,'potentially_excessive':excess,'warnings':uncertain+['Static comparison only; inherited policies, conditions, boundaries, SCPs, assignments and unknown resources are not evaluated. Do not automatically revoke permissions.']}
+from .comparison import compare
 
 def read_plan_json(path):
     """Read a saved JSON plan, including BOM-encoded Windows exports."""
