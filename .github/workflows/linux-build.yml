@@ -1,0 +1,26 @@
+name: Linux binary build
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[test,aws,packaging]'
+      - run: python -m pytest -q
+      - run: bash scripts/build-linux.sh
+      - run: dist/tfiam --help && dist/tfiam scan examples/aws-hcl --format json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfiam-linux-x86_64
+          path: |
+            dist/tfiam
+            dist/SHA256SUMS

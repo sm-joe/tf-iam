@@ -9,3 +9,11 @@ __pycache__/
 *.tfplan
 plan.json
 tfplan
+
+.aws-auth/
+*.plan.json
+!examples/plans/*.plan.json
+evidence/
+build/
+dist/
+*.spec

@@ -15,3 +15,9 @@ Unit tests and mapping coverage are not equivalent to live acceptance.
 - [ ] Verify M05 multi-resource authorization, tag conditions, KMS before/after keys and EKS identity scopes in isolated AWS lifecycle executions. Confirm all omissions are resolved before production release.
 
 - [ ] M06: retain exact provider version, source review and lifecycle evidence digests; validate all supported mappings against AWS authorization metadata.
+
+- [x] Real EKS destroy-plan candidate analysis: all 13 resources recognized, exact Pod Identity ARN and five conditional detachment grants; no live destroy performed.
+- [ ] M07 risk thresholds and M08 separated policy roles validated against real scoped AWS identities.
+- [ ] M09 IAM retrieval, M10 Access Analyzer, M11 CloudTrail tested in the acceptance account.
+- [ ] M12 acceptance manifest contains reviewed, digest-verified artifacts for tested commit and exact AWS provider version.
+- [ ] M13 standalone binary smoke-tested, reproducibility verified and artifact signed before stable release.
