@@ -59,7 +59,7 @@ tfiam scan ./examples/eks --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REG
 | `validate-policy` | Validate an identity policy through IAM Access Analyzer |
 | `runtime-audit` | Analyze CloudTrail observations for an exact IAM session issuer |
 
-Run any command with `--help` for options.
+Run any command with `--help` for options. Scan defaults to a readable ASCII table. All seven commands support `--format table`; use `--format json --output report.json --show-table` to save full machine-readable output and print tables to stderr. Generate defaults to JSON; `--format terraform` remains available. Tables are review views, and very large comparison detail sections are explicitly abbreviated.
 
 ## Terraform workflow
 
@@ -73,7 +73,7 @@ tfiam scan ./infra --plan-json plan.json --aws-account "$AWS_ACCOUNT_ID" --aws-r
 tfiam generate ./infra --plan-json plan.json --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --allow-partial --output policy.json
 ```
 
-The directory supplies backend and lockfile data in plan mode; it does not add static resource changes. Plan paths resolve relative to the current shell. Use exported JSON, not a binary plan or streaming UI JSON. UTF-8 and BOM-encoded UTF-16/32 are accepted. No-op resources emit read candidates; replacements retain before/after identities. Destroy mode rejects plans with managed create/update operations. Imports, drift, deferred changes and unknowns require review.
+The directory supplies backend and lockfile data in plan mode, plus direct source-expression evidence for computed EKS role ARNs; it does not add static resource changes. For fresh EKS creates, a missing ARN can be derived from the exact planned role name and path only when the corresponding root source is an unambiguous direct role ARN reference, the saved plan confirms that reference and both resources use the default AWS provider. Use the same unchanged configuration that produced the plan. Unknown or sensitive names/paths, aliases, indexed/module instances and ambiguous expressions remain unresolved; no wildcard PassRole is emitted. Plan paths resolve relative to the current shell. Use exported JSON, not a binary plan or streaming UI JSON. UTF-8 and BOM-encoded UTF-16/32 are accepted. No-op resources emit read candidates; replacements retain before/after identities. Destroy mode rejects plans with managed create/update operations. Imports, drift, deferred changes and unknowns require review.
 
 Static scanning also supports `--phase plan`, `--phase apply` and `--phase destroy`. Static apply includes possible deletions for replacement. A plan-phase scan is not proof of all permissions required to run Terraform plan.
 
