@@ -1,0 +1,10 @@
+terraform {
+  backend "s3" {
+    bucket = "company-tf-state"
+    key = "prod/terraform.tfstate"
+    use_lockfile = true
+  }
+}
+resource "aws_s3_bucket" "logs" {
+  bucket = "company-prod-logs"
+}

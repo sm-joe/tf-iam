@@ -1,0 +1,37 @@
+{
+  "resource": {
+    "aws_iam_role": {
+      "eks_cluster": {
+        "name": "eks-cluster"
+      },
+      "eks_node": {
+        "name": "eks-node"
+      },
+      "ebs_csi_driver": {
+        "name": "ebs-csi-driver"
+      }
+    },
+    "aws_iam_role_policy_attachment": {
+      "eks_cluster_policy": {
+        "role": "${aws_iam_role.eks_cluster.name}",
+        "policy_arn": "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+      },
+      "eks_worker_node": {
+        "role": "${aws_iam_role.eks_node.name}",
+        "policy_arn": "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+      },
+      "eks_cni": {
+        "role": "${aws_iam_role.eks_node.name}",
+        "policy_arn": "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+      },
+      "eks_ecr": {
+        "role": "${aws_iam_role.eks_node.name}",
+        "policy_arn": "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPullOnly"
+      },
+      "ebs_csi_policy": {
+        "role": "${aws_iam_role.ebs_csi_driver.name}",
+        "policy_arn": "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+      }
+    }
+  }
+}

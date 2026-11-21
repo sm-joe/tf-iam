@@ -1,0 +1,11 @@
+{
+  "resource": {
+    "aws_eks_node_group": {
+      "managed": {
+        "cluster_name": "${aws_eks_cluster.this.name}",
+        "node_group_name": "managed",
+        "node_role_arn": "${aws_iam_role.eks_node.arn}"
+      }
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"terraform":{"backend":{"s3":{"bucket":"company-tf-state","key":"prod/terraform.tfstate","use_lockfile":true}}},"resource":{"aws_s3_bucket":{"logs":{"bucket":"company-prod-logs"}},"google_storage_bucket":{"artifacts":{"name":"company-artifacts","location":"EU"}},"azurerm_resource_group":{"app":{"name":"rg-app","location":"West Europe"}},"aws_unsupported_example":{"unknown":{}}}}
