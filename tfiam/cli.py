@@ -81,16 +81,19 @@ def main(argv=None):
             lines[1]+=f' | Unique grants: {len(groups)}'
             for (provider,action,scope,condition),sources in sorted(groups.items()):
                 lines.append(f'{provider:5} {action} [{scope}] ({len(sources)} sources)'+(' '+condition if condition!='null' else ''))
+            lines.extend('RISK: '+r['provider']+' '+', '.join(r['actions'])+' — '+r['message'] for r in report['risks'])
             lines.extend('REVIEW: '+w for w in report['warnings']); output='\n'.join(lines)
         elif args.command=='scan': output=json.dumps(report,indent=2)
         elif args.command=='generate':
             print(f'REVIEW: {len(report["warnings"])} scan warnings; run scan for details.',file=sys.stderr)
             if args.provider!='aws': print('REVIEW: role definition combines permissions across scopes; split backend and infrastructure roles before assigning.',file=sys.stderr)
+            for risk in report['risks']:
+                if risk['provider']==args.provider: print('RISK: '+', '.join(risk['actions'])+' — '+risk['message'],file=sys.stderr)
             result=policy(report,args.provider,args.name,args.scope)
             if args.format=='terraform': result=terraform(result,args.provider,args.name,args.scope)
             output=json.dumps(result,indent=2)
         else:
-            result=compare(report,args.provider,json.loads(args.existing.read_text())); result['scan_warnings']=report['warnings']; output=json.dumps(result,indent=2)
+            result=compare(report,args.provider,json.loads(args.existing.read_text())); result['scan_warnings']=report['warnings']; result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
             if args.fail_on_missing and (result['missing_or_unverified'] or result['explicitly_denied']): status=3
         if args.output: args.output.write_text(output+'\n',encoding='utf-8')
         else: print(output)

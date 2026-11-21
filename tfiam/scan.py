@@ -1,6 +1,7 @@
 import json, re
 from pathlib import Path
 from .rules import RULES, EXTRA
+from .risk import assess
 
 def blocks(doc, key):
     value=doc.get(key, [])
@@ -182,4 +183,5 @@ def scan(root, phase='apply', account=None, region=None, partition='aws', backen
     visit(root,True)
     warn('Starter catalog is not provider-version validated; review all permissions with cloud audit evidence before production use.')
     report['permissions'].sort(key=lambda p:(p['provider'],p['action'],p['scope'],p['source']))
+    report['risks'] = assess(report['permissions'])
     return report
