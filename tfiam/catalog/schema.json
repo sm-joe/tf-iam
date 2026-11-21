@@ -181,6 +181,185 @@
             "route-record",
             "policy"
           ]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "provider_version",
+              "level",
+              "reference",
+              "sha256"
+            ],
+            "properties": {
+              "provider_version": {
+                "type": "string",
+                "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+              },
+              "level": {
+                "enum": [
+                  "provider-source-reviewed",
+                  "lifecycle-verified"
+                ]
+              },
+              "reference": {
+                "type": "string",
+                "pattern": "^https://"
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              }
+            }
+          }
+        },
+        "version_overrides": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "validation",
+              "read",
+              "write",
+              "create",
+              "update",
+              "delete",
+              "attributes",
+              "evidence"
+            ],
+            "properties": {
+              "validation": {
+                "enum": [
+                  "candidate",
+                  "validated"
+                ]
+              },
+              "read": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
+                }
+              },
+              "write": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
+                }
+              },
+              "create": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
+                }
+              },
+              "update": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
+                }
+              },
+              "delete": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
+                }
+              },
+              "attributes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "path",
+                    "phases",
+                    "actions",
+                    "scope"
+                  ],
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9_]+(\\.[a-zA-Z0-9_]+)*$"
+                    },
+                    "phases": {
+                      "type": "array",
+                      "items": {
+                        "enum": [
+                          "plan",
+                          "apply",
+                          "destroy"
+                        ]
+                      },
+                      "minItems": 1,
+                      "uniqueItems": true
+                    },
+                    "actions": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[a-zA-Z0-9-]+:[a-zA-Z0-9]+$"
+                      }
+                    },
+                    "scope": {
+                      "enum": [
+                        "resource",
+                        "literal_arn"
+                      ]
+                    }
+                  }
+                }
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "provider_version",
+                    "level",
+                    "reference",
+                    "sha256"
+                  ],
+                  "properties": {
+                    "provider_version": {
+                      "type": "string",
+                      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+                    },
+                    "level": {
+                      "enum": [
+                        "provider-source-reviewed",
+                        "lifecycle-verified"
+                      ]
+                    },
+                    "reference": {
+                      "type": "string",
+                      "pattern": "^https://"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-f0-9]{64}$"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

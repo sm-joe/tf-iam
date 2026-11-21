@@ -93,3 +93,7 @@ The scanner accepts UTF-8 and BOM-encoded UTF-16/UTF-32 JSON exports and reports
 ## Action-specific scope (M05)
 
 The report includes `scope_summary` and `unresolved_permissions` for the action-specific engine. See [scope design and supported cases](docs/action-scope.md). Bounded future-ID wildcards are not global permissions; omitted dependencies still mean the generated policy may be insufficient.
+
+## Provider validation (M06)
+
+See [provider-version evidence and AWS metadata audit](docs/provider-validation.md). Use `tfiam catalog-audit --metadata-dir .aws-auth --refresh` to retrieve public AWS authorization metadata. Mapping coverage is reported separately from provider authorization confidence.
