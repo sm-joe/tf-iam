@@ -29,7 +29,7 @@ jobs:
       - run: |
           python -m pip wheel --no-deps --wheel-dir "$RUNNER_TEMP/wheels" .
           python -m venv "$RUNNER_TEMP/tfiam-install"
-          "$RUNNER_TEMP/tfiam-install/bin/python" -m pip install "$RUNNER_TEMP"/wheels/tf_iam_scope-*.whl
+          "$RUNNER_TEMP/tfiam-install/bin/python" -m pip install "$RUNNER_TEMP"/wheels/tf_iam-*.whl
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/tfiam-install/bin/python" -I -c 'import tfiam.cli; from importlib.resources import files; assert files("tfiam").joinpath("catalog/aws.json").is_file(); print(tfiam.cli.__file__)'
           "$RUNNER_TEMP/tfiam-install/bin/tfiam" --help

@@ -2,7 +2,7 @@
 requires = ["setuptools>=80"]
 build-backend = "setuptools.build_meta"
 [project]
-name = "tf-iam-scope"
+name = "tf-iam"
 version = "1.0.0"
 description = "AWS Terraform CI/CD IAM permission analyzer"
 readme = "README.md"

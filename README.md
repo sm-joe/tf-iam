@@ -1,4 +1,4 @@
-# TF IAM Scope
+# tf-iam
 
 **AWS IAM permission intelligence for Terraform CI/CD.**
 
@@ -6,7 +6,7 @@
 [![Linux build](https://github.com/sm-joe/tf-iam/actions/workflows/linux-build.yml/badge.svg)](https://github.com/sm-joe/tf-iam/actions/workflows/linux-build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-TF IAM Scope analyzes Terraform configuration and saved plans, derives scoped AWS IAM permission candidates, highlights security-sensitive operations and compares candidate grants with existing deployment identities. It is a standalone CLI for engineers reviewing infrastructure permissions before deployment.
+tf-iam analyzes Terraform configuration and saved plans, derives scoped AWS IAM permission candidates, highlights security-sensitive operations and compares candidate grants with existing deployment identities. It is a standalone CLI for engineers reviewing infrastructure permissions before deployment.
 
 ## Features
 
@@ -34,6 +34,7 @@ git clone https://github.com/sm-joe/tf-iam.git
 cd tf-iam
 python3 -m venv .venv
 source .venv/bin/activate
+python -m pip uninstall -y tf-iam-scope  # only needed when upgrading an older checkout
 python -m pip install '.[aws]'
 tfiam --help
 ```
@@ -62,7 +63,7 @@ Run any command with `--help` for options.
 
 ## Terraform workflow
 
-Use an appropriately authorized planning identity to create the plan. TF IAM Scope never invokes Terraform itself.
+Use an appropriately authorized planning identity to create the plan. tf-iam never invokes Terraform itself.
 
 ```bash
 umask 077

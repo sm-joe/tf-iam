@@ -8,7 +8,7 @@ Do not test against systems you do not own or have authorization to assess. Publ
 
 ## Security model
 
-TF IAM Scope performs local analysis by default. Optional integrations retrieve public metadata or use AWS read/validation APIs with the caller's credentials. The tool does not attach policies, deploy Terraform, mutate infrastructure or automatically revoke permissions. Use a separate least-privilege audit identity and external approval controls.
+tf-iam performs local analysis by default. Optional integrations retrieve public metadata or use AWS read/validation APIs with the caller's credentials. The tool does not attach policies, deploy Terraform, mutate infrastructure or automatically revoke permissions. Use a separate least-privilege audit identity and external approval controls.
 
 Generated policies are candidate artifacts, not verified least-privilege guarantees. Mapping coverage, Access Analyzer and runtime observations do not establish effective policy authority. Review boundaries, SCPs, resource policies, session policies, unknown dependencies, service-linked roles and provider-version lifecycle behavior. Never automatically deploy a break-glass policy.
 
