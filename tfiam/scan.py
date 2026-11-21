@@ -4,6 +4,7 @@ from .catalog_loader import get_rule, actions_for, operation_actions, attribute_
 from .plan import parse_plan
 from .risk import assess
 from .resolver import discover
+from .expanded_scope import expand
 
 def blocks(doc, key):
     value=doc.get(key, [])
@@ -145,6 +146,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if not rule: warn(address+': no AWS '+category+' permission mapping'); continue
                             entry['validation']=rule['validation']; entry['reference']=rule['reference']
                             p='aws'; acts=operation_actions(rule,operation) if task else actions_for(rule, 'plan' if category=='data' else phase)
+                            if rule.get('scope_strategy'):
+                                expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task)
+                                continue
                             attr_rules=[]
                             for attr in rule['attributes']:
                                 values=attribute_values(body,attr['path'])
@@ -230,14 +234,6 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if resource_phase!='plan' and typ in ('aws_iam_role','aws_iam_policy'): warn(address+': review privilege delegation and permissions boundaries')
                             if typ=='aws_instance' and body.get('iam_instance_profile'): warn(address+': instance profile PassRole dependency unresolved; permission omitted')
                             if scope=='*': warn(address+': exact resource scope not inferred')
-            for group in blocks(doc,'module'):
-                for name,body in group.items():
-                    source=literal(body.get('source'))
-                    if source and source.startswith(('./','../')):
-                        target=(folder/source).resolve()
-                        if target.is_relative_to(root) and target.is_dir(): visit(target)
-                        else: warn(src+': module '+name+' outside scan root or missing')
-                    else: warn(src+': remote or dynamic module '+name+' not analyzed')
         for src,doc in docs:
             if is_root:
                 for group in blocks(doc,'terraform'):

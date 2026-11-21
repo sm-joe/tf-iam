@@ -9,3 +9,5 @@
 - [ ] Signed reproducible Linux CLI release and passing CI.
  
 Unit tests and mapping coverage are not equivalent to live acceptance.
+
+- [ ] Validate each expanded AWS service family with provider-version-pinned lifecycle fixtures and action-specific resource authorization; recognized mappings alone do not satisfy acceptance.

@@ -540,6 +540,2316 @@
       "update": [
         "eks:UpdatePodIdentityAssociation"
       ]
+    },
+    "aws_iam_role_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:GetRolePolicy"
+      ],
+      "write": [
+        "iam:PutRolePolicy"
+      ],
+      "delete": [
+        "iam:DeleteRolePolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "iam:PutRolePolicy"
+      ],
+      "update": [
+        "iam:PutRolePolicy"
+      ],
+      "scope_strategy": "role"
+    },
+    "aws_iam_openid_connect_provider": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:GetOpenIDConnectProvider",
+        "iam:ListOpenIDConnectProviderTags"
+      ],
+      "write": [
+        "iam:AddClientIDToOpenIDConnectProvider",
+        "iam:CreateOpenIDConnectProvider",
+        "iam:RemoveClientIDFromOpenIDConnectProvider",
+        "iam:TagOpenIDConnectProvider",
+        "iam:UntagOpenIDConnectProvider",
+        "iam:UpdateOpenIDConnectProviderThumbprint"
+      ],
+      "delete": [
+        "iam:DeleteOpenIDConnectProvider"
+      ],
+      "attributes": [],
+      "create": [
+        "iam:CreateOpenIDConnectProvider",
+        "iam:TagOpenIDConnectProvider"
+      ],
+      "update": [
+        "iam:UpdateOpenIDConnectProviderThumbprint",
+        "iam:AddClientIDToOpenIDConnectProvider",
+        "iam:RemoveClientIDFromOpenIDConnectProvider",
+        "iam:TagOpenIDConnectProvider",
+        "iam:UntagOpenIDConnectProvider"
+      ],
+      "scope_strategy": "oidc"
+    },
+    "aws_iam_instance_profile": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:GetInstanceProfile",
+        "iam:ListInstanceProfileTags"
+      ],
+      "write": [
+        "iam:AddRoleToInstanceProfile",
+        "iam:CreateInstanceProfile",
+        "iam:RemoveRoleFromInstanceProfile",
+        "iam:TagInstanceProfile",
+        "iam:UntagInstanceProfile"
+      ],
+      "delete": [
+        "iam:RemoveRoleFromInstanceProfile",
+        "iam:DeleteInstanceProfile"
+      ],
+      "attributes": [],
+      "create": [
+        "iam:CreateInstanceProfile",
+        "iam:AddRoleToInstanceProfile",
+        "iam:TagInstanceProfile"
+      ],
+      "update": [
+        "iam:AddRoleToInstanceProfile",
+        "iam:RemoveRoleFromInstanceProfile",
+        "iam:TagInstanceProfile",
+        "iam:UntagInstanceProfile"
+      ],
+      "scope_strategy": "profile"
+    },
+    "aws_iam_user": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:GetUser",
+        "iam:ListUserTags",
+        "iam:ListAttachedUserPolicies",
+        "iam:ListUserPolicies",
+        "iam:ListGroupsForUser"
+      ],
+      "write": [
+        "iam:CreateUser",
+        "iam:TagUser",
+        "iam:UntagUser",
+        "iam:UpdateUser"
+      ],
+      "delete": [
+        "iam:DeleteUser"
+      ],
+      "attributes": [],
+      "create": [
+        "iam:CreateUser",
+        "iam:TagUser"
+      ],
+      "update": [
+        "iam:UpdateUser",
+        "iam:TagUser",
+        "iam:UntagUser"
+      ],
+      "scope_strategy": "user"
+    },
+    "aws_iam_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:GetGroup",
+        "iam:ListAttachedGroupPolicies",
+        "iam:ListGroupPolicies"
+      ],
+      "write": [
+        "iam:CreateGroup",
+        "iam:UpdateGroup"
+      ],
+      "delete": [
+        "iam:DeleteGroup"
+      ],
+      "attributes": [],
+      "create": [
+        "iam:CreateGroup"
+      ],
+      "update": [
+        "iam:UpdateGroup"
+      ],
+      "scope_strategy": "group"
+    },
+    "aws_iam_user_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:GetUserPolicy"
+      ],
+      "write": [
+        "iam:PutUserPolicy"
+      ],
+      "delete": [
+        "iam:DeleteUserPolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "iam:PutUserPolicy"
+      ],
+      "update": [
+        "iam:PutUserPolicy"
+      ],
+      "scope_strategy": "user"
+    },
+    "aws_iam_group_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:GetGroupPolicy"
+      ],
+      "write": [
+        "iam:PutGroupPolicy"
+      ],
+      "delete": [
+        "iam:DeleteGroupPolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "iam:PutGroupPolicy"
+      ],
+      "update": [
+        "iam:PutGroupPolicy"
+      ],
+      "scope_strategy": "group"
+    },
+    "aws_iam_role_policy_attachments_exclusive": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:ListAttachedRolePolicies"
+      ],
+      "write": [
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy"
+      ],
+      "delete": [],
+      "attributes": [],
+      "create": [
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy"
+      ],
+      "update": [
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy"
+      ],
+      "scope_strategy": "manual"
+    },
+    "aws_eks_access_entry": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html",
+      "read": [
+        "eks:DescribeAccessEntry"
+      ],
+      "write": [
+        "eks:CreateAccessEntry",
+        "eks:TagResource",
+        "eks:UntagResource",
+        "eks:UpdateAccessEntry"
+      ],
+      "delete": [
+        "eks:DeleteAccessEntry"
+      ],
+      "attributes": [],
+      "create": [
+        "eks:CreateAccessEntry",
+        "eks:TagResource"
+      ],
+      "update": [
+        "eks:UpdateAccessEntry",
+        "eks:TagResource",
+        "eks:UntagResource"
+      ],
+      "scope_strategy": "eks-access"
+    },
+    "aws_eks_access_policy_association": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html",
+      "read": [
+        "eks:ListAssociatedAccessPolicies"
+      ],
+      "write": [
+        "eks:AssociateAccessPolicy"
+      ],
+      "delete": [
+        "eks:DisassociateAccessPolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "eks:AssociateAccessPolicy"
+      ],
+      "update": [
+        "eks:AssociateAccessPolicy"
+      ],
+      "scope_strategy": "eks-access"
+    },
+    "aws_eks_fargate_profile": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html",
+      "read": [
+        "eks:DescribeFargateProfile"
+      ],
+      "write": [
+        "eks:CreateFargateProfile",
+        "eks:TagResource",
+        "eks:UntagResource"
+      ],
+      "delete": [
+        "eks:DeleteFargateProfile"
+      ],
+      "attributes": [],
+      "create": [
+        "eks:CreateFargateProfile",
+        "eks:TagResource"
+      ],
+      "update": [
+        "eks:TagResource",
+        "eks:UntagResource"
+      ],
+      "scope_strategy": "manual"
+    },
+    "aws_eks_identity_provider_config": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html",
+      "read": [
+        "eks:DescribeIdentityProviderConfig"
+      ],
+      "write": [
+        "eks:AssociateIdentityProviderConfig",
+        "eks:TagResource",
+        "eks:UntagResource"
+      ],
+      "delete": [
+        "eks:DisassociateIdentityProviderConfig"
+      ],
+      "attributes": [],
+      "create": [
+        "eks:AssociateIdentityProviderConfig"
+      ],
+      "update": [
+        "eks:TagResource",
+        "eks:UntagResource"
+      ],
+      "scope_strategy": "manual"
+    },
+    "aws_internet_gateway": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeInternetGateways"
+      ],
+      "write": [
+        "ec2:AttachInternetGateway",
+        "ec2:CreateInternetGateway",
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "ec2:DetachInternetGateway"
+      ],
+      "delete": [
+        "ec2:DetachInternetGateway",
+        "ec2:DeleteInternetGateway"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateInternetGateway",
+        "ec2:AttachInternetGateway",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:AttachInternetGateway",
+        "ec2:DetachInternetGateway",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_nat_gateway": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeNatGateways"
+      ],
+      "write": [
+        "ec2:CreateNatGateway",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "delete": [
+        "ec2:DeleteNatGateway"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateNatGateway",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_route_table": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeRouteTables"
+      ],
+      "write": [
+        "ec2:CreateRouteTable",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "delete": [
+        "ec2:DeleteRouteTable"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateRouteTable",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_route": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeRouteTables"
+      ],
+      "write": [
+        "ec2:CreateRoute",
+        "ec2:ReplaceRoute"
+      ],
+      "delete": [
+        "ec2:DeleteRoute"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateRoute"
+      ],
+      "update": [
+        "ec2:ReplaceRoute"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_route_table_association": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeRouteTables"
+      ],
+      "write": [
+        "ec2:AssociateRouteTable",
+        "ec2:ReplaceRouteTableAssociation"
+      ],
+      "delete": [
+        "ec2:DisassociateRouteTable"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:AssociateRouteTable"
+      ],
+      "update": [
+        "ec2:ReplaceRouteTableAssociation"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_main_route_table_association": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeRouteTables"
+      ],
+      "write": [
+        "ec2:ReplaceRouteTableAssociation"
+      ],
+      "delete": [
+        "ec2:ReplaceRouteTableAssociation"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:ReplaceRouteTableAssociation"
+      ],
+      "update": [
+        "ec2:ReplaceRouteTableAssociation"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_security_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSecurityGroupRules",
+        "ec2:DescribeVpcs"
+      ],
+      "write": [
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:CreateSecurityGroup",
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "ec2:RevokeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress"
+      ],
+      "delete": [
+        "ec2:DeleteSecurityGroup"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateSecurityGroup",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_security_group_rule": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSecurityGroupRules"
+      ],
+      "write": [
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress"
+      ],
+      "delete": [
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AuthorizeSecurityGroupEgress"
+      ],
+      "update": [
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:RevokeSecurityGroupIngress",
+        "ec2:RevokeSecurityGroupEgress"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_vpc_security_group_ingress_rule": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeSecurityGroupRules"
+      ],
+      "write": [
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "ec2:ModifySecurityGroupRules"
+      ],
+      "delete": [
+        "ec2:RevokeSecurityGroupIngress"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:AuthorizeSecurityGroupIngress",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:ModifySecurityGroupRules",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_vpc_security_group_egress_rule": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeSecurityGroupRules"
+      ],
+      "write": [
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "ec2:ModifySecurityGroupRules"
+      ],
+      "delete": [
+        "ec2:RevokeSecurityGroupEgress"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:AuthorizeSecurityGroupEgress",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:ModifySecurityGroupRules",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_vpc_endpoint": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeVpcEndpoints"
+      ],
+      "write": [
+        "ec2:CreateTags",
+        "ec2:CreateVpcEndpoint",
+        "ec2:DeleteTags",
+        "ec2:ModifyVpcEndpoint"
+      ],
+      "delete": [
+        "ec2:DeleteVpcEndpoints"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateVpcEndpoint",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:ModifyVpcEndpoint",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_vpc_endpoint_route_table_association": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeVpcEndpoints"
+      ],
+      "write": [
+        "ec2:ModifyVpcEndpoint"
+      ],
+      "delete": [
+        "ec2:ModifyVpcEndpoint"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:ModifyVpcEndpoint"
+      ],
+      "update": [
+        "ec2:ModifyVpcEndpoint"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_vpc_endpoint_subnet_association": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeVpcEndpoints"
+      ],
+      "write": [
+        "ec2:ModifyVpcEndpoint"
+      ],
+      "delete": [
+        "ec2:ModifyVpcEndpoint"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:ModifyVpcEndpoint"
+      ],
+      "update": [
+        "ec2:ModifyVpcEndpoint"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_network_acl": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeNetworkAcls"
+      ],
+      "write": [
+        "ec2:CreateNetworkAcl",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "delete": [
+        "ec2:DeleteNetworkAcl"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateNetworkAcl",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_network_acl_rule": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeNetworkAcls"
+      ],
+      "write": [
+        "ec2:CreateNetworkAclEntry",
+        "ec2:ReplaceNetworkAclEntry"
+      ],
+      "delete": [
+        "ec2:DeleteNetworkAclEntry"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateNetworkAclEntry"
+      ],
+      "update": [
+        "ec2:ReplaceNetworkAclEntry"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_network_acl_association": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeNetworkAcls"
+      ],
+      "write": [
+        "ec2:ReplaceNetworkAclAssociation"
+      ],
+      "delete": [
+        "ec2:ReplaceNetworkAclAssociation"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:ReplaceNetworkAclAssociation"
+      ],
+      "update": [
+        "ec2:ReplaceNetworkAclAssociation"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_eip": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeAddresses"
+      ],
+      "write": [
+        "ec2:AllocateAddress",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "delete": [
+        "ec2:ReleaseAddress"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:AllocateAddress",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_eip_association": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeAddresses"
+      ],
+      "write": [
+        "ec2:AssociateAddress"
+      ],
+      "delete": [
+        "ec2:DisassociateAddress"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:AssociateAddress"
+      ],
+      "update": [
+        "ec2:AssociateAddress"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_launch_template": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeLaunchTemplates",
+        "ec2:DescribeLaunchTemplateVersions"
+      ],
+      "write": [
+        "ec2:CreateLaunchTemplate",
+        "ec2:CreateLaunchTemplateVersion",
+        "ec2:CreateTags",
+        "ec2:DeleteLaunchTemplateVersions",
+        "ec2:DeleteTags",
+        "ec2:ModifyLaunchTemplate"
+      ],
+      "delete": [
+        "ec2:DeleteLaunchTemplate"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateLaunchTemplate",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:CreateLaunchTemplateVersion",
+        "ec2:ModifyLaunchTemplate",
+        "ec2:DeleteLaunchTemplateVersions",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_ebs_volume": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeVolumes"
+      ],
+      "write": [
+        "ec2:CreateTags",
+        "ec2:CreateVolume",
+        "ec2:DeleteTags",
+        "ec2:ModifyVolume"
+      ],
+      "delete": [
+        "ec2:DeleteVolume"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateVolume",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:ModifyVolume",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_volume_attachment": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeVolumes",
+        "ec2:DescribeInstances"
+      ],
+      "write": [
+        "ec2:AttachVolume"
+      ],
+      "delete": [
+        "ec2:DetachVolume"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:AttachVolume"
+      ],
+      "update": [
+        "ec2:AttachVolume"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_network_interface": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeNetworkInterfaces"
+      ],
+      "write": [
+        "ec2:CreateNetworkInterface",
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "ec2:ModifyNetworkInterfaceAttribute"
+      ],
+      "delete": [
+        "ec2:DeleteNetworkInterface"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateNetworkInterface",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:ModifyNetworkInterfaceAttribute",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_vpc_peering_connection": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeVpcPeeringConnections"
+      ],
+      "write": [
+        "ec2:AcceptVpcPeeringConnection",
+        "ec2:CreateTags",
+        "ec2:CreateVpcPeeringConnection",
+        "ec2:DeleteTags",
+        "ec2:ModifyVpcPeeringConnectionOptions"
+      ],
+      "delete": [
+        "ec2:DeleteVpcPeeringConnection"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateVpcPeeringConnection",
+        "ec2:AcceptVpcPeeringConnection",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:ModifyVpcPeeringConnectionOptions",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_vpc_peering_connection_accepter": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeVpcPeeringConnections"
+      ],
+      "write": [
+        "ec2:AcceptVpcPeeringConnection",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "delete": [
+        "ec2:DeleteVpcPeeringConnection"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:AcceptVpcPeeringConnection",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_autoscaling_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_autoscaling.html",
+      "read": [
+        "autoscaling:DescribeAutoScalingGroups",
+        "autoscaling:DescribeScalingActivities",
+        "autoscaling:DescribeTags"
+      ],
+      "write": [
+        "autoscaling:CreateAutoScalingGroup",
+        "autoscaling:CreateOrUpdateTags",
+        "autoscaling:DeleteTags",
+        "autoscaling:UpdateAutoScalingGroup"
+      ],
+      "delete": [
+        "autoscaling:DeleteAutoScalingGroup"
+      ],
+      "attributes": [],
+      "create": [
+        "autoscaling:CreateAutoScalingGroup",
+        "autoscaling:CreateOrUpdateTags"
+      ],
+      "update": [
+        "autoscaling:UpdateAutoScalingGroup",
+        "autoscaling:CreateOrUpdateTags",
+        "autoscaling:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_autoscaling_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_autoscaling.html",
+      "read": [
+        "autoscaling:DescribePolicies"
+      ],
+      "write": [
+        "autoscaling:PutScalingPolicy"
+      ],
+      "delete": [
+        "autoscaling:DeletePolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "autoscaling:PutScalingPolicy"
+      ],
+      "update": [
+        "autoscaling:PutScalingPolicy"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_autoscaling_schedule": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_autoscaling.html",
+      "read": [
+        "autoscaling:DescribeScheduledActions"
+      ],
+      "write": [
+        "autoscaling:PutScheduledUpdateGroupAction"
+      ],
+      "delete": [
+        "autoscaling:DeleteScheduledAction"
+      ],
+      "attributes": [],
+      "create": [
+        "autoscaling:PutScheduledUpdateGroupAction"
+      ],
+      "update": [
+        "autoscaling:PutScheduledUpdateGroupAction"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_s3_bucket_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetBucketPolicy"
+      ],
+      "write": [
+        "s3:PutBucketPolicy"
+      ],
+      "delete": [
+        "s3:DeleteBucketPolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "s3:PutBucketPolicy"
+      ],
+      "update": [
+        "s3:PutBucketPolicy"
+      ],
+      "scope_strategy": "bucket"
+    },
+    "aws_s3_bucket_lifecycle_configuration": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetLifecycleConfiguration"
+      ],
+      "write": [
+        "s3:PutLifecycleConfiguration"
+      ],
+      "delete": [
+        "s3:PutLifecycleConfiguration"
+      ],
+      "attributes": [],
+      "create": [
+        "s3:PutLifecycleConfiguration"
+      ],
+      "update": [
+        "s3:PutLifecycleConfiguration"
+      ],
+      "scope_strategy": "bucket"
+    },
+    "aws_s3_bucket_ownership_controls": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetBucketOwnershipControls"
+      ],
+      "write": [
+        "s3:PutBucketOwnershipControls"
+      ],
+      "delete": [
+        "s3:DeleteBucketOwnershipControls"
+      ],
+      "attributes": [],
+      "create": [
+        "s3:PutBucketOwnershipControls"
+      ],
+      "update": [
+        "s3:PutBucketOwnershipControls"
+      ],
+      "scope_strategy": "bucket"
+    },
+    "aws_s3_bucket_logging": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetBucketLogging"
+      ],
+      "write": [
+        "s3:PutBucketLogging"
+      ],
+      "delete": [
+        "s3:PutBucketLogging"
+      ],
+      "attributes": [],
+      "create": [
+        "s3:PutBucketLogging"
+      ],
+      "update": [
+        "s3:PutBucketLogging"
+      ],
+      "scope_strategy": "bucket"
+    },
+    "aws_s3_bucket_cors_configuration": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetBucketCORS"
+      ],
+      "write": [
+        "s3:PutBucketCORS"
+      ],
+      "delete": [
+        "s3:PutBucketCORS"
+      ],
+      "attributes": [],
+      "create": [
+        "s3:PutBucketCORS"
+      ],
+      "update": [
+        "s3:PutBucketCORS"
+      ],
+      "scope_strategy": "bucket"
+    },
+    "aws_s3_bucket_website_configuration": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetBucketWebsite"
+      ],
+      "write": [
+        "s3:PutBucketWebsite"
+      ],
+      "delete": [
+        "s3:DeleteBucketWebsite"
+      ],
+      "attributes": [],
+      "create": [
+        "s3:PutBucketWebsite"
+      ],
+      "update": [
+        "s3:PutBucketWebsite"
+      ],
+      "scope_strategy": "bucket"
+    },
+    "aws_s3_bucket_acl": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetBucketAcl"
+      ],
+      "write": [
+        "s3:PutBucketAcl"
+      ],
+      "delete": [],
+      "attributes": [],
+      "create": [
+        "s3:PutBucketAcl"
+      ],
+      "update": [
+        "s3:PutBucketAcl"
+      ],
+      "scope_strategy": "bucket"
+    },
+    "aws_s3_bucket_notification": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetBucketNotification"
+      ],
+      "write": [
+        "s3:PutBucketNotification"
+      ],
+      "delete": [
+        "s3:PutBucketNotification"
+      ],
+      "attributes": [],
+      "create": [
+        "s3:PutBucketNotification"
+      ],
+      "update": [
+        "s3:PutBucketNotification"
+      ],
+      "scope_strategy": "bucket"
+    },
+    "aws_s3_bucket_replication_configuration": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetReplicationConfiguration"
+      ],
+      "write": [
+        "s3:PutReplicationConfiguration"
+      ],
+      "delete": [
+        "s3:PutReplicationConfiguration"
+      ],
+      "attributes": [],
+      "create": [
+        "s3:PutReplicationConfiguration"
+      ],
+      "update": [
+        "s3:PutReplicationConfiguration"
+      ],
+      "scope_strategy": "bucket"
+    },
+    "aws_s3_bucket_object_lock_configuration": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetBucketObjectLockConfiguration"
+      ],
+      "write": [
+        "s3:PutBucketObjectLockConfiguration"
+      ],
+      "delete": [],
+      "attributes": [],
+      "create": [
+        "s3:PutBucketObjectLockConfiguration"
+      ],
+      "update": [
+        "s3:PutBucketObjectLockConfiguration"
+      ],
+      "scope_strategy": "bucket"
+    },
+    "aws_kms_key": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_kms.html",
+      "read": [
+        "kms:DescribeKey",
+        "kms:GetKeyPolicy",
+        "kms:GetKeyRotationStatus",
+        "kms:ListResourceTags"
+      ],
+      "write": [
+        "kms:CreateKey",
+        "kms:DisableKey",
+        "kms:DisableKeyRotation",
+        "kms:EnableKey",
+        "kms:EnableKeyRotation",
+        "kms:PutKeyPolicy",
+        "kms:TagResource",
+        "kms:UntagResource",
+        "kms:UpdateKeyDescription"
+      ],
+      "delete": [
+        "kms:ScheduleKeyDeletion"
+      ],
+      "attributes": [],
+      "create": [
+        "kms:CreateKey",
+        "kms:PutKeyPolicy",
+        "kms:EnableKeyRotation",
+        "kms:TagResource"
+      ],
+      "update": [
+        "kms:PutKeyPolicy",
+        "kms:EnableKeyRotation",
+        "kms:DisableKeyRotation",
+        "kms:UpdateKeyDescription",
+        "kms:EnableKey",
+        "kms:DisableKey",
+        "kms:TagResource",
+        "kms:UntagResource"
+      ],
+      "scope_strategy": "kms-key"
+    },
+    "aws_kms_alias": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_kms.html",
+      "read": [
+        "kms:ListAliases"
+      ],
+      "write": [
+        "kms:CreateAlias",
+        "kms:UpdateAlias"
+      ],
+      "delete": [
+        "kms:DeleteAlias"
+      ],
+      "attributes": [],
+      "create": [
+        "kms:CreateAlias"
+      ],
+      "update": [
+        "kms:UpdateAlias"
+      ],
+      "scope_strategy": "kms-alias"
+    },
+    "aws_kms_key_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_kms.html",
+      "read": [
+        "kms:GetKeyPolicy",
+        "kms:DescribeKey"
+      ],
+      "write": [
+        "kms:PutKeyPolicy"
+      ],
+      "delete": [
+        "kms:PutKeyPolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "kms:PutKeyPolicy"
+      ],
+      "update": [
+        "kms:PutKeyPolicy"
+      ],
+      "scope_strategy": "kms-key"
+    },
+    "aws_kms_grant": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_kms.html",
+      "read": [
+        "kms:ListGrants"
+      ],
+      "write": [
+        "kms:CreateGrant"
+      ],
+      "delete": [
+        "kms:RevokeGrant",
+        "kms:RetireGrant"
+      ],
+      "attributes": [],
+      "create": [
+        "kms:CreateGrant"
+      ],
+      "update": [],
+      "scope_strategy": "kms-key"
+    },
+    "aws_ecr_repository": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecr.html",
+      "read": [
+        "ecr:DescribeRepositories",
+        "ecr:ListTagsForResource"
+      ],
+      "write": [
+        "ecr:CreateRepository",
+        "ecr:PutImageScanningConfiguration",
+        "ecr:PutImageTagMutability",
+        "ecr:TagResource",
+        "ecr:UntagResource"
+      ],
+      "delete": [
+        "ecr:DeleteRepository"
+      ],
+      "attributes": [],
+      "create": [
+        "ecr:CreateRepository",
+        "ecr:TagResource"
+      ],
+      "update": [
+        "ecr:PutImageTagMutability",
+        "ecr:PutImageScanningConfiguration",
+        "ecr:TagResource",
+        "ecr:UntagResource"
+      ],
+      "scope_strategy": "ecr"
+    },
+    "aws_ecr_repository_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecr.html",
+      "read": [
+        "ecr:GetRepositoryPolicy"
+      ],
+      "write": [
+        "ecr:SetRepositoryPolicy"
+      ],
+      "delete": [
+        "ecr:DeleteRepositoryPolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "ecr:SetRepositoryPolicy"
+      ],
+      "update": [
+        "ecr:SetRepositoryPolicy"
+      ],
+      "scope_strategy": "ecr"
+    },
+    "aws_ecr_lifecycle_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecr.html",
+      "read": [
+        "ecr:GetLifecyclePolicy"
+      ],
+      "write": [
+        "ecr:PutLifecyclePolicy"
+      ],
+      "delete": [
+        "ecr:DeleteLifecyclePolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "ecr:PutLifecyclePolicy"
+      ],
+      "update": [
+        "ecr:PutLifecyclePolicy"
+      ],
+      "scope_strategy": "ecr"
+    },
+    "aws_ecr_registry_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecr.html",
+      "read": [
+        "ecr:GetRegistryPolicy"
+      ],
+      "write": [
+        "ecr:PutRegistryPolicy"
+      ],
+      "delete": [
+        "ecr:DeleteRegistryPolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "ecr:PutRegistryPolicy"
+      ],
+      "update": [
+        "ecr:PutRegistryPolicy"
+      ],
+      "scope_strategy": "manual"
+    },
+    "aws_ecr_registry_scanning_configuration": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecr.html",
+      "read": [
+        "ecr:GetRegistryScanningConfiguration"
+      ],
+      "write": [
+        "ecr:PutRegistryScanningConfiguration"
+      ],
+      "delete": [
+        "ecr:PutRegistryScanningConfiguration"
+      ],
+      "attributes": [],
+      "create": [
+        "ecr:PutRegistryScanningConfiguration"
+      ],
+      "update": [
+        "ecr:PutRegistryScanningConfiguration"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_ecs_cluster": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecs.html",
+      "read": [
+        "ecs:DescribeClusters",
+        "ecs:ListTagsForResource"
+      ],
+      "write": [
+        "ecs:CreateCluster",
+        "ecs:PutClusterCapacityProviders",
+        "ecs:TagResource",
+        "ecs:UntagResource",
+        "ecs:UpdateCluster",
+        "ecs:UpdateClusterSettings"
+      ],
+      "delete": [
+        "ecs:DeleteCluster"
+      ],
+      "attributes": [],
+      "create": [
+        "ecs:CreateCluster",
+        "ecs:TagResource"
+      ],
+      "update": [
+        "ecs:UpdateCluster",
+        "ecs:UpdateClusterSettings",
+        "ecs:PutClusterCapacityProviders",
+        "ecs:TagResource",
+        "ecs:UntagResource"
+      ],
+      "scope_strategy": "ecs-cluster"
+    },
+    "aws_ecs_service": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecs.html",
+      "read": [
+        "ecs:DescribeServices",
+        "ecs:ListTagsForResource"
+      ],
+      "write": [
+        "ecs:CreateService",
+        "ecs:TagResource",
+        "ecs:UntagResource",
+        "ecs:UpdateService"
+      ],
+      "delete": [
+        "ecs:UpdateService",
+        "ecs:DeleteService"
+      ],
+      "attributes": [],
+      "create": [
+        "ecs:CreateService",
+        "ecs:TagResource"
+      ],
+      "update": [
+        "ecs:UpdateService",
+        "ecs:TagResource",
+        "ecs:UntagResource"
+      ],
+      "scope_strategy": "ecs-service"
+    },
+    "aws_ecs_task_definition": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecs.html",
+      "read": [
+        "ecs:DescribeTaskDefinition",
+        "ecs:ListTagsForResource"
+      ],
+      "write": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:TagResource",
+        "ecs:UntagResource"
+      ],
+      "delete": [
+        "ecs:DeregisterTaskDefinition"
+      ],
+      "attributes": [],
+      "create": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:TagResource"
+      ],
+      "update": [
+        "ecs:RegisterTaskDefinition",
+        "ecs:TagResource",
+        "ecs:UntagResource"
+      ],
+      "scope_strategy": "ecs-task"
+    },
+    "aws_ecs_capacity_provider": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecs.html",
+      "read": [
+        "ecs:DescribeCapacityProviders"
+      ],
+      "write": [
+        "ecs:CreateCapacityProvider",
+        "ecs:TagResource",
+        "ecs:UntagResource",
+        "ecs:UpdateCapacityProvider"
+      ],
+      "delete": [
+        "ecs:DeleteCapacityProvider"
+      ],
+      "attributes": [],
+      "create": [
+        "ecs:CreateCapacityProvider",
+        "ecs:TagResource"
+      ],
+      "update": [
+        "ecs:UpdateCapacityProvider",
+        "ecs:TagResource",
+        "ecs:UntagResource"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_ecs_cluster_capacity_providers": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecs.html",
+      "read": [
+        "ecs:DescribeClusters"
+      ],
+      "write": [
+        "ecs:PutClusterCapacityProviders"
+      ],
+      "delete": [
+        "ecs:PutClusterCapacityProviders"
+      ],
+      "attributes": [],
+      "create": [
+        "ecs:PutClusterCapacityProviders"
+      ],
+      "update": [
+        "ecs:PutClusterCapacityProviders"
+      ],
+      "scope_strategy": "ecs-cluster"
+    },
+    "aws_db_instance": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_rds.html",
+      "read": [
+        "rds:DescribeDBInstances",
+        "rds:ListTagsForResource"
+      ],
+      "write": [
+        "rds:AddTagsToResource",
+        "rds:CreateDBInstance",
+        "rds:ModifyDBInstance",
+        "rds:RemoveTagsFromResource"
+      ],
+      "delete": [
+        "rds:DeleteDBInstance"
+      ],
+      "attributes": [],
+      "create": [
+        "rds:CreateDBInstance",
+        "rds:AddTagsToResource"
+      ],
+      "update": [
+        "rds:ModifyDBInstance",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource"
+      ],
+      "scope_strategy": "rds-db"
+    },
+    "aws_rds_cluster": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_rds.html",
+      "read": [
+        "rds:DescribeDBClusters",
+        "rds:ListTagsForResource"
+      ],
+      "write": [
+        "rds:AddTagsToResource",
+        "rds:CreateDBCluster",
+        "rds:ModifyDBCluster",
+        "rds:RemoveTagsFromResource"
+      ],
+      "delete": [
+        "rds:DeleteDBCluster"
+      ],
+      "attributes": [],
+      "create": [
+        "rds:CreateDBCluster",
+        "rds:AddTagsToResource"
+      ],
+      "update": [
+        "rds:ModifyDBCluster",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource"
+      ],
+      "scope_strategy": "rds-cluster"
+    },
+    "aws_rds_cluster_instance": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_rds.html",
+      "read": [
+        "rds:DescribeDBInstances",
+        "rds:ListTagsForResource"
+      ],
+      "write": [
+        "rds:AddTagsToResource",
+        "rds:CreateDBInstance",
+        "rds:ModifyDBInstance",
+        "rds:RemoveTagsFromResource"
+      ],
+      "delete": [
+        "rds:DeleteDBInstance"
+      ],
+      "attributes": [],
+      "create": [
+        "rds:CreateDBInstance",
+        "rds:AddTagsToResource"
+      ],
+      "update": [
+        "rds:ModifyDBInstance",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource"
+      ],
+      "scope_strategy": "rds-db"
+    },
+    "aws_db_subnet_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_rds.html",
+      "read": [
+        "rds:DescribeDBSubnetGroups",
+        "rds:ListTagsForResource"
+      ],
+      "write": [
+        "rds:AddTagsToResource",
+        "rds:CreateDBSubnetGroup",
+        "rds:ModifyDBSubnetGroup",
+        "rds:RemoveTagsFromResource"
+      ],
+      "delete": [
+        "rds:DeleteDBSubnetGroup"
+      ],
+      "attributes": [],
+      "create": [
+        "rds:CreateDBSubnetGroup",
+        "rds:AddTagsToResource"
+      ],
+      "update": [
+        "rds:ModifyDBSubnetGroup",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource"
+      ],
+      "scope_strategy": "rds-subgrp"
+    },
+    "aws_db_parameter_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_rds.html",
+      "read": [
+        "rds:DescribeDBParameterGroups",
+        "rds:DescribeDBParameters",
+        "rds:ListTagsForResource"
+      ],
+      "write": [
+        "rds:AddTagsToResource",
+        "rds:CreateDBParameterGroup",
+        "rds:ModifyDBParameterGroup",
+        "rds:RemoveTagsFromResource",
+        "rds:ResetDBParameterGroup"
+      ],
+      "delete": [
+        "rds:DeleteDBParameterGroup"
+      ],
+      "attributes": [],
+      "create": [
+        "rds:CreateDBParameterGroup",
+        "rds:ModifyDBParameterGroup",
+        "rds:AddTagsToResource"
+      ],
+      "update": [
+        "rds:ModifyDBParameterGroup",
+        "rds:ResetDBParameterGroup",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource"
+      ],
+      "scope_strategy": "rds-pg"
+    },
+    "aws_rds_cluster_parameter_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_rds.html",
+      "read": [
+        "rds:DescribeDBClusterParameterGroups",
+        "rds:DescribeDBClusterParameters",
+        "rds:ListTagsForResource"
+      ],
+      "write": [
+        "rds:AddTagsToResource",
+        "rds:CreateDBClusterParameterGroup",
+        "rds:ModifyDBClusterParameterGroup",
+        "rds:RemoveTagsFromResource",
+        "rds:ResetDBClusterParameterGroup"
+      ],
+      "delete": [
+        "rds:DeleteDBClusterParameterGroup"
+      ],
+      "attributes": [],
+      "create": [
+        "rds:CreateDBClusterParameterGroup",
+        "rds:ModifyDBClusterParameterGroup",
+        "rds:AddTagsToResource"
+      ],
+      "update": [
+        "rds:ModifyDBClusterParameterGroup",
+        "rds:ResetDBClusterParameterGroup",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource"
+      ],
+      "scope_strategy": "rds-clpg"
+    },
+    "aws_lambda_function": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_lambda.html",
+      "read": [
+        "lambda:GetFunction",
+        "lambda:GetFunctionConfiguration",
+        "lambda:ListTags"
+      ],
+      "write": [
+        "lambda:CreateFunction",
+        "lambda:TagResource",
+        "lambda:UntagResource",
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration"
+      ],
+      "delete": [
+        "lambda:DeleteFunction"
+      ],
+      "attributes": [],
+      "create": [
+        "lambda:CreateFunction",
+        "lambda:TagResource"
+      ],
+      "update": [
+        "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:TagResource",
+        "lambda:UntagResource"
+      ],
+      "scope_strategy": "lambda"
+    },
+    "aws_lambda_permission": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_lambda.html",
+      "read": [
+        "lambda:GetPolicy"
+      ],
+      "write": [
+        "lambda:AddPermission",
+        "lambda:RemovePermission"
+      ],
+      "delete": [
+        "lambda:RemovePermission"
+      ],
+      "attributes": [],
+      "create": [
+        "lambda:AddPermission"
+      ],
+      "update": [
+        "lambda:AddPermission",
+        "lambda:RemovePermission"
+      ],
+      "scope_strategy": "lambda"
+    },
+    "aws_lambda_alias": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_lambda.html",
+      "read": [
+        "lambda:GetAlias"
+      ],
+      "write": [
+        "lambda:CreateAlias",
+        "lambda:UpdateAlias"
+      ],
+      "delete": [
+        "lambda:DeleteAlias"
+      ],
+      "attributes": [],
+      "create": [
+        "lambda:CreateAlias"
+      ],
+      "update": [
+        "lambda:UpdateAlias"
+      ],
+      "scope_strategy": "manual"
+    },
+    "aws_lambda_event_source_mapping": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_lambda.html",
+      "read": [
+        "lambda:GetEventSourceMapping"
+      ],
+      "write": [
+        "lambda:CreateEventSourceMapping",
+        "lambda:UpdateEventSourceMapping"
+      ],
+      "delete": [
+        "lambda:DeleteEventSourceMapping"
+      ],
+      "attributes": [],
+      "create": [
+        "lambda:CreateEventSourceMapping"
+      ],
+      "update": [
+        "lambda:UpdateEventSourceMapping"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_lambda_layer_version": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_lambda.html",
+      "read": [
+        "lambda:GetLayerVersion"
+      ],
+      "write": [
+        "lambda:PublishLayerVersion"
+      ],
+      "delete": [
+        "lambda:DeleteLayerVersion"
+      ],
+      "attributes": [],
+      "create": [
+        "lambda:PublishLayerVersion"
+      ],
+      "update": [],
+      "scope_strategy": "manual"
+    },
+    "aws_cloudwatch_log_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_logs.html",
+      "read": [
+        "logs:DescribeLogGroups",
+        "logs:ListTagsForResource"
+      ],
+      "write": [
+        "logs:CreateLogGroup",
+        "logs:DeleteRetentionPolicy",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource",
+        "logs:UntagResource"
+      ],
+      "delete": [
+        "logs:DeleteLogGroup"
+      ],
+      "attributes": [],
+      "create": [
+        "logs:CreateLogGroup",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource"
+      ],
+      "update": [
+        "logs:PutRetentionPolicy",
+        "logs:DeleteRetentionPolicy",
+        "logs:TagResource",
+        "logs:UntagResource"
+      ],
+      "scope_strategy": "log-group"
+    },
+    "aws_cloudwatch_log_stream": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_logs.html",
+      "read": [
+        "logs:DescribeLogStreams"
+      ],
+      "write": [
+        "logs:CreateLogStream"
+      ],
+      "delete": [
+        "logs:DeleteLogStream"
+      ],
+      "attributes": [],
+      "create": [
+        "logs:CreateLogStream"
+      ],
+      "update": [],
+      "scope_strategy": "log-stream"
+    },
+    "aws_cloudwatch_log_metric_filter": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_logs.html",
+      "read": [
+        "logs:DescribeMetricFilters"
+      ],
+      "write": [
+        "logs:PutMetricFilter"
+      ],
+      "delete": [
+        "logs:DeleteMetricFilter"
+      ],
+      "attributes": [],
+      "create": [
+        "logs:PutMetricFilter"
+      ],
+      "update": [
+        "logs:PutMetricFilter"
+      ],
+      "scope_strategy": "log-group"
+    },
+    "aws_cloudwatch_log_subscription_filter": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_logs.html",
+      "read": [
+        "logs:DescribeSubscriptionFilters"
+      ],
+      "write": [
+        "logs:PutSubscriptionFilter"
+      ],
+      "delete": [
+        "logs:DeleteSubscriptionFilter"
+      ],
+      "attributes": [],
+      "create": [
+        "logs:PutSubscriptionFilter"
+      ],
+      "update": [
+        "logs:PutSubscriptionFilter"
+      ],
+      "scope_strategy": "log-group"
+    },
+    "aws_cloudwatch_metric_alarm": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_cloudwatch.html",
+      "read": [
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:ListTagsForResource"
+      ],
+      "write": [
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:TagResource",
+        "cloudwatch:UntagResource"
+      ],
+      "delete": [
+        "cloudwatch:DeleteAlarms"
+      ],
+      "attributes": [],
+      "create": [
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:TagResource"
+      ],
+      "update": [
+        "cloudwatch:PutMetricAlarm",
+        "cloudwatch:TagResource",
+        "cloudwatch:UntagResource"
+      ],
+      "scope_strategy": "alarm"
+    },
+    "aws_cloudwatch_composite_alarm": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_cloudwatch.html",
+      "read": [
+        "cloudwatch:DescribeAlarms",
+        "cloudwatch:ListTagsForResource"
+      ],
+      "write": [
+        "cloudwatch:PutCompositeAlarm",
+        "cloudwatch:TagResource",
+        "cloudwatch:UntagResource"
+      ],
+      "delete": [
+        "cloudwatch:DeleteAlarms"
+      ],
+      "attributes": [],
+      "create": [
+        "cloudwatch:PutCompositeAlarm",
+        "cloudwatch:TagResource"
+      ],
+      "update": [
+        "cloudwatch:PutCompositeAlarm",
+        "cloudwatch:TagResource",
+        "cloudwatch:UntagResource"
+      ],
+      "scope_strategy": "alarm"
+    },
+    "aws_cloudwatch_dashboard": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_cloudwatch.html",
+      "read": [
+        "cloudwatch:GetDashboard"
+      ],
+      "write": [
+        "cloudwatch:PutDashboard"
+      ],
+      "delete": [
+        "cloudwatch:DeleteDashboards"
+      ],
+      "attributes": [],
+      "create": [
+        "cloudwatch:PutDashboard"
+      ],
+      "update": [
+        "cloudwatch:PutDashboard"
+      ],
+      "scope_strategy": "dashboard"
+    },
+    "aws_lb": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_elasticloadbalancing.html",
+      "read": [
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeLoadBalancerAttributes",
+        "elasticloadbalancing:DescribeTags"
+      ],
+      "write": [
+        "elasticloadbalancing:AddTags",
+        "elasticloadbalancing:CreateLoadBalancer",
+        "elasticloadbalancing:ModifyLoadBalancerAttributes",
+        "elasticloadbalancing:RemoveTags",
+        "elasticloadbalancing:SetSecurityGroups",
+        "elasticloadbalancing:SetSubnets"
+      ],
+      "delete": [
+        "elasticloadbalancing:DeleteLoadBalancer"
+      ],
+      "attributes": [],
+      "create": [
+        "elasticloadbalancing:CreateLoadBalancer",
+        "elasticloadbalancing:AddTags"
+      ],
+      "update": [
+        "elasticloadbalancing:ModifyLoadBalancerAttributes",
+        "elasticloadbalancing:SetSecurityGroups",
+        "elasticloadbalancing:SetSubnets",
+        "elasticloadbalancing:AddTags",
+        "elasticloadbalancing:RemoveTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_lb_target_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_elasticloadbalancing.html",
+      "read": [
+        "elasticloadbalancing:DescribeTargetGroups",
+        "elasticloadbalancing:DescribeTargetGroupAttributes",
+        "elasticloadbalancing:DescribeTags"
+      ],
+      "write": [
+        "elasticloadbalancing:AddTags",
+        "elasticloadbalancing:CreateTargetGroup",
+        "elasticloadbalancing:ModifyTargetGroup",
+        "elasticloadbalancing:ModifyTargetGroupAttributes",
+        "elasticloadbalancing:RemoveTags"
+      ],
+      "delete": [
+        "elasticloadbalancing:DeleteTargetGroup"
+      ],
+      "attributes": [],
+      "create": [
+        "elasticloadbalancing:CreateTargetGroup",
+        "elasticloadbalancing:AddTags"
+      ],
+      "update": [
+        "elasticloadbalancing:ModifyTargetGroup",
+        "elasticloadbalancing:ModifyTargetGroupAttributes",
+        "elasticloadbalancing:AddTags",
+        "elasticloadbalancing:RemoveTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_lb_listener": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_elasticloadbalancing.html",
+      "read": [
+        "elasticloadbalancing:DescribeListeners",
+        "elasticloadbalancing:DescribeListenerAttributes",
+        "elasticloadbalancing:DescribeTags"
+      ],
+      "write": [
+        "elasticloadbalancing:AddTags",
+        "elasticloadbalancing:CreateListener",
+        "elasticloadbalancing:ModifyListener",
+        "elasticloadbalancing:ModifyListenerAttributes",
+        "elasticloadbalancing:RemoveTags"
+      ],
+      "delete": [
+        "elasticloadbalancing:DeleteListener"
+      ],
+      "attributes": [],
+      "create": [
+        "elasticloadbalancing:CreateListener",
+        "elasticloadbalancing:AddTags"
+      ],
+      "update": [
+        "elasticloadbalancing:ModifyListener",
+        "elasticloadbalancing:ModifyListenerAttributes",
+        "elasticloadbalancing:AddTags",
+        "elasticloadbalancing:RemoveTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_lb_listener_rule": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_elasticloadbalancing.html",
+      "read": [
+        "elasticloadbalancing:DescribeRules",
+        "elasticloadbalancing:DescribeTags"
+      ],
+      "write": [
+        "elasticloadbalancing:AddTags",
+        "elasticloadbalancing:CreateRule",
+        "elasticloadbalancing:ModifyRule",
+        "elasticloadbalancing:RemoveTags",
+        "elasticloadbalancing:SetRulePriorities"
+      ],
+      "delete": [
+        "elasticloadbalancing:DeleteRule"
+      ],
+      "attributes": [],
+      "create": [
+        "elasticloadbalancing:CreateRule",
+        "elasticloadbalancing:AddTags"
+      ],
+      "update": [
+        "elasticloadbalancing:ModifyRule",
+        "elasticloadbalancing:SetRulePriorities",
+        "elasticloadbalancing:AddTags",
+        "elasticloadbalancing:RemoveTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_lb_target_group_attachment": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_elasticloadbalancing.html",
+      "read": [
+        "elasticloadbalancing:DescribeTargetHealth"
+      ],
+      "write": [
+        "elasticloadbalancing:RegisterTargets"
+      ],
+      "delete": [
+        "elasticloadbalancing:DeregisterTargets"
+      ],
+      "attributes": [],
+      "create": [
+        "elasticloadbalancing:RegisterTargets"
+      ],
+      "update": [
+        "elasticloadbalancing:RegisterTargets"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_route53_zone": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_route53.html",
+      "read": [
+        "route53:GetHostedZone",
+        "route53:ListTagsForResource"
+      ],
+      "write": [
+        "route53:ChangeTagsForResource",
+        "route53:CreateHostedZone",
+        "route53:UpdateHostedZoneComment"
+      ],
+      "delete": [
+        "route53:DeleteHostedZone"
+      ],
+      "attributes": [],
+      "create": [
+        "route53:CreateHostedZone",
+        "route53:ChangeTagsForResource"
+      ],
+      "update": [
+        "route53:UpdateHostedZoneComment",
+        "route53:ChangeTagsForResource"
+      ],
+      "scope_strategy": "route-zone"
+    },
+    "aws_route53_record": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_route53.html",
+      "read": [
+        "route53:ListResourceRecordSets",
+        "route53:GetHostedZone",
+        "route53:GetChange"
+      ],
+      "write": [
+        "route53:ChangeResourceRecordSets"
+      ],
+      "delete": [
+        "route53:ChangeResourceRecordSets"
+      ],
+      "attributes": [],
+      "create": [
+        "route53:ChangeResourceRecordSets"
+      ],
+      "update": [
+        "route53:ChangeResourceRecordSets"
+      ],
+      "scope_strategy": "route-record"
+    },
+    "aws_route53_zone_association": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_route53.html",
+      "read": [
+        "route53:GetHostedZone",
+        "route53:ListHostedZonesByVPC"
+      ],
+      "write": [
+        "route53:AssociateVPCWithHostedZone"
+      ],
+      "delete": [
+        "route53:DisassociateVPCFromHostedZone"
+      ],
+      "attributes": [],
+      "create": [
+        "route53:AssociateVPCWithHostedZone"
+      ],
+      "update": [
+        "route53:AssociateVPCWithHostedZone"
+      ],
+      "scope_strategy": "route-zone"
     }
   },
   "data": {
@@ -668,6 +2978,388 @@
       "attributes": [],
       "create": [],
       "update": []
+    },
+    "aws_iam_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "policy"
+    },
+    "aws_iam_openid_connect_provider": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:GetOpenIDConnectProvider"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "oidc"
+    },
+    "aws_iam_instance_profile": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:GetInstanceProfile"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "profile"
+    },
+    "aws_iam_user": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:GetUser"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "user"
+    },
+    "aws_availability_zones": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeAvailabilityZones"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "review"
+    },
+    "aws_vpcs": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeVpcs"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "review"
+    },
+    "aws_subnets": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeSubnets"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "review"
+    },
+    "aws_security_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeSecurityGroups"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "review"
+    },
+    "aws_route_table": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeRouteTables"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "review"
+    },
+    "aws_route_tables": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeRouteTables"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "review"
+    },
+    "aws_internet_gateway": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeInternetGateways"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "review"
+    },
+    "aws_launch_template": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeLaunchTemplates",
+        "ec2:DescribeLaunchTemplateVersions"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "review"
+    },
+    "aws_ebs_volume": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeVolumes"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "review"
+    },
+    "aws_s3_bucket": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "bucket"
+    },
+    "aws_kms_key": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_kms.html",
+      "read": [
+        "kms:DescribeKey"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "kms-key"
+    },
+    "aws_kms_alias": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_kms.html",
+      "read": [
+        "kms:ListAliases",
+        "kms:DescribeKey"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "kms-alias"
+    },
+    "aws_ecr_repository": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecr.html",
+      "read": [
+        "ecr:DescribeRepositories"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "ecr"
+    },
+    "aws_ecs_cluster": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecs.html",
+      "read": [
+        "ecs:DescribeClusters"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "ecs-cluster"
+    },
+    "aws_ecs_task_definition": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecs.html",
+      "read": [
+        "ecs:DescribeTaskDefinition"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "ecs-task"
+    },
+    "aws_db_instance": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_rds.html",
+      "read": [
+        "rds:DescribeDBInstances"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "rds-db"
+    },
+    "aws_rds_cluster": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_rds.html",
+      "read": [
+        "rds:DescribeDBClusters"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "rds-cluster"
+    },
+    "aws_lambda_function": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_lambda.html",
+      "read": [
+        "lambda:GetFunction"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "lambda"
+    },
+    "aws_cloudwatch_log_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_logs.html",
+      "read": [
+        "logs:DescribeLogGroups"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "log-group"
+    },
+    "aws_lb": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_elasticloadbalancing.html",
+      "read": [
+        "elasticloadbalancing:DescribeLoadBalancers"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "review"
+    },
+    "aws_lb_target_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_elasticloadbalancing.html",
+      "read": [
+        "elasticloadbalancing:DescribeTargetGroups"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "review"
+    },
+    "aws_route53_zone": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_route53.html",
+      "read": [
+        "route53:ListHostedZones",
+        "route53:ListHostedZonesByName",
+        "route53:GetHostedZone"
+      ],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "route-zone"
+    },
+    "aws_eks_cluster_auth": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html",
+      "read": [],
+      "write": [],
+      "delete": [],
+      "attributes": [],
+      "create": [],
+      "update": [],
+      "scope_strategy": "manual"
     }
   }
 }
