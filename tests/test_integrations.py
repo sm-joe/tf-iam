@@ -104,3 +104,25 @@ def test_comparison_dedup_conditions_and_service_summary():
     result=compare(report,"aws",{"Statement":[]})
     assert result["missing_or_unverified"][0]["sources"]==["fixture","second"]
     assert result["missing_or_unverified"][0]["observations"]==2
+
+def test_runtime_reports_observed_actions_outside_candidates(tmp_path):
+    arn="arn:aws:iam::123456789012:role/example"
+    doc={"Name":"s3","Actions":[{"Name":"GetBucketVersioning"},{"Name":"PutBucketVersioning"}],"Operations":[{"Name":"PutBucketVersioning","AuthorizedActions":[{"Service":"s3","Name":"PutBucketVersioning"}]},{"Name":"Ambiguous","AuthorizedActions":[{"Service":"s3","Name":"GetBucketVersioning"},{"Service":"s3","Name":"PutBucketVersioning"}]}]}
+    (tmp_path/"s3.json").write_text(json.dumps(doc))
+    event={"eventSource":"s3.amazonaws.com","userIdentity":{"sessionContext":{"sessionIssuer":{"arn":arn}}}}
+    events=[{**event,"eventID":"1","eventName":"PutBucketVersioning"},{**event,"eventID":"2","eventName":"Ambiguous"}]
+    result=refine(events,arn,{"s3:GetBucketVersioning"},metadata_dir=tmp_path)
+    assert result["observed_outside_candidates"][0]["action"]=="s3:PutBucketVersioning"
+    assert result["conditional_operations"][0]["operation"]=="Ambiguous"
+    assert result["unobserved_candidates"]==["s3:GetBucketVersioning"]
+
+def test_generate_simple_default_and_unmapped_gate(tmp_path):
+    output=tmp_path/"policy.json"
+    config=tmp_path/"main.tf.json"
+    config.write_text(json.dumps({"resource":{"aws_s3_bucket":{"b":{"bucket":"fixture-bucket"}}}}))
+    assert main(["generate",str(tmp_path),"--output",str(output)])==0
+    output.unlink()
+    config.write_text(json.dumps({"resource":{"aws_s3_bucket":{"b":{"bucket":"fixture-bucket"}},"aws_fake_resource":{"x":{}}}}))
+    assert main(["generate",str(tmp_path),"--output",str(output)])==4
+    assert not output.exists()
+    assert main(["generate",str(tmp_path),"--allow-partial","--output",str(output)])==0

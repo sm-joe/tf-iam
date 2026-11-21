@@ -17,3 +17,6 @@ evidence/
 build/
 dist/
 *.spec
+
+# Build-generated public authorization snapshots (included in distributions)
+/tfiam/catalog/authorization/

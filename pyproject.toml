@@ -24,4 +24,4 @@ packages = ["tfiam"]
 include-package-data = true
 
 [tool.setuptools.package-data]
-tfiam = ["catalog/*.json"]
+tfiam = ["catalog/*.json", "catalog/authorization/*.json"]

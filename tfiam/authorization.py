@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
+from importlib.resources import files
 from urllib.request import urlopen
 from .catalog_loader import CATALOG, get_rule
 
@@ -145,5 +146,53 @@ def audit(actions,permissions,folder):
     return {"status":"issues" if any(f["severity"]=="error" for f in findings) else "review" if findings else "compatible",
             "actions_total":len(actions),"actions_recognized":valid,"permission_observations_checked":checked,
             "reference_fallbacks":[{"action":a,"resource_scope":"global","reference":EKS_REFERENCE} for a in sorted(reference_fallbacks)],"missing_services":missing,"metadata_directory":str(Path(folder).resolve()),"evidence":evidence,"findings":findings,
-            "diagnostics":(["Missing service snapshots; run catalog-audit with --refresh in the intended directory."] if missing else []),
+            "diagnostics":(["Missing service snapshots; use an updated official distribution or a complete offline snapshot."] if missing else []),
             "limitation":"Metadata compatibility only; required multi-resource groups, condition values, provider API calls and effective IAM authorization are not established."}
+
+
+def all_catalog_actions():
+    """Union baseline and exact-version rule variants for distribution checks."""
+    versions={None}
+    for category in ("resources","data"):
+        for rule in CATALOG[category].values():
+            versions.update(rule.get("version_overrides",{}))
+    return set().union(*(catalog_actions(version) for version in versions))
+
+def bundled_metadata():
+    """Local immutable package data only. Never performs network I/O."""
+    root=Path(str(files("tfiam").joinpath("catalog","authorization")))
+    manifest=root/"manifest.json"
+    if not manifest.is_file():
+        if root.exists() and any(root.iterdir()):
+            raise ValueError("Packaged AWS metadata manifest missing")
+        return None
+    data=json.loads(manifest.read_bytes())
+    if data.get("schema_version")!=1 or not isinstance(data.get("services"),dict):
+        raise ValueError("Invalid packaged authorization metadata manifest")
+    expected={a.split(":",1)[0] for a in all_catalog_actions()}
+    if set(data["services"])!=expected:
+        raise ValueError("Packaged AWS metadata does not cover the bundled catalog")
+    for service,record in data["services"].items():
+        if not SERVICE.fullmatch(service) or not isinstance(record,dict):
+            raise ValueError("Invalid packaged authorization metadata entry")
+        path=root/(service+".json")
+        if not path.is_file() or path.stat().st_size>MAX_BYTES:
+            raise ValueError("Packaged AWS metadata missing or too large: "+service)
+        if hashlib.sha256(path.read_bytes()).hexdigest()!=record.get("sha256"):
+            raise ValueError("Packaged AWS metadata digest mismatch: "+service)
+    return root
+
+
+def operation_index(doc):
+    result={}
+    for op in doc.get("Operations",[]):
+        if not isinstance(op,dict) or not isinstance(op.get("Name"),str): continue
+        actions=op.get("AuthorizedActions")
+        if not isinstance(actions,list): continue
+        names=set()
+        for a in actions:
+            if isinstance(a,dict) and isinstance(a.get("Service"),str) and isinstance(a.get("Name"),str):
+                if re.fullmatch(r"[a-z0-9-]+",a["Service"]) and re.fullmatch(r"[A-Za-z0-9]+",a["Name"]):
+                    names.add(a["Service"]+":"+a["Name"])
+        if names: result.setdefault(op["Name"],set()).update(names)
+    return result

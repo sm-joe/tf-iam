@@ -19,3 +19,7 @@ Keep the Python CLI and explicit source provenance. Pike models lifecycle phases
 ## First increment
 
 This PR migrates the AWS catalog, narrows supported providers to AWS and adds deduplicated potential delegation and combination findings to scan, generate diagnostics and compare. These are advisory heuristics, not proofs of exploitable access. Plan support and runtime validation remain open. No automatic policy grants or changes to policy rendering.
+
+## iamlive reference
+
+[iamlive](https://github.com/iann0036/iamlive) embeds AWS API-to-IAM mappings and observes SDK calls via CSM or an HTTP(S) proxy. Adopt the separation between observed operations and IAM actions, not the transport or configuration changes. tf-iam uses its existing optional CloudTrail runtime audit and packaged AWS operation metadata. It highlights observed actions outside static candidates and retains ambiguous operation mappings for review. No proxy, local CA, listener, third-party binary, provider source checkout or network download is required for a normal scan. Pike remains the reference for embedded static lifecycle mappings. No upstream code or mapping data copied.

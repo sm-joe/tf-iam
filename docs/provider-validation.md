@@ -1,4 +1,6 @@
-# Provider-version-aware validation (M06)
+# Maintainer-only provider and catalog validation
+
+This document is for maintainers and CI, not the end-user workflow. Normal scans and policy generation read packaged mappings, and built distributions include AWS authorization metadata. They never fetch provider source or metadata. Do not ask users to run the commands below as a condition of using tf-iam.
 
 The lockfile provides the selected AWS provider version, not proof of permission accuracy. The scanner records the exact stable version and its provenance. Explicit --aws-provider-version is available for plan-only analysis and must agree with a present lockfile. Version-specific catalog overrides can replace lifecycle and attribute action sets for an exact version; untested versions fall back to candidate mappings. Evidence records require an exact provider version, HTTPS source reference and SHA-256 digest. A lifecycle-verified label requires a corresponding evidence record; no live evidence is asserted by this change.
 
@@ -9,7 +11,7 @@ Mapping coverage counts recognized non-skipped resource changes; it is not autho
 Download public reference snapshots (no AWS credentials or infrastructure files are sent):
 
 ```bash
-tfiam catalog-audit --metadata-dir .aws-auth --refresh --output catalog-audit.json
+python scripts/maintainer.py catalog-audit --metadata-dir .aws-auth --refresh --output catalog-audit.json
 tfiam scan ./infra --plan-json plan.json --authorization-metadata .aws-auth --format json --output report.json
 ```
 
@@ -25,8 +27,8 @@ The AWS Service Authorization Reference is the action, ARN and condition-key aut
 
 ```bash
 git clone --depth 1 --branch v6.73.0 https://github.com/hashicorp/terraform-provider-aws.git /tmp/tfiam-provider-6.73.0
-tfiam catalog-audit --metadata-dir /tmp/tfiam-aws-auth --refresh
-tfiam provider-audit --source-dir /tmp/tfiam-provider-6.73.0 --aws-provider-version 6.73.0 --metadata-dir /tmp/tfiam-aws-auth --format json --show-table --output provider-source-audit.json
+python scripts/maintainer.py catalog-audit --metadata-dir /tmp/tfiam-aws-auth --refresh
+python scripts/maintainer.py provider-audit --source-dir /tmp/tfiam-provider-6.73.0 --aws-provider-version 6.73.0 --metadata-dir /tmp/tfiam-aws-auth --format json --show-table --output provider-source-audit.json
 ```
 
 The report contains provider commit, source SHA-256, metadata digests, call-site lines, and candidate differences. Direct-call matches do not certify transitively invoked helpers or conditional behavior. Do not add every AuthorizedActions alternative to a policy. Review each missing candidate against its actual provider branch, resource scope, and AWS action documentation before adding it.
@@ -55,7 +57,7 @@ The source-reviewed v6.73.0 overrides for general-purpose S3 public access block
 Run the new evidence command after CloudTrail history has ingested the test events:
 
 ```bash
-tfiam evidence-audit \
+python scripts/maintainer.py evidence-audit \
   --lifecycle /tmp/tfiam-s3-fixture/lifecycle-evidence.json \
   --policy /tmp/tfiam-s3-fixture/candidate-policy.json \
   --lockfile /tmp/tfiam-s3-fixture/.terraform.lock.hcl \
@@ -68,3 +70,7 @@ tfiam evidence-audit \
 Offline `--events` supports CloudTrail Records or LookupEvents exports. Matching requires the exact session ARN and role issuer ARN, the fixture time window, the pinned provider version, matching candidate and lockfile digests, all six expected lifecycle plan shapes, and matching metadata digests. The result also requires positive create, delete, public-access-block and versioning observations and the expected ListAllMyBuckets denial. Unmapped and conditional operations are surfaced. The report is a review gate for this fixture only, not an automatic catalog promotion.
 
 The v6.73.0 IAM role override also includes source-confirmed role inline-policy reads, role description updates, and the unconditional instance-profile inventory preceding role deletion. The instance-profile removal branch requires actual instance-profile identities; this correction does not issue broad instance-profile mutation grants. This override remains a candidate, with additional conditional branches surfaced through provider-audit. The CI source-evidence job recreates the public provider/metadata report and checks the reviewed source file digests. Add `--require-lifecycle-verified` to scan/generate/split/compare when exact-version verified-only results are required; it fails closed until evidence exists for every applicable resource and no permission is unresolved.
+
+## Distribution assembly
+
+CI executes `python scripts/prepare-metadata.py` once before building a distribution. It fetches official AWS metadata for the union of base and version-specific catalog actions, rejects unrecognized actions, and packages the original snapshots and SHA-256 manifest. Both the Linux binary and wheel contain that data. Runtime scans check local snapshot integrity and automatically audit generated grants. No runtime network fallback is permitted. Release repeatability uses the same prepared snapshot for both builds. Source installations without the build-produced snapshot remain usable for offline catalog inference and explicitly report metadata as not run.

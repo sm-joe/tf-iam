@@ -47,12 +47,12 @@ def read_plan_json(path):
         raise ValueError("Expected a saved Terraform plan JSON object")
     return plan
 
-def main(argv=None):
+def main(argv=None, *, maintainer=False):
     parser=argparse.ArgumentParser(prog='tfiam',description='Terraform IAM candidate policy analyzer')
     sub=parser.add_subparsers(dest='command',required=True)
     catalog=sub.add_parser('catalog-audit',help='Audit catalog action names using AWS service authorization snapshots')
-    catalog.add_argument('--metadata-dir',type=Path,required=True)
-    catalog.add_argument('--refresh',action='store_true',help='Download public AWS service metadata')
+    catalog.add_argument('--metadata-dir',type=Path,help='Optional offline snapshot override; defaults to packaged metadata')
+    if maintainer: catalog.add_argument('--refresh',action='store_true',help='Maintainer only: refresh AWS public metadata')
     catalog.add_argument('--aws-provider-version')
     catalog.add_argument('--output',type=Path)
     catalog.add_argument('--strict',action='store_true')
@@ -67,17 +67,18 @@ def main(argv=None):
         elif cmd in ('compare','split'): p.add_argument('--format',choices=['json','table'],default='json'); p.add_argument('--provider',default='aws',choices=['aws'])
         else: p.add_argument('--provider',default='aws',choices=['aws'])
         if cmd=='generate':
-            p.add_argument('--format',choices=['json','terraform','table'],default='json'); p.add_argument('--name',default='TerraformPipeline'); p.add_argument('--scope'); p.add_argument('--allow-partial',action='store_true',required=True,help='Explicitly accept candidate-only policy generation')
+            p.add_argument('--format',choices=['json','terraform','table'],default='json'); p.add_argument('--name',default='TerraformPipeline'); p.add_argument('--scope'); p.add_argument('--allow-partial',action='store_true',help='Permit generation despite unresolved permissions or unmapped resources; review before use')
         if cmd=='compare':
             source=p.add_mutually_exclusive_group(required=True); source.add_argument('--existing',type=Path); source.add_argument('--role-name'); p.add_argument('--aws-profile'); p.add_argument('--fail-on-missing',action='store_true')
-        if cmd=='split': p.add_argument('--allow-partial',action='store_true',required=True); p.add_argument('--acknowledge-break-glass',action='store_true',help='Include destructive/delegation grants in a separately gated policy')
+        if cmd=='split': p.add_argument('--allow-partial',action='store_true'); p.add_argument('--acknowledge-break-glass',action='store_true',help='Include destructive/delegation grants in a separately gated policy')
     for p in (catalog,validate,runtime):
         p.add_argument('--format',choices=['json','table'],default='json')
         p.add_argument('--show-table',action='store_true',help='Print table in addition to an output file')
-    provider=sub.add_parser('provider-audit',help='Reconcile pinned AWS provider source with AWS operation metadata')
-    provider.add_argument('--source-dir',type=Path,required=True); provider.add_argument('--aws-provider-version',required=True); provider.add_argument('--metadata-dir',type=Path,required=True); provider.add_argument('--resource',action='append'); provider.add_argument('--format',choices=['json','table'],default='table'); provider.add_argument('--output',type=Path); provider.add_argument('--show-table',action='store_true'); provider.add_argument('--strict',action='store_true')
-    evidence=sub.add_parser('evidence-audit',help='Reconcile completed S3 fixture, pinned source and CloudTrail evidence')
-    evidence.add_argument('--lifecycle',type=Path,required=True); evidence.add_argument('--source-report',type=Path,required=True); evidence.add_argument('--policy',type=Path,required=True); evidence.add_argument('--lockfile',type=Path,required=True); evidence.add_argument('--metadata-dir',type=Path,required=True); evidence.add_argument('--events',type=Path); evidence.add_argument('--aws-profile'); evidence.add_argument('--max-pages',type=int,default=100); evidence.add_argument('--max-seconds',type=int,default=120); evidence.add_argument('--format',choices=['json','table'],default='table'); evidence.add_argument('--output',type=Path); evidence.add_argument('--show-table',action='store_true'); evidence.add_argument('--strict',action='store_true')
+    if maintainer:
+        provider=sub.add_parser('provider-audit',help='Reconcile pinned AWS provider source with AWS operation metadata')
+        provider.add_argument('--source-dir',type=Path,required=True); provider.add_argument('--aws-provider-version',required=True); provider.add_argument('--metadata-dir',type=Path,required=True); provider.add_argument('--resource',action='append'); provider.add_argument('--format',choices=['json','table'],default='table'); provider.add_argument('--output',type=Path); provider.add_argument('--show-table',action='store_true'); provider.add_argument('--strict',action='store_true')
+        evidence=sub.add_parser('evidence-audit',help='Reconcile completed S3 fixture, pinned source and CloudTrail evidence')
+        evidence.add_argument('--lifecycle',type=Path,required=True); evidence.add_argument('--source-report',type=Path,required=True); evidence.add_argument('--policy',type=Path,required=True); evidence.add_argument('--lockfile',type=Path,required=True); evidence.add_argument('--metadata-dir',type=Path,required=True); evidence.add_argument('--events',type=Path); evidence.add_argument('--aws-profile'); evidence.add_argument('--max-pages',type=int,default=100); evidence.add_argument('--max-seconds',type=int,default=120); evidence.add_argument('--format',choices=['json','table'],default='table'); evidence.add_argument('--output',type=Path); evidence.add_argument('--show-table',action='store_true'); evidence.add_argument('--strict',action='store_true')
     args=parser.parse_args(argv)
     def write_result(result,output=None):
         if args.format=='table': output=render(args.command,result)
@@ -137,8 +138,15 @@ def main(argv=None):
         if args.command=='catalog-audit':
             version=selected_version(None,args.aws_provider_version)['version']
             actions=catalog_actions(version)
-            if args.refresh: download_snapshot(args.metadata_dir,{a.split(':',1)[0] for a in actions})
-            result=audit(actions,[],args.metadata_dir)
+            from .authorization import bundled_metadata
+            folder=args.metadata_dir or bundled_metadata()
+            if getattr(args,'refresh',False):
+                if not args.metadata_dir: raise ValueError('Maintainer refresh requires an explicit writable --metadata-dir')
+                download_snapshot(args.metadata_dir,{a.split(':',1)[0] for a in actions})
+                folder=args.metadata_dir
+            if folder is None: raise ValueError('No packaged AWS metadata in this source checkout; use an official built distribution or an existing offline snapshot')
+            result=audit(actions,[],folder)
+            result['metadata_source']='explicit-offline-snapshot' if args.metadata_dir else 'packaged'
             write_result(result)
             return 2 if args.strict and result['status']!='compatible' else 0
         config=json.loads(args.backend_config.read_text()) if args.backend_config else None
@@ -151,7 +159,8 @@ def main(argv=None):
             variables.append((key,value))
         report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags,provider_version=args.aws_provider_version,authorization_metadata=args.authorization_metadata)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
-        report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved,args.fail_on_unmapped,args.require_compatible_metadata,args.require_lifecycle_verified)
+        require_complete_mapping=args.command in ('generate','split') and not args.allow_partial
+        report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved or require_complete_mapping,args.fail_on_unmapped or require_complete_mapping,args.require_compatible_metadata,args.require_lifecycle_verified)
         if report['gate_failures']: status=4
         if args.command in ('generate','split') and (report['gate_failures'] or (args.strict and report['coverage']!='COMPLETE')):
             print('ERROR: policy generation blocked by security or coverage gate',file=sys.stderr); return status

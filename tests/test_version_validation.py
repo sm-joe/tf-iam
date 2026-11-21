@@ -54,3 +54,37 @@ def test_eks_documented_global_metadata_fallback(tmp_path):
     assert [x["action"] for x in out["findings"]]==["eks:DescribeCluster"]
     rows[0]["scope"]="arn:aws:eks:us-east-1:123456789012:cluster/demo"
     assert any(x["code"]=="action-requires-global-scope" for x in audit(actions,rows,tmp_path)["findings"])
+
+
+def test_public_cli_has_no_maintainer_source_commands(capsys):
+    with pytest.raises(SystemExit) as e: main(["--help"])
+    assert e.value.code==0
+    text=capsys.readouterr().out
+    assert "provider-audit" not in text and "evidence-audit" not in text
+    with pytest.raises(SystemExit) as e: main(["catalog-audit","--refresh"])
+    assert e.value.code==2
+
+def test_normal_scan_and_generate_require_no_network_or_provider_checkout(tmp_path,monkeypatch):
+    import subprocess
+    import tfiam.authorization as auth
+    def forbidden(*args,**kwargs): raise AssertionError("External call attempted")
+    monkeypatch.setattr(auth,"urlopen",forbidden)
+    monkeypatch.setattr(subprocess,"run",forbidden)
+    monkeypatch.setattr(auth,"bundled_metadata",lambda:None)
+    fixture(tmp_path)
+    output=tmp_path/"policy.json"
+    assert main(["generate",str(tmp_path),"--allow-partial","--output",str(output)])==0
+    assert json.loads(output.read_text())["Statement"]
+    assert scan(tmp_path)["authorization_metadata"]["metadata_source"]=="not-packaged-in-source-checkout"
+
+def test_packaged_snapshot_automatically_selected(tmp_path,monkeypatch):
+    import tfiam.authorization as auth
+    root=tmp_path/"metadata"
+    metadata(root)
+    fixture(tmp_path)
+    monkeypatch.setattr(auth,"bundled_metadata",lambda:root)
+    report=scan(tmp_path)
+    assert report["authorization_metadata"]["metadata_source"]=="packaged"
+    assert report["authorization_metadata"]["status"]=="issues" # deliberately incomplete test snapshot
+    report=scan(tmp_path,authorization_metadata=root)
+    assert report["authorization_metadata"]["metadata_source"]=="explicit-offline-snapshot"
