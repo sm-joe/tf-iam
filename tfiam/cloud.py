@@ -2,7 +2,8 @@
 import json
 import re
 from urllib.parse import unquote
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import time
 
 def client(service,profile=None,region=None):
     try:
@@ -55,17 +56,45 @@ def parse_time(value):
         return out.astimezone(timezone.utc)
     except (TypeError,ValueError,AttributeError): raise ValueError("Use an ISO 8601 timestamp with timezone") from None
 
-def lookup_events(trail,role_arn,start,end):
+def lookup_events(trail,role_arn,start,end,*,session_names=None,max_pages=100,max_seconds=120,progress=None,stats=None):
     if not re.fullmatch(r"arn:[a-z0-9-]+:iam::[0-9]{12}:role/[^\s*?]+",role_arn): raise ValueError("Expected exact IAM role ARN")
-    if start>=end or (end-start).days>90: raise ValueError("Invalid CloudTrail interval (maximum 90 days)")
-    # LookupEvents is management-event history, region-specific. Filter by session issuer
-    # rather than a substring of a username or an assumed role session name.
-    for page in trail.get_paginator("lookup_events").paginate(StartTime=start,EndTime=end):
-        for item in page.get("Events",[]):
-            try: event=json.loads(item["CloudTrailEvent"])
-            except (KeyError,TypeError,ValueError): continue
-            if event.get("userIdentity",{}).get("sessionContext",{}).get("sessionIssuer",{}).get("arn")==role_arn:
-                yield event
+    if start>=end or end-start>timedelta(days=90): raise ValueError("Invalid CloudTrail interval (maximum 90 days)")
+    if max_pages<1 or max_seconds<1: raise ValueError("CloudTrail limits must be positive")
+    session_names=list(dict.fromkeys(session_names or []))
+    if any(not re.fullmatch(r"[A-Za-z0-9_+=,.@-]{2,64}",n) for n in session_names):
+        raise ValueError("Invalid STS role session name")
+    stats=stats if stats is not None else {}
+    stats.update({"pages":0,"events_scanned":0,"matched":0,"complete":False,"stop_reason":None,
+                  "mode":"session-filtered" if session_names else "regional-management-history",
+                  "session_names":session_names,"max_pages":max_pages,"max_seconds":max_seconds})
+    started=time.monotonic()
+    # Username is a session name for assumed-role events, not the IAM role ARN.
+    # Never infer a session name from the role name. Exact issuer ARN is still checked.
+    for name in session_names or [None]:
+        request={"StartTime":start,"EndTime":end,"MaxResults":50}
+        if name: request["LookupAttributes"]=[{"AttributeKey":"Username","AttributeValue":name}]
+        token=None
+        while True:
+            if stats["pages"]>=max_pages or time.monotonic()-started>=max_seconds:
+                stats["stop_reason"]="page-limit" if stats["pages"]>=max_pages else "time-limit"
+                return
+            if token: request["NextToken"]=token
+            if stats["pages"]: time.sleep(0.55)
+            page=trail.lookup_events(**request)
+            stats["pages"]+=1
+            for item in page.get("Events",[]):
+                stats["events_scanned"]+=1
+                try: event=json.loads(item["CloudTrailEvent"])
+                except (KeyError,TypeError,ValueError): continue
+                if event.get("userIdentity",{}).get("sessionContext",{}).get("sessionIssuer",{}).get("arn")==role_arn:
+                    stats["matched"]+=1
+                    yield event
+            if progress and (stats["pages"]==1 or stats["pages"]%5==0):
+                progress(stats)
+            token=page.get("NextToken")
+            if not token: break
+    stats["complete"]=True
+    stats["stop_reason"]="exhausted"
 
 # API operation names need not equal IAM action names. Only explicit exceptions and
 # exact catalog-name candidates are accepted; observations never remove permissions.

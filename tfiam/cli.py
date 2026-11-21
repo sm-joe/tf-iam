@@ -78,7 +78,7 @@ def main(argv=None):
     validate=sub.add_parser('validate-policy',help='AWS IAM Access Analyzer identity policy validation')
     validate.add_argument('policy',type=Path); validate.add_argument('--aws-profile'); validate.add_argument('--aws-region'); validate.add_argument('--strict',action='store_true'); validate.add_argument('--output',type=Path)
     runtime=sub.add_parser('runtime-audit',help='Compare observed CloudTrail management operations with candidate actions')
-    runtime.add_argument('--role-arn',required=True); runtime.add_argument('--events',type=Path); runtime.add_argument('--start'); runtime.add_argument('--end'); runtime.add_argument('--aws-profile'); runtime.add_argument('--aws-region'); runtime.add_argument('--candidate',type=Path,required=True); runtime.add_argument('--output',type=Path)
+    runtime.add_argument('--role-arn',required=True); runtime.add_argument('--events',type=Path); runtime.add_argument('--start'); runtime.add_argument('--end'); runtime.add_argument('--aws-profile'); runtime.add_argument('--aws-region'); runtime.add_argument('--candidate',type=Path,required=True); runtime.add_argument('--output',type=Path); runtime.add_argument('--session-name',action='append',default=[],help='Exact known STS session name; repeat for multiple sessions'); runtime.add_argument('--max-pages',type=int,default=100); runtime.add_argument('--max-seconds',type=int,default=120); runtime.add_argument('--quiet',action='store_true')
     for cmd in ('scan','generate','compare','split'):
         p=sub.add_parser(cmd); p.add_argument('directory',type=Path,nargs='?'); p.add_argument('--plan-json',type=Path,help='Saved terraform show -json output; optional directory supplies backend and lockfile'); p.add_argument('--phase',choices=['plan','apply','destroy'],default='apply'); p.add_argument('--var-file',action='append',type=Path,default=[]); p.add_argument('--var',action='append',default=[],metavar='NAME=VALUE'); p.add_argument('--scope-resource-tags',action='store_true',help='Restrict supported existing-resource EC2 mutations to stable saved-plan tags'); p.add_argument('--aws-provider-version',help='Exact provider version if lockfile unavailable'); p.add_argument('--authorization-metadata',type=Path,help='Local AWS service authorization metadata'); p.add_argument('--aws-account'); p.add_argument('--aws-region'); p.add_argument('--aws-partition',default='aws'); p.add_argument('--backend-config',type=Path,help='JSON backend overrides'); p.add_argument('--output',type=Path); p.add_argument('--strict',action='store_true',help='Exit 2 when analysis is partial'); p.add_argument('--fail-on-risk',choices=list(LEVELS)); p.add_argument('--fail-on-unresolved',action='store_true'); p.add_argument('--fail-on-unmapped',action='store_true'); p.add_argument('--require-compatible-metadata',action='store_true')
         if cmd=='scan': p.add_argument('--format',choices=['text','json'],default='text')
@@ -95,16 +95,27 @@ def main(argv=None):
                 result=cloud.validate_policy(cloud.client('accessanalyzer',args.aws_profile,args.aws_region),json.loads(args.policy.read_bytes()))
                 status=2 if args.strict and result['status']!='no-findings' else 0
             else:
+                retrieval={}
                 if args.events:
-                    if args.start or args.end: raise ValueError('Offline events cannot be combined with live interval')
+                    if args.start or args.end or args.session_name: raise ValueError('Offline events cannot be combined with live interval')
                     raw=json.loads(args.events.read_bytes()); events=raw.get('Records',[]) if isinstance(raw,dict) else raw
                     if not isinstance(events,list): raise ValueError('Expected CloudTrail event list or Records object')
                 else:
                     if not args.start or not args.end or not args.aws_region: raise ValueError('Live runtime audit requires start, end and AWS region')
-                    events=cloud.lookup_events(cloud.client('cloudtrail',args.aws_profile,args.aws_region),args.role_arn,cloud.parse_time(args.start),cloud.parse_time(args.end))
+                    if not args.quiet: print('CloudTrail: retrieving regional management events (bounded scan)...',file=sys.stderr,flush=True)
+                    def progress(s):
+                        if not args.quiet: print(f"CloudTrail: {s['pages']} pages | {s['events_scanned']} events searched | {s['matched']} role matches",file=sys.stderr,flush=True)
+                    events=cloud.lookup_events(cloud.client('cloudtrail',args.aws_profile,args.aws_region),args.role_arn,cloud.parse_time(args.start),cloud.parse_time(args.end),session_names=args.session_name,max_pages=args.max_pages,max_seconds=args.max_seconds,progress=progress,stats=retrieval)
                 candidate=json.loads(args.candidate.read_bytes())
                 actions={r['action'] for r in candidate['permissions']}
                 result=cloud.refine(events,args.role_arn,actions); status=0
+                if retrieval:
+                    result['retrieval']=retrieval
+                    result['coverage']='PARTIAL' if not retrieval['complete'] or args.session_name else 'REGIONAL_MANAGEMENT_HISTORY'
+                    if not retrieval['complete']:
+                        status=2
+                        print('REVIEW: CloudTrail retrieval stopped at '+retrieval['stop_reason']+'; report is partial.',file=sys.stderr)
+                else: result['coverage']='OFFLINE_EXPORT'
             output=json.dumps(result,indent=2)
             if args.output: args.output.write_text(output+'\n',encoding='utf-8')
             else: print(output)
