@@ -123,7 +123,7 @@ def parse_plan(doc, phase):
             entry["status"]="SKIPPED"
             continue
         for op,value in selected:
-            tasks.append({"entry":entry,"operation":op,"body":value})
+            tasks.append({"entry":entry,"operation":op,"body":value,"before":before})
         if phase=="plan" and actions==["update"] and before!=after:
             tasks.append({"entry":entry,"operation":"read","body":before})
     meta={"format_version":version,"terraform_version":terraform_version,

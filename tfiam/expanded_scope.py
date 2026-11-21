@@ -20,13 +20,14 @@ GLOBAL={
     "ec2:DescribeVpcPeeringConnections","cloudwatch:GetDashboard",
     "cloudwatch:PutDashboard","cloudwatch:DeleteDashboards",
 }
-def expand(strategy, typ, body, actions, account, region, partition, resolve, add, warn, source, task=None):
+def expand(strategy, typ, body, actions, account, region, partition, resolve, add, warn, source, task=None, unresolved=None):
     def value(field):
         return resolve(body.get(field))
     def emit(action, resource, condition=None):
         add("aws",[action],resource,source,condition=condition)
     def omit(action):
-        warn(source+": "+action+" omitted; action-specific scope or dependency unresolved")
+        if unresolved: unresolved(action)
+        else: warn(source+": "+action+" omitted; action-specific scope or dependency unresolved")
     def arn(service, suffix):
         if account and region and suffix: return f"arn:{partition}:{service}:{region}:{account}:{suffix}"
     def name_arn(service, prefix, field):
@@ -76,6 +77,15 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
         if alias and alias.startswith("alias/"): target=name_arn("kms","","name")
     elif strategy=="eks-access":
         expected=rf"arn:{partition}:eks:[a-z0-9-]+:[0-9]{{12}}:access-entry/[^\s*?]+"
+        # AWS assigns an opaque UUID. Scope to exact ARN when supplied by Terraform.
+        known=value("access_entry_arn") or known
+        cluster=value("cluster_name")
+        principal=value("principal_arn")
+        if cluster and principal and re.fullmatch(r"[\w-]+",cluster):
+            match=re.fullmatch(r"arn:[a-z0-9-]+:iam::([0-9]{12}):(role|user)/([A-Za-z0-9+=,.@_/-]+)",principal)
+            if match:
+                identity=match.group(3).rsplit("/",1)[-1]
+                target=arn("eks","access-entry/"+cluster+"/"+match.group(2)+"/"+match.group(1)+"/"+identity+"/*")
     elif strategy=="ecr":
         expected=rf"arn:{partition}:ecr:[a-z0-9-]+:[0-9]{{12}}:repository/[^\s*?]+"
         target=name_arn("ecr","repository/","name" if typ=="aws_ecr_repository" else "repository")
@@ -132,23 +142,33 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
                 cluster=value("cluster_name"); principal=value("principal_arn")
                 cluster_arn=arn("eks","cluster/"+cluster) if cluster else None
                 if cluster_arn and principal and re.fullmatch(r"arn:[a-z0-9-]+:iam::[0-9]{12}:(?:role|user)/[^\s*?]+",principal):
-                    emit(action,cluster_arn,{"StringEquals":{"eks:principalArn":principal}})
+                    emit(action,cluster_arn,{"ArnEquals":{"eks:principalArn":principal}})
                 else: omit(action)
             elif action in ("eks:AssociateAccessPolicy","eks:DisassociateAccessPolicy"):
                 policy=value("policy_arn")
                 if target and policy and re.fullmatch(r"arn:[a-z0-9-]+:eks::aws:cluster-access-policy/[A-Za-z0-9]+",policy):
-                    emit(action,target,{"StringEquals":{"eks:policyArn":policy}})
+                    condition={"ArnEquals":{"eks:policyArn":policy}}
+                    principal=value("principal_arn")
+                    if principal: condition["ArnEquals"]["eks:principalArn"]=principal
+                    emit(action,target,condition)
                 else: omit(action)
-            elif target: emit(action,target)
+            elif target: emit(action,target,{"ArnEquals":{"eks:principalArn":value("principal_arn")}} if value("principal_arn") and action not in ("eks:TagResource","eks:UntagResource") else None)
             else: omit(action)
             continue
         if strategy=="kms-alias":
-            if action=="kms:CreateAlias":
-                key=value("target_key_id")
-                if target and key and KEY.fullmatch(key):
-                    emit(action,target); emit(action,key)
-                else: omit(action)
-            # Update/Delete alias also require existing key identity; no guessed key scope.
+            def key_arn(raw):
+                key=resolve(raw)
+                if key and KEY.fullmatch(key): return key
+                if key and re.fullmatch(r"(?:mrk-[a-f0-9]{32}|[a-f0-9-]{36})",key): return arn("kms","key/"+key)
+                return None
+            key=key_arn(body.get("target_key_id"))
+            old=key_arn(task.get("before",{}).get("target_key_id")) if task else None
+            if action=="kms:CreateAlias" and target and key:
+                emit(action,target); emit(action,key)
+            elif action=="kms:UpdateAlias" and target and key and old and task and task["operation"]=="update":
+                for resource in sorted({target,key,old}): emit(action,resource)
+            elif action=="kms:DeleteAlias" and target and key and task and task["operation"]=="delete":
+                emit(action,target); emit(action,key)
             else: omit(action)
             continue
         if action in ("route53:GetChange",):

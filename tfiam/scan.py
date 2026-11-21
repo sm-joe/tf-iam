@@ -5,6 +5,7 @@ from .plan import parse_plan
 from .risk import assess
 from .resolver import discover
 from .expanded_scope import expand
+from .action_scope import network, elb, EC2_TYPES, ELB_TYPES, EC2_GLOBAL
 
 def blocks(doc, key):
     value=doc.get(key, [])
@@ -13,16 +14,20 @@ def blocks(doc, key):
 def literal(v):
     return v if isinstance(v,str) and v and not any(c in v for c in ('${','%{','*','?')) else None
 
-def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None):
+def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None, scope_resource_tags=False):
     if root is None and plan is None: raise ValueError('Provide a Terraform directory or saved plan JSON')
     has_root=root is not None
     root=Path(root or '.').resolve()
     if not root.is_dir(): raise ValueError('Terraform directory does not exist')
-    report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'backends':[]}
+    report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'backends':[], 'unresolved_permissions':[]}
     report['catalog']={'schema_version':CATALOG['schema_version'],'provider':CATALOG['provider'],'provider_version':None}
     visited=set(); records=set()
     def warn(msg):
         if msg not in report['warnings']: report['warnings'].append(msg)
+    def unresolved(source,action):
+        row={'source':source,'action':action,'reason':'action-specific scope or dependency unresolved'}
+        if row not in report['unresolved_permissions']: report['unresolved_permissions'].append(row)
+        warn(source+': '+action+' omitted; action-specific scope or dependency unresolved')
     def add(p,a,s,source,plane='management',condition=None):
         for action in a:
             key=(p,action,s,source,plane,json.dumps(condition,sort_keys=True))
@@ -146,8 +151,18 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if not rule: warn(address+': no AWS '+category+' permission mapping'); continue
                             entry['validation']=rule['validation']; entry['reference']=rule['reference']
                             p='aws'; acts=operation_actions(rule,operation) if task else actions_for(rule, 'plan' if category=='data' else phase)
+                            def emit(action,target,condition=None):
+                                add('aws',[action],target,address,condition=condition)
+                            def omit(action):
+                                unresolved(address,action)
+                            if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
+                                network(typ,body,acts,account,region,partition,resolve,emit,omit,task,scope_resource_tags=scope_resource_tags)
+                                continue
+                            if typ in ELB_TYPES:
+                                elb(typ,body,acts,account,region,partition,resolve,emit,omit,task)
+                                continue
                             if rule.get('scope_strategy'):
-                                expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task)
+                                expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task,unresolved=omit)
                                 continue
                             attr_rules=[]
                             for attr in rule['attributes']:
@@ -205,23 +220,25 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 kind={'aws_eks_cluster':'cluster','aws_eks_node_group':'nodegroup','aws_eks_addon':'addon','aws_eks_pod_identity_association':'podidentityassociation'}[typ]
                                 name=resolve(body.get('node_group_name' if kind=='nodegroup' else 'addon_name'))
                                 if kind=='cluster': scope=cluster_arn
-                                elif prefix and kind=='podidentityassociation': scope=prefix+kind+'/'+cluster+'/*'
+                                elif prefix and kind=='podidentityassociation':
+                                    association=resolve(body.get('association_id')) if task else None
+                                    scope=prefix+kind+'/'+cluster+'/'+(association if association and re.fullmatch(r'[A-Za-z0-9-]+',association) else '*')
                                 elif prefix and name: scope=prefix+kind+'/'+cluster+'/'+name+'/*'
                                 else: scope='*'
-                                known=resolve(body.get('arn')) if task else None
+                                known=resolve(body.get('association_arn') or body.get('arn')) if task else None
                                 if known and re.fullmatch(r'arn:[a-z0-9-]+:eks:[a-z0-9-]+:[0-9]{12}:'+kind+r'/[^\s*?]+',known):
                                     scope=known
                                     if kind=='cluster': cluster_arn=known
                                 for action in acts:
                                     target='*' if action in ('eks:CreateCluster','eks:DescribeAddonVersions') else cluster_arn if action in ('eks:CreateNodegroup','eks:CreateAddon','eks:CreatePodIdentityAssociation') else scope
-                                    if target=='*' and action not in ('eks:CreateCluster','eks:DescribeAddonVersions'): warn(address+': unresolved EKS scope; '+action+' omitted'); continue
+                                    if target=='*' and action not in ('eks:CreateCluster','eks:DescribeAddonVersions'): unresolved(address,action); continue
                                     add(p,[action],target,address)
                                 if resource_phase=='apply' and category=='resource':
                                     field,service={'cluster':('role_arn','eks.amazonaws.com'),'nodegroup':('node_role_arn','eks.amazonaws.com'),'addon':('service_account_role_arn','eks.amazonaws.com'),'podidentityassociation':('role_arn','pods.eks.amazonaws.com')}[kind]
                                     if kind!='addon' or body.get(field):
                                         arn=resolve(body.get(field))
                                         if arn and re.fullmatch(r'arn:[a-z0-9-]+:iam::[0-9]{12}:role/[^\s*?]+',arn): add(p,['iam:PassRole'],arn,address,condition={'StringEquals':{'iam:PassedToService':service}})
-                                        else: warn(address+': unresolved PassRole target; permission omitted')
+                                        else: unresolved(address,'iam:PassRole')
                                     if kind in ('cluster','nodegroup'): warn(address+': verify first-use service-linked roles, optional encryption, access entries and provider-specific dependencies')
                                 if scope=='*': warn(address+': provide account, region and resolvable resource names')
                                 continue
@@ -258,5 +275,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
         if rule: entry['provider_version_validated']=rule['validation']=='validated' and report['catalog']['provider_version'] in rule['provider_versions']
     warn('Starter catalog is not provider-version validated; review all permissions with cloud audit evidence before production use.')
     report['permissions'].sort(key=lambda p:(p['provider'],p['action'],p['scope'],p['source']))
+    report['scope_summary']={'global':sum(p['scope']=='*' for p in report['permissions']),'bounded_wildcard':sum(p['scope']!='*' and '*' in p['scope'] for p in report['permissions']),'exact':sum('*' not in p['scope'] and '?' not in p['scope'] for p in report['permissions']),'conditional':sum(bool(p.get('condition')) for p in report['permissions']),'unresolved':len(report['unresolved_permissions'])}
+    report['unresolved_permissions'].sort(key=lambda x:(x['source'],x['action']))
     report['risks'] = assess(report['permissions'])
     return report
