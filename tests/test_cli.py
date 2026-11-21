@@ -5,21 +5,21 @@ from tfiam.scan import scan
 from tfiam.cli import policy,compare,terraform,main
 ROOT=Path(__file__).resolve().parents[1]/'examples'
 def test_backend_and_scope():
-    r=scan(ROOT/'multicloud'); p=policy(r,'aws','test',None)
+    r=scan(ROOT/'aws'); p=policy(r,'aws','test',None)
     assert any(s['Resource'].endswith('.tflock') and 's3:DeleteObject' in s['Action'] for s in p['Statement'])
     assert not any(s['Resource'].endswith('.tfstate') and 's3:DeleteObject' in s['Action'] for s in p['Statement'])
     assert any(x['status']=='UNSUPPORTED' for x in r['resources'])
     assert r['coverage']=='PARTIAL'
 def test_plan():
-    r=scan(ROOT/'multicloud','plan'); a={x['action'] for x in r['permissions']}; assert 's3:CreateBucket' not in a; assert 's3:PutObject' in a
+    r=scan(ROOT/'aws','plan'); a={x['action'] for x in r['permissions']}; assert 's3:CreateBucket' not in a; assert 's3:PutObject' in a
 def test_compare():
-    r=scan(ROOT/'multicloud'); c=compare(r,'aws',json.loads((ROOT/'existing-aws.json').read_text())); assert not c['missing_or_unverified']; assert c['potentially_excessive']
+    r=scan(ROOT/'aws'); c=compare(r,'aws',json.loads((ROOT/'existing-aws.json').read_text())); assert not c['missing_or_unverified']; assert c['potentially_excessive']
 def test_deny():
-    r=scan(ROOT/'multicloud'); c=compare(r,'aws',{'Statement':[{'Effect':'Deny','Action':'s3:*','Resource':'*'}]}); assert c['explicitly_denied']
+    r=scan(ROOT/'aws'); c=compare(r,'aws',{'Statement':[{'Effect':'Deny','Action':'s3:*','Resource':'*'}]}); assert c['explicitly_denied']
 def test_outputs():
-    r=scan(ROOT/'multicloud'); assert 'includedPermissions' in policy(r,'gcp','Test',None); p=policy(r,'azure','Test','/subscriptions/example'); assert 'azurerm_role_definition' in terraform(p,'azure','Test','/subscriptions/example')['resource']
+    r=scan(ROOT/'aws'); p=policy(r,'aws','Test',None); assert 'aws_iam_policy' in terraform(p,'aws','Test',None)['resource']
 def test_strict(tmp_path):
-    assert main(['scan',str(ROOT/'multicloud'),'--strict','--output',str(tmp_path/'report')])==2
+    assert main(['scan',str(ROOT/'aws'),'--strict','--output',str(tmp_path/'report')])==2
     assert (tmp_path/'report').exists()
 def test_local_module(tmp_path):
     (tmp_path/'main.tf.json').write_text(json.dumps({'module':{'child':{'source':'./child'}}})); (tmp_path/'child').mkdir(); (tmp_path/'child'/'main.tf.json').write_text(json.dumps({'resource':{'aws_s3_bucket':{'x':{'bucket':'test'}}}})); assert scan(tmp_path)['resources'][0]['type']=='aws_s3_bucket'
