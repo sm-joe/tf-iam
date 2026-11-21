@@ -23,7 +23,7 @@ tf-iam analyzes Terraform configuration and saved plans, derives scoped AWS IAM 
 | Runtime evidence | Bounded CloudTrail management event analysis |
 | Distribution | Python package and standalone Linux x86_64 build |
 
-AWS and Terraform are the supported platforms. Generated policies are candidates requiring review; the tool does not provision resources, attach IAM policies or revoke permissions.
+AWS and Terraform are the supported platforms. The standalone binary and built distribution wheel include the permission catalog and AWS authorization metadata. Normal analysis never downloads a provider, fetches metadata, invokes Terraform, or needs Git or AWS credentials. A source checkout includes the same permission catalog but may not contain the build-generated metadata snapshot. Generated policies are candidates requiring review; the tool does not provision resources, attach IAM policies or revoke permissions.
 
 ## Quick start
 
@@ -55,7 +55,7 @@ tfiam scan ./examples/eks --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REG
 | `generate` | Produce IAM JSON or Terraform JSON policy candidates |
 | `compare` | Compare candidates against an identity policy or live IAM role |
 | `split` | Separate read, mutation and privileged/destructive grants |
-| `catalog-audit` | Check catalog action names against public AWS metadata |
+| `catalog-audit` | Offline catalog check against packaged AWS metadata |
 | `validate-policy` | Validate an identity policy through IAM Access Analyzer |
 | `runtime-audit` | Analyze CloudTrail observations for an exact IAM session issuer |
 
@@ -114,13 +114,12 @@ Live comparison reads managed policy default versions and inline policies. Findi
 ## AWS authorization and runtime evidence
 
 ```bash
-tfiam catalog-audit --metadata-dir .aws-auth --refresh --strict --output catalog-audit.json
-tfiam scan ./infra --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --authorization-metadata .aws-auth --format json --output report.json
+tfiam scan ./infra --aws-account "$AWS_ACCOUNT_ID" --aws-region "$AWS_REGION" --format json --output report.json
 tfiam validate-policy policy.json --aws-region "$AWS_REGION" --strict --output validation.json
 tfiam runtime-audit --role-arn "$PIPELINE_ROLE_ARN" --start "$(date -u -d '1 hour ago' +%FT%TZ)" --end "$(date -u +%FT%TZ)" --aws-region "$AWS_REGION" --candidate report.json --max-pages 20 --max-seconds 60 --output runtime-report.json
 ```
 
-Metadata refresh downloads public AWS service definitions; offline audits reuse the local snapshot. The runtime command filters by exact role issuer and accepts explicitly known session names. It defaults to 100 pages and a cooperative 120-second budget; a truncated report is visibly partial. Alternatively pass `--events cloudtrail.json` for offline exports. Zero observations never imply unused permissions are safe to remove.
+Built distributions automatically audit permissions against packaged AWS metadata. An existing local snapshot can optionally override it. A source checkout without packaged metadata reports `not-run`; it never downloads anything to compensate. Metadata acquisition and provider-source review are internal build/maintenance tasks. The runtime command filters by exact role issuer and accepts explicitly known session names. It defaults to 100 pages and a cooperative 120-second budget; a truncated report is visibly partial. Alternatively pass `--events cloudtrail.json` for offline exports. Zero observations never imply unused permissions are safe to remove.
 
 Live read access requires IAM GetRole, ListAttachedRolePolicies, ListRolePolicies, GetPolicy, GetPolicyVersion and GetRolePolicy as applicable; Access Analyzer ValidatePolicy; and CloudTrail LookupEvents. Use a dedicated limited identity.
 
@@ -155,6 +154,7 @@ Stable release assets require reviewed lifecycle evidence, repeatability checks 
 ```bash
 python -m pip install '.[test,aws,packaging]'
 python -m pytest tests/ -q
+python scripts/prepare-metadata.py  # maintainer build only; fresh checkout
 bash scripts/build-linux.sh
 ```
 
@@ -174,8 +174,6 @@ Computed and masked plan values are reported as information in the resource inve
 
 Static scans read all root `.tf` and `.tf.json` files, including newly added S3 configurations. Saved-plan scans intentionally analyze only the saved operations. If current root AWS declarations are absent from saved plan configuration, the scan lists them separately and generation/split refuse that stale input. Regenerate `terraform plan` and `terraform show -json` after changing configuration. This declaration check cannot detect every change to existing resource arguments or module instances. Explicit `aws_s3_bucket.name.id` dependencies resolve to the bucket's known name; generated names, sensitive values and ambiguous references remain unresolved.
 
-### Provider source reconciliation
+### Catalog maintenance
 
-`provider-audit` reads SDK call sites from the exact versioned Git object of the official Terraform AWS provider, resolves operations through AWS service reference `Operations[].AuthorizedActions`, and reports catalog differences, conditional alternatives and missing metadata. Provider v6.73.0 is pinned to the official commit. Other local tags are explicitly unverified. The audit does not execute provider code, modify the catalog or infer that every possible authorized action is required. It covers an initial nine resource types (S3, EKS and IAM). See docs/provider-validation.md.
-
-The source-backed lifecycle acceptance harness and `evidence-audit` command are documented in [Provider validation](docs/provider-validation.md). Use a dedicated isolated AWS account and exact generated policy; no IAM mutation or infrastructure apply occurs during normal scans. Successful fixture evidence is not equivalent to universal provider coverage.
+The catalog is maintained and reviewed in repository CI. Source audits and lifecycle evidence tools are repository-only, documented in [maintainer validation](docs/provider-validation.md). End users do not download external provider source or run maintenance tools. Provider version is detected from the existing lockfile and the corresponding packaged mapping is selected automatically.

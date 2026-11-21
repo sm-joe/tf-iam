@@ -328,10 +328,14 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     if not version: warn('AWS provider version unknown; supply the Terraform lockfile or --aws-provider-version')
     if provider_selection['lockfile_status']=='invalid-lockfile': warn('AWS provider lockfile could not be parsed')
     if mapped>verified: warn(f'AWS provider {version or "unknown"}: {mapped-verified} mapped resources lack exact-version lifecycle authorization evidence.')
+    from .authorization import bundled_metadata
+    explicit_metadata=authorization_metadata is not None
+    if not explicit_metadata: authorization_metadata=bundled_metadata()
     if authorization_metadata is not None:
         report['authorization_metadata']=audit(used_actions,report['permissions'],authorization_metadata)
+        report['authorization_metadata']['metadata_source']='explicit-offline-snapshot' if explicit_metadata else 'packaged'
         if report['authorization_metadata']['status']!='compatible': warn('AWS authorization metadata audit contains findings; review authorization_metadata before generating a policy')
-    else: report['authorization_metadata']={'status':'not-run'}
+    else: report['authorization_metadata']={'status':'not-run','metadata_source':'not-packaged-in-source-checkout'}
 
     report['permissions'].sort(key=lambda p:(p['provider'],p['action'],p['scope'],p['source']))
     report['scope_summary']={'global':sum(p['scope']=='*' for p in report['permissions']),'bounded_wildcard':sum(p['scope']!='*' and '*' in p['scope'] for p in report['permissions']),'exact':sum('*' not in p['scope'] and '?' not in p['scope'] for p in report['permissions']),'conditional':sum(bool(p.get('condition')) for p in report['permissions']),'unresolved':len(report['unresolved_permissions'])}

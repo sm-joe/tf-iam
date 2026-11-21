@@ -16,8 +16,13 @@ jobs:
           python-version: '3.12'
       - run: pip install -e '.[test,aws,packaging]'
       - run: python -m pytest -q
+      - run: python scripts/prepare-metadata.py
       - run: bash scripts/build-linux.sh
-      - run: dist/tfiam --help && dist/tfiam scan examples/aws-hcl --format json
+      - run: |
+          dist/tfiam --help
+          dist/tfiam catalog-audit --strict --format json
+          dist/tfiam scan examples/aws-hcl --format json > "$RUNNER_TEMP/offline-scan.json"
+          python -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["authorization_metadata"]["metadata_source"]=="packaged"' "$RUNNER_TEMP/offline-scan.json"
       - uses: actions/upload-artifact@v4
         with:
           name: tfiam-linux-x86_64
