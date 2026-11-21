@@ -66,7 +66,7 @@ def main(argv=None):
     parser=argparse.ArgumentParser(prog='tfiam',description='Terraform IAM candidate policy analyzer')
     sub=parser.add_subparsers(dest='command',required=True)
     for cmd in ('scan','generate','compare'):
-        p=sub.add_parser(cmd); p.add_argument('directory',type=Path,nargs='?'); p.add_argument('--plan-json',type=Path,help='Saved terraform show -json output; optional directory supplies backend and lockfile'); p.add_argument('--phase',choices=['plan','apply','destroy'],default='apply'); p.add_argument('--var-file',action='append',type=Path,default=[]); p.add_argument('--var',action='append',default=[],metavar='NAME=VALUE'); p.add_argument('--aws-account'); p.add_argument('--aws-region'); p.add_argument('--aws-partition',default='aws'); p.add_argument('--backend-config',type=Path,help='JSON backend overrides'); p.add_argument('--output',type=Path); p.add_argument('--strict',action='store_true',help='Exit 2 when analysis is partial')
+        p=sub.add_parser(cmd); p.add_argument('directory',type=Path,nargs='?'); p.add_argument('--plan-json',type=Path,help='Saved terraform show -json output; optional directory supplies backend and lockfile'); p.add_argument('--phase',choices=['plan','apply','destroy'],default='apply'); p.add_argument('--var-file',action='append',type=Path,default=[]); p.add_argument('--var',action='append',default=[],metavar='NAME=VALUE'); p.add_argument('--scope-resource-tags',action='store_true',help='Restrict supported existing-resource EC2 mutations to stable saved-plan tags'); p.add_argument('--aws-account'); p.add_argument('--aws-region'); p.add_argument('--aws-partition',default='aws'); p.add_argument('--backend-config',type=Path,help='JSON backend overrides'); p.add_argument('--output',type=Path); p.add_argument('--strict',action='store_true',help='Exit 2 when analysis is partial')
         if cmd=='scan': p.add_argument('--format',choices=['text','json'],default='text')
         else: p.add_argument('--provider',default='aws',choices=['aws'])
         if cmd=='generate':
@@ -82,7 +82,7 @@ def main(argv=None):
             key,sep,value=item.partition('=')
             if not sep or not key: raise ValueError('--var requires NAME=VALUE')
             variables.append((key,value))
-        report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config,plan=plan,var_files=args.var_file,variables=variables)
+        report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
         if args.command=='scan' and args.format=='text':
             lines=[f'TF IAM Scope | {report["phase"]} | {report["coverage"]}',f'Resources: {len(report["resources"])} | Permission observations: {len(report["permissions"])}']

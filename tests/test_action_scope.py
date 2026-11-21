@@ -59,3 +59,20 @@ def test_eks_access_entry_arn_and_condition():
     r=scan_doc("aws_eks_access_entry",{"cluster_name":"demo","principal_arn":identity,"access_entry_arn":entry},("no-op",))
     assert scopes(r,"eks:DescribeAccessEntry")=={entry}
     assert r["scope_summary"]["conditional"]==1
+
+def test_create_tag_depends_on_successful_creation():
+    r=scan_doc("aws_route_table",{"vpc_id":"vpc-abcd1234","tags":{"Team":"platform"}})
+    grant=next(p for p in r["permissions"] if p["action"]=="ec2:CreateTags")
+    assert grant["condition"]=={"StringEquals":{"ec2:CreateAction":"CreateRouteTable"}}
+    r=scan_doc("aws_route_table",{"vpc_id":None})
+    assert not scopes(r,"ec2:CreateTags")
+
+def test_opt_in_resource_tag_condition():
+    body={"id":"i-1234abcd","tags":{"Team":"platform","Changed":"new"}}
+    before={"id":"i-1234abcd","tags":{"Team":"platform","Changed":"old"}}
+    plan=doc("aws_instance",body,("update",),before)
+    r=scan(plan=plan,account=ACCOUNT,region=REGION,scope_resource_tags=True)
+    grant=next(p for p in r["permissions"] if p["action"]=="ec2:StopInstances")
+    assert grant["condition"]=={"StringEquals":{"ec2:ResourceTag/Team":"platform"}}
+    r=scan(plan=plan,account=ACCOUNT,region=REGION)
+    assert not next(p for p in r["permissions"] if p["action"]=="ec2:StopInstances").get("condition")

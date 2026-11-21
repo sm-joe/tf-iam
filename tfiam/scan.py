@@ -14,7 +14,7 @@ def blocks(doc, key):
 def literal(v):
     return v if isinstance(v,str) and v and not any(c in v for c in ('${','%{','*','?')) else None
 
-def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None):
+def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None, scope_resource_tags=False):
     if root is None and plan is None: raise ValueError('Provide a Terraform directory or saved plan JSON')
     has_root=root is not None
     root=Path(root or '.').resolve()
@@ -156,7 +156,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             def omit(action):
                                 unresolved(address,action)
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
-                                network(typ,body,acts,account,region,partition,resolve,emit,omit,task)
+                                network(typ,body,acts,account,region,partition,resolve,emit,omit,task,scope_resource_tags=scope_resource_tags)
                                 continue
                             if typ in ELB_TYPES:
                                 elb(typ,body,acts,account,region,partition,resolve,emit,omit,task)

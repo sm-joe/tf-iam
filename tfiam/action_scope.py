@@ -47,7 +47,7 @@ def tag_conditions(body,prefix):
         return {}
     return {"StringEquals":{prefix+k:v for k,v in sorted(tags.items())}}
 
-def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=None):
+def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,scope_resource_tags=False):
     def val(field): return resolve(body.get(field))
     def ec(kind,ident,owner=None):
         if not region or not account or not ident: return None
@@ -77,7 +77,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     if typ.startswith("aws_vpc_endpoint_"): own=dep("vpc_endpoint_id","vpc-endpoint","vpce")
     op=task.get("operation") if task else None
     creates=set()
-    for action in actions:
+    for action in sorted(actions,key=lambda a:(a in ("ec2:CreateTags","ec2:DeleteTags"),a)):
         short=action.split(":")[1]
         if action in EC2_GLOBAL:
             emit(action,"*"); continue
@@ -139,7 +139,16 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 if field in body and body[field]!=[]: targets.extend(many(field,kind,prefix) or [None])
             grant(action,targets); continue
         if short in SELF_ACTIONS:
-            grant(action,[own]); continue
+            condition=None
+            # On supported existing-resource actions, use only stable pre-existing tags.
+            # A new/changed tag cannot be assumed to exist when the action runs.
+            if scope_resource_tags and task and task.get("operation") in ("update","delete") and short in ("StartInstances","StopInstances","TerminateInstances","DeleteVolume","DeleteVpc","DeleteSubnet"):
+                old=task.get("before",{}).get("tags",{})
+                current=body.get("tags",{})
+                if isinstance(old,dict) and isinstance(current,dict):
+                    stable={k:v for k,v in old.items() if k in current and current[k]==v}
+                    condition=tag_conditions({"tags":stable},"ec2:ResourceTag/") or None
+            grant(action,[own],condition); continue
         if short in ("CreateTags","DeleteTags"):
             if own and (op!="create"):
                 emit(action,own)
