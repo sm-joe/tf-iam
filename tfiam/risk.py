@@ -1,20 +1,67 @@
-"""Heuristic risk indicators, not an effective-access or escalation proof."""
-RULES = {
-    "aws": {"iam:PassRole", "iam:AttachRolePolicy", "iam:PutRolePolicy", "iam:UpdateAssumeRolePolicy", "iam:CreatePolicyVersion", "iam:SetDefaultPolicyVersion", "iam:CreateAccessKey", "iam:PutUserPolicy", "iam:AttachUserPolicy"},
+"""Conservative candidate risk detection; combinations do not prove exploitability."""
+LEVELS={"LOW":1,"MEDIUM":2,"HIGH":3,"CRITICAL":4}
+DELEGATION={
+    "iam:PassRole":"HIGH","iam:AttachRolePolicy":"HIGH","iam:PutRolePolicy":"HIGH",
+    "iam:UpdateAssumeRolePolicy":"HIGH","iam:CreatePolicyVersion":"HIGH",
+    "iam:SetDefaultPolicyVersion":"HIGH","iam:CreateAccessKey":"HIGH",
+    "iam:PutUserPolicy":"HIGH","iam:AttachUserPolicy":"HIGH","iam:PutGroupPolicy":"HIGH",
+    "iam:AttachGroupPolicy":"HIGH","iam:AddUserToGroup":"HIGH",
+    "iam:DeleteRolePermissionsBoundary":"CRITICAL","iam:DeleteUserPermissionsBoundary":"CRITICAL",
+    "iam:PutRolePermissionsBoundary":"HIGH","iam:PutUserPermissionsBoundary":"HIGH",
+    "kms:PutKeyPolicy":"HIGH","s3:PutBucketPolicy":"HIGH","eks:AssociateAccessPolicy":"HIGH",
+    "lambda:AddPermission":"HIGH",
 }
-COMBINATIONS = {"aws": [("iam:PassRole", "ec2:RunInstances"), ("iam:PassRole", "lambda:CreateFunction"), ("iam:PassRole", "eks:CreateCluster")]}
+COMBOS=[
+    ("iam:PassRole","ec2:RunInstances"),("iam:PassRole","lambda:CreateFunction"),
+    ("iam:PassRole","eks:CreateCluster"),("iam:PassRole","ecs:RegisterTaskDefinition"),
+    ("iam:PassRole","lambda:UpdateFunctionConfiguration"),
+    ("iam:CreatePolicyVersion","iam:SetDefaultPolicyVersion"),
+    ("iam:CreateRole","iam:AttachRolePolicy"),
+    ("iam:CreateRole","iam:PutRolePolicy"),
+]
+DESTRUCTIVE={
+    "s3:DeleteBucket","s3:DeleteObject","s3:DeleteObjectVersion","ec2:TerminateInstances",
+    "ec2:DeleteVolume","ec2:DeleteSnapshot","rds:DeleteDBInstance","rds:DeleteDBCluster",
+    "dynamodb:DeleteTable","kms:ScheduleKeyDeletion","eks:DeleteCluster","eks:DeleteNodegroup",
+    "ecr:DeleteRepository","logs:DeleteLogGroup","lambda:DeleteFunction",
+    "sqs:DeleteQueue","route53:DeleteHostedZone","elasticloadbalancing:DeleteLoadBalancer",
+}
 def assess(rows):
-    findings = []
-    for provider, actions in RULES.items():
-        grouped = {}
-        for row in rows:
-            if row["provider"] == provider:
-                grouped.setdefault(row["action"].lower(), []).append(row)
-        for action in sorted(actions):
-            evidence = grouped.get(action.lower(), [])
-            if evidence:
-                findings.append({"provider": provider, "kind": "delegation", "actions": [action], "sources": sorted({r["source"] for r in evidence}), "message": "Review delegation, boundaries and effective resource conditions."})
-        for combo in COMBINATIONS.get(provider, []):
-            if all(a.lower() in grouped for a in combo):
-                findings.append({"provider": provider, "kind": "combination", "actions": list(combo), "sources": sorted({r["source"] for a in combo for r in grouped[a.lower()]}), "message": "Potential delegation combination; exploitability depends on scope and conditions."})
+    grouped={}
+    for row in rows:
+        if row["provider"]=="aws": grouped.setdefault(row["action"].lower(),[]).append(row)
+    findings=[]
+    def add(kind,actions,severity,message):
+        evidence=[r for a in actions for r in grouped.get(a.lower(),[])]
+        findings.append({"provider":"aws","kind":kind,"severity":severity,"actions":list(actions),
+                         "sources":sorted({r["source"] for r in evidence}),"message":message})
+    for action,severity in sorted(DELEGATION.items()):
+        evidence=grouped.get(action.lower(),[])
+        if not evidence: continue
+        if action=="iam:PassRole":
+            unrestricted=any(r["scope"]=="*" or "*" in r["scope"] or "?" in r["scope"] or not any("iam:PassedToService" in keys for keys in r.get("condition",{}).values()) for r in evidence)
+            severity="CRITICAL" if unrestricted else "HIGH"
+            message="Potential unrestricted role delegation." if unrestricted else "Scoped role delegation; verify effective target role privileges."
+        elif "PermissionsBoundary" in action: message="Permissions boundary modification or removal; review independent enforcement."
+        elif action=="iam:UpdateAssumeRolePolicy": message="Trust policy mutation may change who can assume a role."
+        else: message="Review delegation, boundaries and effective resource conditions."
+        add("delegation",[action],severity,message)
+    for combo in COMBOS:
+        if all(a.lower() in grouped for a in combo):
+            add("combination",combo,"HIGH","Potential delegation combination; exploitability depends on scope, identity and conditions.")
+    for action in sorted(DESTRUCTIVE):
+        if action.lower() in grouped: add("destructive",[action],"HIGH","Destructive infrastructure or data permission; require explicit approval.")
     return findings
+
+def gate(report,threshold=None,unresolved=False,unmapped=False,metadata=False):
+    failures=[]
+    if threshold:
+        findings=[f for f in report["risks"] if LEVELS[f["severity"]]>=LEVELS[threshold]]
+        if findings: failures.append({"kind":"risk-threshold","count":len(findings),"threshold":threshold})
+    if unresolved and report.get("unresolved_permissions"):
+        failures.append({"kind":"unresolved","count":len(report["unresolved_permissions"])})
+    if unmapped and report["mapping_coverage"]["unmapped_resources"]:
+        failures.append({"kind":"unmapped","count":report["mapping_coverage"]["unmapped_resources"]})
+    if metadata and report["authorization_metadata"]["status"]!="compatible":
+        failures.append({"kind":"metadata","status":report["authorization_metadata"]["status"]})
+    return failures

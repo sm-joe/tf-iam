@@ -97,3 +97,24 @@ The report includes `scope_summary` and `unresolved_permissions` for the action-
 ## Provider validation (M06)
 
 See [provider-version evidence and AWS metadata audit](docs/provider-validation.md). Use `tfiam catalog-audit --metadata-dir .aws-auth --refresh` to retrieve public AWS authorization metadata. Mapping coverage is reported separately from provider authorization confidence.
+
+## Security gates, lifecycle separation and live AWS integrations (M07–M11)
+
+```bash
+tfiam scan ./infra --fail-on-risk CRITICAL --fail-on-unresolved --fail-on-unmapped
+tfiam split ./infra --allow-partial --acknowledge-break-glass --output lifecycle-policies.json
+pip install -e '.[aws]'
+tfiam compare ./infra --role-name TerraformPipeline --aws-region us-east-1 --fail-on-missing
+tfiam validate-policy policy.json --aws-region us-east-1 --strict
+tfiam runtime-audit --role-arn "$PIPELINE_ROLE_ARN" --events cloudtrail.json --candidate report.json
+```
+
+The split output separates read candidates, ordinary mutations, and high-risk delegation/destructive permissions; it does not certify that the separate policies independently suffice. Explicit approval is needed to emit the break-glass policy. Never attach all three automatically.
+
+Live role comparison retrieves attached managed-policy default versions and inline policies using existing AWS credentials. It does not evaluate effective access through boundaries, SCPs, sessions or resource policies. Access Analyzer validates identity policy syntax and best practices. CloudTrail analysis accepts local exported events or uses region-specific management event history with --start and --end; it filters on exact session issuer role ARN, redacts request payloads, and never recommends removing unobserved actions.
+
+Security gates return exit 4 for threshold, unresolved, unmapped or metadata failures; strict partial coverage remains exit 2. Generation gates block output. Risk findings are heuristic and may require manual review.
+
+## Linux executable and release acceptance (M12–M13)
+
+See [release process](docs/release-process.md). CI builds a standalone Linux x86_64 binary with checksums. Stable publication requires actual reviewed lifecycle evidence, signed artifact and reproducibility verification. No stable release is asserted by passing unit tests.

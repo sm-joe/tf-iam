@@ -3,6 +3,8 @@ from pathlib import Path
 from .scan import scan
 from .authorization import catalog_actions, download_snapshot, audit
 from .versioning import selected_version
+from .risk import gate, LEVELS
+from . import cloud
 
 def policy(report,provider,name,scope):
     rows=[r for r in report['permissions'] if r['provider']==provider]
@@ -73,15 +75,40 @@ def main(argv=None):
     catalog.add_argument('--aws-provider-version')
     catalog.add_argument('--output',type=Path)
     catalog.add_argument('--strict',action='store_true')
-    for cmd in ('scan','generate','compare'):
-        p=sub.add_parser(cmd); p.add_argument('directory',type=Path,nargs='?'); p.add_argument('--plan-json',type=Path,help='Saved terraform show -json output; optional directory supplies backend and lockfile'); p.add_argument('--phase',choices=['plan','apply','destroy'],default='apply'); p.add_argument('--var-file',action='append',type=Path,default=[]); p.add_argument('--var',action='append',default=[],metavar='NAME=VALUE'); p.add_argument('--scope-resource-tags',action='store_true',help='Restrict supported existing-resource EC2 mutations to stable saved-plan tags'); p.add_argument('--aws-provider-version',help='Exact provider version if lockfile unavailable'); p.add_argument('--authorization-metadata',type=Path,help='Local AWS service authorization metadata'); p.add_argument('--aws-account'); p.add_argument('--aws-region'); p.add_argument('--aws-partition',default='aws'); p.add_argument('--backend-config',type=Path,help='JSON backend overrides'); p.add_argument('--output',type=Path); p.add_argument('--strict',action='store_true',help='Exit 2 when analysis is partial')
+    validate=sub.add_parser('validate-policy',help='AWS IAM Access Analyzer identity policy validation')
+    validate.add_argument('policy',type=Path); validate.add_argument('--aws-profile'); validate.add_argument('--aws-region'); validate.add_argument('--strict',action='store_true'); validate.add_argument('--output',type=Path)
+    runtime=sub.add_parser('runtime-audit',help='Compare observed CloudTrail management operations with candidate actions')
+    runtime.add_argument('--role-arn',required=True); runtime.add_argument('--events',type=Path); runtime.add_argument('--start'); runtime.add_argument('--end'); runtime.add_argument('--aws-profile'); runtime.add_argument('--aws-region'); runtime.add_argument('--candidate',type=Path,required=True); runtime.add_argument('--output',type=Path)
+    for cmd in ('scan','generate','compare','split'):
+        p=sub.add_parser(cmd); p.add_argument('directory',type=Path,nargs='?'); p.add_argument('--plan-json',type=Path,help='Saved terraform show -json output; optional directory supplies backend and lockfile'); p.add_argument('--phase',choices=['plan','apply','destroy'],default='apply'); p.add_argument('--var-file',action='append',type=Path,default=[]); p.add_argument('--var',action='append',default=[],metavar='NAME=VALUE'); p.add_argument('--scope-resource-tags',action='store_true',help='Restrict supported existing-resource EC2 mutations to stable saved-plan tags'); p.add_argument('--aws-provider-version',help='Exact provider version if lockfile unavailable'); p.add_argument('--authorization-metadata',type=Path,help='Local AWS service authorization metadata'); p.add_argument('--aws-account'); p.add_argument('--aws-region'); p.add_argument('--aws-partition',default='aws'); p.add_argument('--backend-config',type=Path,help='JSON backend overrides'); p.add_argument('--output',type=Path); p.add_argument('--strict',action='store_true',help='Exit 2 when analysis is partial'); p.add_argument('--fail-on-risk',choices=list(LEVELS)); p.add_argument('--fail-on-unresolved',action='store_true'); p.add_argument('--fail-on-unmapped',action='store_true'); p.add_argument('--require-compatible-metadata',action='store_true')
         if cmd=='scan': p.add_argument('--format',choices=['text','json'],default='text')
         else: p.add_argument('--provider',default='aws',choices=['aws'])
         if cmd=='generate':
             p.add_argument('--format',choices=['json','terraform'],default='json'); p.add_argument('--name',default='TerraformPipeline'); p.add_argument('--scope'); p.add_argument('--allow-partial',action='store_true',required=True,help='Explicitly accept candidate-only policy generation')
-        if cmd=='compare': p.add_argument('--existing',required=True,type=Path); p.add_argument('--fail-on-missing',action='store_true')
+        if cmd=='compare':
+            source=p.add_mutually_exclusive_group(required=True); source.add_argument('--existing',type=Path); source.add_argument('--role-name'); p.add_argument('--aws-profile'); p.add_argument('--fail-on-missing',action='store_true')
+        if cmd=='split': p.add_argument('--allow-partial',action='store_true',required=True); p.add_argument('--acknowledge-break-glass',action='store_true',help='Include destructive/delegation grants in a separately gated policy')
     args=parser.parse_args(argv)
     try:
+        if args.command in ('validate-policy','runtime-audit'):
+            if args.command=='validate-policy':
+                result=cloud.validate_policy(cloud.client('accessanalyzer',args.aws_profile,args.aws_region),json.loads(args.policy.read_bytes()))
+                status=2 if args.strict and result['status']!='no-findings' else 0
+            else:
+                if args.events:
+                    if args.start or args.end: raise ValueError('Offline events cannot be combined with live interval')
+                    raw=json.loads(args.events.read_bytes()); events=raw.get('Records',[]) if isinstance(raw,dict) else raw
+                    if not isinstance(events,list): raise ValueError('Expected CloudTrail event list or Records object')
+                else:
+                    if not args.start or not args.end or not args.aws_region: raise ValueError('Live runtime audit requires start, end and AWS region')
+                    events=cloud.lookup_events(cloud.client('cloudtrail',args.aws_profile,args.aws_region),args.role_arn,cloud.parse_time(args.start),cloud.parse_time(args.end))
+                candidate=json.loads(args.candidate.read_bytes())
+                actions={r['action'] for r in candidate['permissions']}
+                result=cloud.refine(events,args.role_arn,actions); status=0
+            output=json.dumps(result,indent=2)
+            if args.output: args.output.write_text(output+'\n',encoding='utf-8')
+            else: print(output)
+            return status
         if args.command=='catalog-audit':
             version=selected_version(None,args.aws_provider_version)['version']
             actions=catalog_actions(version)
@@ -101,8 +128,16 @@ def main(argv=None):
             variables.append((key,value))
         report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags,provider_version=args.aws_provider_version,authorization_metadata=args.authorization_metadata)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
-        if args.command=='generate' and report['authorization_metadata']['status']=='issues': raise ValueError('AWS authorization metadata audit reports invalid actions or resource scopes; review scan findings before generating')
-        if args.command=='scan' and args.format=='text':
+        report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved,args.fail_on_unmapped,args.require_compatible_metadata)
+        if report['gate_failures']: status=4
+        if args.command in ('generate','split') and (report['gate_failures'] or (args.strict and report['coverage']!='COMPLETE')):
+            print('ERROR: policy generation blocked by security or coverage gate',file=sys.stderr); return status
+        if args.command in ('generate','split') and report['authorization_metadata']['status']=='issues': raise ValueError('AWS authorization metadata audit reports invalid actions or resource scopes; review scan findings before generating')
+        if args.command=='split':
+            if not args.acknowledge_break_glass: raise ValueError('Split requires --acknowledge-break-glass to emit a separate destructive/delegation policy')
+            from .lifecycle import split_policies
+            result=split_policies(report,policy); output=json.dumps(result,indent=2)
+        elif args.command=='scan' and args.format=='text':
             lines=[f'TF IAM Scope | {report["phase"]} | {report["coverage"]}',f'Resources: {len(report["resources"])} | Permission observations: {len(report["permissions"])}']
             mc=report['mapping_coverage']; ac=report['authorization_confidence']; lines.append(f"AWS provider: {ac['provider_version'] or 'unknown'} | Mappings: {mc['mapped_resources']}/{mc['eligible_resources']} | Lifecycle verified: {ac['lifecycle_verified_resources']} | Metadata: {report['authorization_metadata']['status']}")
             if report.get('plan'): lines.append('Input: Terraform plan JSON | Terraform '+report['plan']['terraform_version'])
@@ -115,8 +150,8 @@ def main(argv=None):
             ss=report['scope_summary']; lines.append(f"Scopes: {ss['exact']} exact | {ss['bounded_wildcard']} bounded wildcard | {ss['global']} global | {ss['conditional']} conditional | {ss['unresolved']} unresolved")
             for (provider,action,scope,condition),sources in sorted(groups.items()):
                 lines.append(f'{provider:5} {action} [{scope}] ({len(sources)} sources)'+(' '+condition if condition!='null' else ''))
-            lines.extend('RISK: '+r['provider']+' '+', '.join(r['actions'])+' — '+r['message'] for r in report['risks'])
-            lines.extend('REVIEW: '+w for w in report['warnings']); output='\n'.join(lines)
+            lines.extend('RISK ['+r['severity']+']: '+r['provider']+' '+', '.join(r['actions'])+' — '+r['message'] for r in report['risks'])
+            lines.extend('GATE: '+json.dumps(g,sort_keys=True) for g in report['gate_failures']); lines.extend('REVIEW: '+w for w in report['warnings']); output='\n'.join(lines)
         elif args.command=='scan': output=json.dumps(report,indent=2)
         elif args.command=='generate':
             print(f'REVIEW: {len(report["warnings"])} scan warnings; run scan for details.',file=sys.stderr)
@@ -126,11 +161,15 @@ def main(argv=None):
             if args.format=='terraform': result=terraform(result,args.provider,args.name,args.scope)
             output=json.dumps(result,indent=2)
         else:
-            result=compare(report,args.provider,json.loads(args.existing.read_text())); result['scan_warnings']=report['warnings']; result['unresolved_permissions']=report['unresolved_permissions']; result['scope_summary']=report['scope_summary']; result['mapping_coverage']=report['mapping_coverage']; result['authorization_confidence']=report['authorization_confidence']; result['authorization_metadata']=report['authorization_metadata']; result['input']=report['input']; result['plan']=report.get('plan'); result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
-            if args.fail_on_missing and (result['missing_or_unverified'] or result['explicitly_denied']): status=3
+            existing,identity=cloud.role_policies(cloud.client('iam',args.aws_profile,args.aws_region),args.role_name) if args.role_name else (json.loads(args.existing.read_text()),None)
+            result=compare(report,args.provider,existing); result['identity']=identity; result['gate_failures']=report['gate_failures']; result['scan_warnings']=report['warnings']; result['unresolved_permissions']=report['unresolved_permissions']; result['scope_summary']=report['scope_summary']; result['mapping_coverage']=report['mapping_coverage']; result['authorization_confidence']=report['authorization_confidence']; result['authorization_metadata']=report['authorization_metadata']; result['input']=report['input']; result['plan']=report.get('plan'); result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
+            if args.fail_on_missing and (result['missing_or_unverified'] or result['explicitly_denied']) and status!=4: status=3
         if args.output: args.output.write_text(output+'\n',encoding='utf-8')
         else: print(output)
         return status
     except (ValueError,OSError,TypeError,AttributeError,KeyError) as e:
         print('ERROR: '+str(e),file=sys.stderr); return 1
+    except Exception as e:
+        # AWS SDK errors can contain request or identity details; avoid echoing them.
+        print('ERROR: operation failed ('+type(e).__name__+')',file=sys.stderr); return 1
 if __name__=='__main__': sys.exit(main())
