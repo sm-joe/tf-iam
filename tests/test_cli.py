@@ -51,3 +51,15 @@ def test_table_output_and_json_side_by_side(tmp_path,capsys):
     assert "POLICY GRANTS" in capsys.readouterr().out
     assert main(["compare",str(ROOT/"aws"),"--existing",str(ROOT/"existing-aws.json"),"--format","table"])==0
     assert "BY AWS SERVICE" in capsys.readouterr().out
+
+def test_review_and_validation_are_tables(capsys,monkeypatch,tmp_path):
+    from tfiam import cloud
+    from tfiam.table_output import render
+    out=render("validate-policy",{"status":"no-findings","counts":{"ERROR":0},"findings":[],"limitation":"Syntax only"})
+    assert "INFORMATION AND LIMITATIONS" in out and "| INFO" in out and "REVIEW:" not in out
+    assert "FINDINGS" in out and "| None" in out
+    target=tmp_path/"policy.json"
+    assert main(["generate",str(ROOT/"aws"),"--allow-partial","--format","json","--show-table","--output",str(target)])==0
+    assert set(json.loads(target.read_text()))=={"Version","Statement"}
+    output=capsys.readouterr().err
+    assert "REVIEW REQUIREMENTS" in output and "REVIEW:" not in output

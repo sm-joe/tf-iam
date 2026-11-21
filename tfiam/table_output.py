@@ -9,7 +9,8 @@ def clean(value):
 
 def table(headers,rows,limits):
     rows=[list(map(clean,r)) for r in rows]
-    if not rows: return "None"
+    if not rows:
+        rows=[["None"]+["-"]*(len(headers)-1)]
     widths=[min(limit,max(len(h),*(len(r[i]) for r in rows))) for i,(h,limit) in enumerate(zip(headers,limits))]
     sep="+"+"+".join("-"*(w+2) for w in widths)+"+"
     def line(values):
@@ -35,7 +36,7 @@ def render(command,r):
             key=(x["action"],x["scope"],json.dumps(x.get("condition"),sort_keys=True))
             groups.setdefault(key,set()).add(x["source"])
         metrics("SUMMARY",{"Phase":r["phase"],"Coverage":r["coverage"],"Input":r["input"],"AWS provider":r["authorization_confidence"]["provider_version"],"Resources mapped":str(r["mapping_coverage"]["mapped_resources"])+"/"+str(r["mapping_coverage"]["eligible_resources"]),"Permission observations":len(r["permissions"]),"Unique grants":len(groups),"Metadata":r["authorization_metadata"]["status"],**r["scope_summary"]})
-        section("RESOURCES",["Status","Resource","Operations"],[(x["status"],x["address"],", ".join(x.get("operations",[])) or r["phase"]) for x in r["resources"]],[14,68,22])
+        section("RESOURCES",["Status","Resource","Operations","Computed","Sensitive"],[(x["status"],x["address"],", ".join(x.get("operations",[])) or r["phase"],"Yes" if x.get("unknown_values") else "-","Yes" if x.get("sensitive_values") else "-") for x in r["resources"]],[14,60,20,10,10])
         section("PERMISSIONS",["Action","Resource scope","Condition","Sources"],[(a,s,json.loads(c),len(v)) for (a,s,c),v in sorted(groups.items())],[38,63,48,8])
     elif command=="generate":
         metrics("SUMMARY",{"Statements":len(r["Statement"]),"Action grants":len(policy_rows(r)),"Status":"CANDIDATE — review required"})
@@ -44,7 +45,7 @@ def render(command,r):
         metrics("PARTITIONS",r["counts"])
         for name,p in r["policies"].items():
             section(name.upper(),["Action","Resource scope","Condition"],policy_rows(p),[40,70,55])
-        for note in r.get("limitations",[]): parts.append("REVIEW: "+clean(note))
+
     elif command=="compare":
         summary=r["summary"]
         metrics("SUMMARY",{k:v for k,v in summary.items() if k!="by_service"})
@@ -70,6 +71,13 @@ def render(command,r):
     if "unresolved_permissions" in r:
         section("UNRESOLVED PERMISSIONS",["Source","Action","Reason"],[(x["source"],x["action"],x["reason"]) for x in r["unresolved_permissions"]],[60,40,60])
     if r.get("gate_failures"): metrics("SECURITY GATES",{str(i+1):x for i,x in enumerate(r["gate_failures"])})
-    for warning in r.get("warnings",[])+r.get("scan_warnings",[])+r.get("diagnostics",[]): parts.append("REVIEW: "+clean(warning))
-    if r.get("limitation"): parts.append("REVIEW: "+clean(r["limitation"]))
+    if "resolved_dependencies" in r:
+        section("RESOLVED DEPENDENCIES",["Resource","Action","Resolved scope","Status"],[(x["source"],x["action"],x["scope"],"RESOLVED") for x in r["resolved_dependencies"]],[52,30,63,12])
+    metadata=r.get("authorization_metadata",{})
+    if metadata.get("findings"):
+        section("AUTHORIZATION METADATA FINDINGS",["Severity","Action","Code"],[(x["severity"],x["action"],x["code"]) for x in metadata["findings"]],[14,48,48])
+    notes=list(dict.fromkeys(r.get("warnings",[])+r.get("scan_warnings",[])+r.get("diagnostics",[])))
+    if notes: section("REVIEW REQUIREMENTS",["Status","Details"],[("REVIEW",n) for n in notes],[12,100])
+    informational=r.get("information",[])+r.get("limitations",[])+([r["limitation"]] if r.get("limitation") else [])
+    if informational: section("INFORMATION AND LIMITATIONS",["Type","Details"],[("INFO",n) for n in dict.fromkeys(informational)],[12,100])
     return "\n".join(parts)

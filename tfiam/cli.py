@@ -155,17 +155,22 @@ def main(argv=None):
             lines.extend('GATE: '+json.dumps(g,sort_keys=True) for g in report['gate_failures']); lines.extend('REVIEW: '+w for w in report['warnings']); output='\n'.join(lines)
         elif args.command=='scan': result=report; output=json.dumps(report,indent=2)
         elif args.command=='generate':
-            print(f'REVIEW: {len(report["warnings"])} scan warnings; run scan for details.',file=sys.stderr)
-            for risk in report['risks']:
-                if risk['provider']==args.provider: print('RISK: '+', '.join(risk['actions'])+' — '+risk['message'],file=sys.stderr)
+            if args.format!='table' and not (args.show_table and args.output):
+                print(f'REVIEW: {len(report["warnings"])} scan warnings; run scan for details.',file=sys.stderr)
+                for risk in report['risks']:
+                    if risk['provider']==args.provider: print('RISK: '+', '.join(risk['actions'])+' — '+risk['message'],file=sys.stderr)
             result=policy(report,args.provider,args.name,args.scope)
             if args.format=='terraform': output=json.dumps(terraform(result,args.provider,args.name,args.scope),indent=2)
             else: output=json.dumps(result,indent=2)
         else:
             existing,identity=cloud.role_policies(cloud.client('iam',args.aws_profile,args.aws_region),args.role_name) if args.role_name else (json.loads(args.existing.read_text()),None)
-            result=compare(report,args.provider,existing); result['identity']=identity; result['gate_failures']=report['gate_failures']; result['scan_warnings']=report['warnings']; result['unresolved_permissions']=report['unresolved_permissions']; result['scope_summary']=report['scope_summary']; result['mapping_coverage']=report['mapping_coverage']; result['authorization_confidence']=report['authorization_confidence']; result['authorization_metadata']=report['authorization_metadata']; result['input']=report['input']; result['plan']=report.get('plan'); result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
+            result=compare(report,args.provider,existing); result['identity']=identity; result['gate_failures']=report['gate_failures']; result['scan_warnings']=report['warnings']; result['information']=report['information']; result['resolved_dependencies']=report['resolved_dependencies']; result['unresolved_permissions']=report['unresolved_permissions']; result['scope_summary']=report['scope_summary']; result['mapping_coverage']=report['mapping_coverage']; result['authorization_confidence']=report['authorization_confidence']; result['authorization_metadata']=report['authorization_metadata']; result['input']=report['input']; result['plan']=report.get('plan'); result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
             if args.fail_on_missing and (result['missing_or_unverified'] or result['explicitly_denied']) and status!=4: status=3
-        write_result(result,output)
+        if args.command=='generate' and (args.format=='table' or (args.show_table and args.output)):
+            # Attach diagnostics only to the display, never to the IAM JSON payload.
+            display={**result,**{k:report[k] for k in ('warnings','information','resolved_dependencies','unresolved_permissions','risks','authorization_metadata')}}
+            write_result(display,output)
+        else: write_result(result,output)
         return status
     except (ValueError,OSError,TypeError,AttributeError,KeyError) as e:
         print('ERROR: '+str(e),file=sys.stderr); return 1

@@ -103,10 +103,6 @@ def parse_plan(doc, phase):
         after = masked(after_raw or {}, change.get("after_sensitive"), change.get("after_unknown"))
         before = before if isinstance(before, dict) else {}
         after = after if isinstance(after, dict) else {}
-        if entry["sensitive_values"]:
-            warnings.append(source+": marked sensitive values removed from permission inference")
-        if entry["unknown_values"]:
-            warnings.append(source+": unknown values withheld from scope and dependency inference")
         if change.get("importing") is not None:
             warnings.append(source+": Terraform import may require additional provider-specific reads")
         if mode == "data" and actions in (["delete"],["forget"]):

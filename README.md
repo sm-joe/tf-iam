@@ -165,3 +165,7 @@ If installation fails because the package directory is a file, move the conflict
 Saved plans and reports can contain confidential infrastructure identifiers or unmarked secrets. Restrict access; do not commit real state, plans or evidence. Report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
 
 Distributed under the [MIT License](LICENSE).
+
+### Review tables
+
+Computed and masked plan values are reported as information in the resource inventory, not repeated review warnings. Recovered exact role dependencies appear in a separate resolved-dependencies table. Unknown tag values retain the applicable catalog actions without exposing tag values. Actual missing dependency grants and unavailable scopes remain explicit unresolved permissions; `--fail-on-unresolved` blocks policy generation. Review requirements and validation limitations use tables. Provider lifecycle evidence is still required; successful Access Analyzer validation does not establish effective authorization.
