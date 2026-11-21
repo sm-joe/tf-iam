@@ -169,3 +169,7 @@ Distributed under the [MIT License](LICENSE).
 ### Review tables
 
 Computed and masked plan values are reported as information in the resource inventory, not repeated review warnings. Recovered exact role dependencies appear in a separate resolved-dependencies table. Unknown tag values retain the applicable catalog actions without exposing tag values. Actual missing dependency grants and unavailable scopes remain explicit unresolved permissions; `--fail-on-unresolved` blocks policy generation. Review requirements and validation limitations use tables. Provider lifecycle evidence is still required; successful Access Analyzer validation does not establish effective authorization.
+
+### Newly added Terraform files
+
+Static scans read all root `.tf` and `.tf.json` files, including newly added S3 configurations. Saved-plan scans intentionally analyze only the saved operations. If current root AWS declarations are absent from saved plan configuration, the scan lists them separately and generation/split refuse that stale input. Regenerate `terraform plan` and `terraform show -json` after changing configuration. This declaration check cannot detect every change to existing resource arguments or module instances. Explicit `aws_s3_bucket.name.id` dependencies resolve to the bucket's known name; generated names, sensitive values and ambiguous references remain unresolved.

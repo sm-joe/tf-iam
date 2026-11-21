@@ -3,6 +3,7 @@ from pathlib import Path
 from .catalog_loader import get_rule, actions_for, operation_actions, attribute_values, CATALOG
 from .plan import parse_plan
 from .plan_roles import recover_role_arn
+from .plan_buckets import recover_bucket, source_only_resources
 from .risk import assess
 from .resolver import discover
 from .versioning import selected_version, evidence_status
@@ -129,6 +130,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
             path=resolve(body.get('path','/'),seen)
             return f'arn:{partition}:iam::{account}:role{path}{name}' if account and name and path else None
         task_lookup={}
+        if plan is not None and has_root:
+            report["source_only_resources"]=source_only_resources(plan,definitions)
+            if report["source_only_resources"]:
+                warn("Current root configuration contains AWS declarations absent from saved plan configuration; regenerate the plan before policy generation.")
         analysis_docs=[]
         module_paths={}
         if plan is None:
@@ -198,6 +203,11 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             scope='*'
                             if p=='aws' and typ.startswith('aws_s3_'):
                                 bucket=resolve(body.get('bucket'))
+                                if not bucket and task and operation in ('create','update') and has_root:
+                                    bucket=recover_bucket(plan,address,definitions)
+                                    if bucket:
+                                        item={'source':address,'action':'S3 bucket dependency','scope':f'arn:{partition}:s3:::{bucket}','method':'direct source and saved-plan bucket identity'}
+                                        if item not in report['resolved_dependencies']: report['resolved_dependencies'].append(item)
                                 if bucket and typ=='aws_s3_object':
                                     key=resolve(body.get('key')); scope=f'arn:{partition}:s3:::{bucket}/{key}' if key else '*'
                                 elif bucket: scope=f'arn:{partition}:s3:::{bucket}'

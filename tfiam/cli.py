@@ -132,6 +132,8 @@ def main(argv=None):
         if report['gate_failures']: status=4
         if args.command in ('generate','split') and (report['gate_failures'] or (args.strict and report['coverage']!='COMPLETE')):
             print('ERROR: policy generation blocked by security or coverage gate',file=sys.stderr); return status
+        if args.command in ('generate','split') and report.get('source_only_resources'):
+            print('ERROR: current configuration has AWS resources absent from saved plan; regenerate terraform plan and export JSON.',file=sys.stderr); return 4
         if args.command in ('generate','split') and report['authorization_metadata']['status']=='issues': raise ValueError('AWS authorization metadata audit reports invalid actions or resource scopes; review scan findings before generating')
         if args.command=='split':
             if not args.acknowledge_break_glass: raise ValueError('Split requires --acknowledge-break-glass to emit a separate destructive/delegation policy')

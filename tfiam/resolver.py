@@ -148,6 +148,12 @@ class Context:
                 if not re.fullmatch(r"[\w+=,.@-]+",name) or not path.startswith("/") or not path.endswith("/"): return UNKNOWN
                 if any(c in path for c in "*?"): return UNKNOWN
                 return f"arn:{self.partition}:iam::{self.account}:{kind.removeprefix('aws_iam_')}{path}{name}"
+            # The AWS provider documents the S3 bucket ID as the bucket name.
+            # Do not infer random names, prefix-generated names or arbitrary IDs.
+            if attr=="id" and kind=="aws_s3_bucket":
+                from .plan_buckets import valid_bucket
+                bucket=self.evaluate(body.get("bucket",UNKNOWN),seen)
+                return bucket if valid_bucket(bucket) else UNKNOWN
             # Only explicit config attributes, never pretend to know provider-generated values.
             if attr not in ("name","bucket","key","cluster_name","node_group_name","addon_name","path","policy_arn","role_arn"): return UNKNOWN
             return self.evaluate(body.get(attr,UNKNOWN),seen)
