@@ -1,8 +1,8 @@
-# AWS permission catalog — M04
+# AWS permission catalog
 
 ## Inventory
 
-106 managed resource mappings and 37 data-source mappings (143 distinct mode/type entries). All are independently authored candidate mappings; no Pike mappings imported.
+120 managed resource mappings and 37 data-source mappings (157 distinct mode/type entries). Catalog entries are candidate mappings with explicit source references and validation status.
 
 | Service | Examples |
 |---|---|
@@ -22,7 +22,7 @@
 
 ## Scope and accuracy
 
-Read/create/update/delete sets are candidates, not tested provider API call traces. Named resource scope strategies are supplemented by explicitly account-level actions. The review/manual strategy emits only known account-level candidates; other actions are omitted and reported, so those entries are recognized but not fully generatable. KMS alias updates/deletes and instance-profile role mutations remain incomplete until all required resource identities are resolved. This avoids guessed privilege grants. EC2/VPC/ELB multi-resource authorization is a priority for M05. Full action-level authorization, tag conditions, secondary dependent actions and live version-specific testing remain open.
+Read/create/update/delete sets are candidates, not tested provider API call traces. Named resource scope strategies are supplemented by explicitly account-level actions. The review/manual strategy emits only known account-level candidates; other actions are omitted and reported, so those entries are recognized but not fully generatable. KMS alias updates/deletes and instance-profile role mutations remain incomplete until all required resource identities are resolved. This avoids guessed privilege grants. Action-specific scope, tag conditions and dependent permissions are modeled for supported configurations. Complex and unresolved cases require individual review. Version-specific live acceptance covers four representative fixtures: S3, SQS, VPC/subnet and DynamoDB.
 
 References: [AWS Service Authorization Reference](https://docs.aws.amazon.com/service-authorization/latest/reference/reference_policies_actions-resources-contextkeys.html), [EKS](https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html), [KMS alias authorization](https://docs.aws.amazon.com/kms/latest/developerguide/alias-access.html), [Lambda](https://docs.aws.amazon.com/service-authorization/latest/reference/list_lambda.html), [ECS](https://docs.aws.amazon.com/service-authorization/latest/reference/list_ecs.html). Individual entries carry service references.
 
