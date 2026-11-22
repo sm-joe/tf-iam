@@ -51,7 +51,9 @@ def environment(profile,info,role=None):
     from botocore.config import Config
     opts=Config(ignore_configured_endpoint_urls=True)
     session=boto3.Session(profile_name=profile,region_name=info["region"])
-    frozen=session.get_credentials().get_frozen_credentials()
+    credentials=session.get_credentials()
+    if credentials is None: raise ValueError("Profile has no credentials")
+    frozen=credentials.get_frozen_credentials()
     fixed=boto3.Session(aws_access_key_id=frozen.access_key,aws_secret_access_key=frozen.secret_key,aws_session_token=frozen.token,region_name=info["region"])
     identity=fixed.client("sts",config=opts).get_caller_identity()
     if identity["Account"]!=info["account"]: raise ValueError("Wrong AWS account")
@@ -108,7 +110,7 @@ def plan_phase(args,root,info):
     phase=args.phase
     if phase!=info["next"]: raise ValueError("Wrong lifecycle phase")
     if any(p.name.endswith((".tf",".tf.json")) and p.name!="main.tf.json" for p in root.iterdir()): raise ValueError("Unexpected Terraform configuration")
-    if (root/(phase+"-policies")).exists(): raise ValueError("Phase already prepared; preserve evidence")
+    if (root/(phase+"-policies")).exists() or (root/(phase+".tfplan")).exists(): raise ValueError("Phase already attempted; preserve evidence")
     planner,ident,env,opts=environment(args.planner_profile,info)
     write(root/"main.tf.json",config(info,1 if phase=="create" else 2))
     if phase=="create":
@@ -151,6 +153,7 @@ def apply_phase(args,root,info):
     session,identity,env,opts=environment(args.test_profile,info,args.role_name)
     auditor,audit_identity,_,aopts=environment(args.audit_profile,info)
     if identity["UserId"].split(":")[0]==audit_identity["UserId"].split(":")[0]: raise ValueError("Audit identity must differ")
+    if re.sub(r"/[^/]+$","",identity["Arn"])==re.sub(r"/[^/]+$","",prep["planner"]): raise ValueError("Planner and applier must differ")
     iam=auditor.client("iam",config=aopts)
     expected=set().union(*(grants(p["document"]) for p in json.loads((directory/"manifest.json").read_bytes())["policies"]))
     def check():
