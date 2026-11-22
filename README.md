@@ -409,3 +409,20 @@ Contributions Are Welcome Through [Issues](https://github.com/sm-joe/tf-iam/issu
 Treat Terraform Plans, State And Analysis Reports As Confidential. The CLI Does Not Attach Generated Permissions Or Deploy Infrastructure. Report Vulnerabilities Privately As Described In The [Security Policy](SECURITY.md).
 
 Released Under The [MIT License](LICENSE).
+
+
+## Policy Size Management
+
+Optimize A Generated Allow Policy Without Changing Its Action, Resource Or Condition Grants:
+
+```bash
+tfiam pack-policy policy.json --output-dir policy-bundle
+```
+
+The Output Directory Must Not Already Exist. The Manifest Reports Original And Optimized Sizes, Policy Count And Individual Policy Files. Managed Policies Are Limited To 6,144 Characters Each. The Default Budget Is 10 Attachments; Use `--max-policies` To Specify The Remaining Available Slots (Up To 20 Where The Account Quota Permits). Use `--max-chars` To Reserve Additional Headroom.
+
+For Inline Policies, Use `--policy-type inline-role`, `inline-user` Or `inline-group`. The Aggregate Identity Limit Is Enforced; Splitting Cannot Bypass It. Existing Inline Policy Usage Must Be Accounted For With A Reduced `--max-chars`.
+
+This Command Does Not Attach Policies Or Change AWS Resources. Review And Validate Each Generated Policy Document Independently.
+
+See [Mixed Infrastructure Lifecycle Acceptance](docs/mixed-lifecycle.md) For The Maintainer's Isolated Create, Update And Destroy Workflow.
