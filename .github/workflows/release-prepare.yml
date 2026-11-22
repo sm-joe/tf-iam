@@ -2,15 +2,19 @@ name: Prepare signed Linux release
 on:
   workflow_dispatch:
     inputs:
-      evidence_run_id:
-        description: "Trusted run ID containing reviewed release-evidence artifact"
+      source_commit:
+        description: "Exact 40-character tested source commit (ancestor of main)"
         required: true
         type: string
-      evidence_artifact:
-        description: "Artifact containing manifest.json and referenced files"
+      evidence_sha256:
+        description: "SHA-256 of the privately reviewed gzip evidence archive"
         required: true
-        default: release-evidence
         type: string
+      review_confirmed:
+        description: "Maintainer independently reviewed the full evidence manifest"
+        required: true
+        default: false
+        type: boolean
 permissions:
   contents: read
 jobs:
@@ -19,22 +23,90 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: read
-      actions: read
       id-token: write
       attestations: write
+    env:
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      EVIDENCE_SHA256: ${{ inputs.evidence_sha256 }}
+      REVIEW_CONFIRMED: ${{ inputs.review_confirmed }}
     steps:
+      - name: Validate release inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$REVIEW_CONFIRMED" == true ]]
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$EVIDENCE_SHA256" =~ ^[a-f0-9]{64}$ ]]
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact tested source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          git merge-base --is-ancestor "$SOURCE_COMMIT" refs/remotes/origin/main
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: actions/download-artifact@v4
-        with:
-          name: ${{ inputs.evidence_artifact }}
-          run-id: ${{ inputs.evidence_run_id }}
-          github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/release-evidence
-      - name: Check acceptance evidence
-        run: python scripts/check-release.py "$RUNNER_TEMP/release-evidence/manifest.json" --expected-commit "$GITHUB_SHA"
+      - name: Verify private release evidence
+        env:
+          EVIDENCE_B64: ${{ secrets.TFIAM_RELEASE_EVIDENCE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          python - <<'PY'
+          import base64, hashlib, io, json, os, pathlib, re, shutil, tarfile
+          blob = base64.b64decode(os.environ["EVIDENCE_B64"], validate=True)
+          if not blob or len(blob) > 36_000:
+              raise SystemExit("Private evidence archive is missing or too large")
+          if hashlib.sha256(blob).hexdigest() != os.environ["EVIDENCE_SHA256"]:
+              raise SystemExit("Private evidence archive digest mismatch")
+          root = pathlib.Path(os.environ["RUNNER_TEMP"]) / "release-evidence"
+          root.mkdir(mode=0o700, exist_ok=False)
+          count = size = 0
+          with tarfile.open(fileobj=io.BytesIO(blob), mode="r|gz") as tar:
+              for member in tar:
+                  name = pathlib.PurePosixPath(member.name)
+                  count += 1
+                  if count > 200 or name.is_absolute() or ".." in name.parts or "\\" in member.name:
+                      raise SystemExit("Unsafe evidence archive member")
+                  target = root.joinpath(*name.parts)
+                  if member.isdir():
+                      target.mkdir(mode=0o700, parents=True, exist_ok=True)
+                      continue
+                  if not member.isfile() or target == root:
+                      raise SystemExit("Only ordinary evidence files are accepted")
+                  size += member.size
+                  if member.size < 0 or size > 5_000_000:
+                      raise SystemExit("Evidence archive exceeds extraction limit")
+                  target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+                  with tar.extractfile(member) as src, target.open("xb") as dst:
+                      shutil.copyfileobj(src, dst)
+          manifest = root / "manifest.json"
+          if not manifest.is_file():
+              raise SystemExit("Private evidence manifest missing")
+          doc = json.loads(manifest.read_bytes())
+          if doc.get("review_confirmed") is not True or not isinstance(doc.get("supplemental"), dict):
+              raise SystemExit("Independent review or supplemental evidence confirmation missing")
+          files = {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()}
+          supplemental = doc["supplemental"]
+          if files != set(supplemental) | {"manifest.json"} or "manifest.json" in supplemental:
+              raise SystemExit("Private evidence inventory mismatch")
+          for name, expected in supplemental.items():
+              if not re.fullmatch(r"[a-f0-9]{64}", expected) or hashlib.sha256((root / name).read_bytes()).hexdigest() != expected:
+                  raise SystemExit("Private supplemental evidence digest mismatch")
+          (root.parent / "release-manifest.sha256").write_text(
+              hashlib.sha256(manifest.read_bytes()).hexdigest() + "\n"
+          )
+          PY
+          python scripts/check-release.py "$RUNNER_TEMP/release-evidence/manifest.json" --expected-commit "$SOURCE_COMMIT"
+      - name: Remove private evidence before building
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/release-evidence"
       - run: python -m pip install '.[test,aws,packaging]'
       - run: python -m pytest -q
       - name: Prepare distribution metadata once
@@ -49,13 +121,33 @@ jobs:
           dist/tfiam --help
           dist/tfiam catalog-audit --strict --format json
           dist/tfiam scan examples/aws-hcl --format json
-      - name: Attest release artifact
+      - name: Record tested source and private evidence digests
+        run: |
+          python - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          binary = pathlib.Path("dist/tfiam")
+          receipt = {
+              "schema_version": 1,
+              "tested_source_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "workflow_commit": os.environ["GITHUB_SHA"],
+              "evidence_archive_sha256": os.environ["EVIDENCE_SHA256"],
+              "evidence_manifest_sha256": (pathlib.Path(os.environ["RUNNER_TEMP"]) / "release-manifest.sha256").read_text().strip(),
+              "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
+              "run_id": os.environ["GITHUB_RUN_ID"],
+          }
+          pathlib.Path("dist/release-source.json").write_text(json.dumps(receipt, indent=2) + "\n")
+          PY
+          (cd dist && sha256sum release-source.json >> SHA256SUMS && sha256sum -c SHA256SUMS)
+      - name: Attest release artifact and tested-source receipt
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: dist/tfiam
+          subject-path: |
+            dist/tfiam
+            dist/release-source.json
       - uses: actions/upload-artifact@v4
         with:
           name: tfiam-linux-x86_64-release
           path: |
             dist/tfiam
             dist/SHA256SUMS
+            dist/release-source.json
