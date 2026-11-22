@@ -16,7 +16,7 @@ SERVICE=re.compile(r"[a-z0-9-]+")
 MAX_BYTES=32*1024*1024
 # Official SAR explicitly lists no resource types for these EKS actions.
 # Only fill an absent Resources field; never override a conflicting snapshot.
-DOCUMENTED_GLOBAL={"eks:createcluster","eks:describeaddonversions"}
+DOCUMENTED_GLOBAL={"eks:createcluster","eks:describeaddonversions","ecs:describetaskdefinition","ecs:deregistertaskdefinition","ec2:describekeypairs"}
 EKS_REFERENCE="https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html"
 
 def catalog_actions(version=None):

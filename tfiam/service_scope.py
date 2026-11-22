@@ -56,8 +56,8 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
             for group in selected: grant(action,identity("group",group))
         return
     if typ=="aws_iam_instance_profile":
-        name=val("name"); path=val("path") or "/"
-        target=f"arn:{partition}:iam::{account}:instance-profile{path}{name}" if account and name and NAME.fullmatch(name) and path.startswith("/") and path.endswith("/") else None
+        name=val("name"); path=val("path") if "path" in body else "/"
+        target=f"arn:{partition}:iam::{account}:instance-profile{path}{name}" if account and name and NAME.fullmatch(name) and path and path.startswith("/") and path.endswith("/") and "path" not in unknown else None
         if task and val("arn") and account and re.fullmatch(rf"arn:{partition}:iam::{account}:instance-profile/[^\s*?]+",val("arn")): target=val("arn")
         current=val("role"); previous=resolve(before.get("role"))
         current_roles=identity("role",current,val("_tfiam_profile_role_arn"))
@@ -145,7 +145,12 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
         known=val("arn") if task else None
         if known and prospective and not re.fullmatch(re.escape(prospective[:-1])+r"[0-9]+",known): known=None
         for action in actions:
-            if action=="ecs:RegisterTaskDefinition": grant(action,[prospective])
+            if action in ("ecs:DescribeTaskDefinition","ecs:DeregisterTaskDefinition"):
+                # AWS does not offer resource or service-specific condition keys for these APIs.
+                # Bound the regional endpoint with a global IAM condition instead.
+                if region: emit(action,"*",{"StringEquals":{"aws:RequestedRegion":region}})
+                else: omit(action)
+            elif action=="ecs:RegisterTaskDefinition": grant(action,[prospective])
             elif action=="ecs:TagResource" and op=="create":
                 if tagged(): grant(action,[prospective],{"StringEquals":{"ecs:CreateAction":"RegisterTaskDefinition"}})
             else: grant(action,[known or prospective])

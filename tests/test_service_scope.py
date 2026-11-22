@@ -44,6 +44,8 @@ def test_expansion_across_services(tmp_path):
     check(r,"sns:Subscribe",topic,{"StringEquals":{"sns:Endpoint":"arn:aws:sqs:us-east-1:123456789012:events","sns:Protocol":"sqs"}})
     check(r,"lambda:CreateAlias","arn:aws:lambda:us-east-1:123456789012:function:worker")
     check(r,"ecs:RegisterTaskDefinition","arn:aws:ecs:us-east-1:123456789012:task-definition/worker:*")
+    check(r,"ecs:DescribeTaskDefinition","*",{"StringEquals":{"aws:RequestedRegion":REGION}})
+    check(r,"ecs:DeregisterTaskDefinition","*",{"StringEquals":{"aws:RequestedRegion":REGION}})
     check(r,"eks:CreateFargateProfile","arn:aws:eks:us-east-1:123456789012:cluster/demo")
     check(r,"iam:PassRole",role,{"StringEquals":{"iam:PassedToService":"eks.amazonaws.com"}})
     assert main(["generate",str(tmp_path),"--aws-account",ACCOUNT,"--aws-region",REGION,"--output",str(tmp_path/"policy.json")])==0
