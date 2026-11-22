@@ -33,3 +33,18 @@ Repeat The Plan And Apply Commands With `PHASE=update`, Then `PHASE=destroy`. Th
 The Private `fixture.json` Records Phase Outcomes, Plan Hashes And Session Identity. Logs, Plans And State Are Sensitive; Do Not Commit Or Upload Them. If A Phase Fails, Preserve State And Logs, Review The Failure And Arrange Authorized Cleanup. Do Not Delete The Fixture Directory Until Cleanup Is Independently Confirmed. The Runner Does Not Automatically Retry Failed Plans Or Apply With Elevated Credentials.
 
 A Successful Offline Test Is Not Live Acceptance. Only A Completed Run With All Three Phases Passed And Verified Empty State Demonstrates This Fixture's Lifecycle Under The Reviewed Grants. Empty State Alone Does Not Establish That Every AWS Resource Was Removed.
+
+
+## Alternative: Storage And Messaging Suite
+
+If EC2 Is Not Approved In Your Testing Account, Use The Separate Storage And Messaging Fixture In A New Directory. Obtain Normal Organization Approval For S3, SQS And DynamoDB; This Is Not A Workaround For Denied Operations.
+
+```bash
+export OLD_FIXTURE="$FIXTURE"
+export FIXTURE="$HOME/tfiam-storage-$(date +%s)"
+python scripts/accept-mixed.py prepare "$FIXTURE" --account "$ACCOUNT" --region us-east-1 --suite storage-messaging
+```
+
+Use The Same Plan, Reviewed Policy Attachment And Apply Commands For Each Phase. The Suite Creates A Private Random-Named Versioned S3 Bucket, An Encrypted SQS Queue And An On-Demand DynamoDB Table. Update Changes The Queue Visibility Timeout And Resource Tags. No EC2, VPC Or IAM Workload Role Is Created. No Objects, Messages Or Table Items Are Inserted. Charges May Still Apply.
+
+Preserve The Old Fixture And Arrange Authorized Cleanup Of Its Partially Created Resources. Never Repoint The New Fixture At Existing State Or Treat This Suite As EC2 Acceptance Evidence.
