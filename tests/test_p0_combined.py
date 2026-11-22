@@ -35,3 +35,17 @@ def test_update_minimization():
     acts={p["action"] for p in result["permissions"]}
     assert "sqs:TagQueue" in acts
     assert not {"sqs:SetQueueAttributes","sqs:DeleteQueue","sqs:CreateQueue"} & acts
+
+def test_sqs_acceptance_fixture(tmp_path):
+    import importlib.util
+    from pathlib import Path
+    spec=importlib.util.spec_from_file_location("accept_sqs",Path(__file__).resolve().parents[1]/"scripts/accept-sqs.py")
+    mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    from argparse import Namespace
+    dest=tmp_path/"accept"
+    mod.prepare(Namespace(directory=dest,version="6.73.0",account=A,region=R))
+    info=json.loads((dest/"prepare.json").read_text())
+    assert len(info["queues"])==3
+    grants=mod.grants(json.loads((dest/"candidate-policy.json").read_text()))
+    assert {scope for action,scope in grants}=={f"arn:aws:sqs:{R}:{A}:{q}" for q in info["queues"]}
+    assert all(action.startswith("sqs:") and "*" not in action+scope for action,scope in grants)
