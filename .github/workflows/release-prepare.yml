@@ -19,7 +19,7 @@ permissions:
   contents: read
 jobs:
   prepare:
-    if: github.ref == 'refs/heads/main' && inputs.review_confirmed
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -28,11 +28,13 @@ jobs:
     env:
       SOURCE_COMMIT: ${{ inputs.source_commit }}
       EVIDENCE_SHA256: ${{ inputs.evidence_sha256 }}
+      REVIEW_CONFIRMED: ${{ inputs.review_confirmed }}
     steps:
       - name: Validate release inputs
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$REVIEW_CONFIRMED" == true ]]
           [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
           [[ "$EVIDENCE_SHA256" =~ ^[a-f0-9]{64}$ ]]
       - uses: actions/checkout@v4
@@ -57,7 +59,7 @@ jobs:
           set -euo pipefail
           umask 077
           python - <<'PY'
-          import base64, hashlib, io, os, pathlib, re, shutil, tarfile
+          import base64, hashlib, io, json, os, pathlib, re, shutil, tarfile
           blob = base64.b64decode(os.environ["EVIDENCE_B64"], validate=True)
           if not blob or len(blob) > 36_000:
               raise SystemExit("Private evidence archive is missing or too large")
@@ -87,6 +89,16 @@ jobs:
           manifest = root / "manifest.json"
           if not manifest.is_file():
               raise SystemExit("Private evidence manifest missing")
+          doc = json.loads(manifest.read_bytes())
+          if doc.get("review_confirmed") is not True or not isinstance(doc.get("supplemental"), dict):
+              raise SystemExit("Independent review or supplemental evidence confirmation missing")
+          files = {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()}
+          supplemental = doc["supplemental"]
+          if files != set(supplemental) | {"manifest.json"} or "manifest.json" in supplemental:
+              raise SystemExit("Private evidence inventory mismatch")
+          for name, expected in supplemental.items():
+              if not re.fullmatch(r"[a-f0-9]{64}", expected) or hashlib.sha256((root / name).read_bytes()).hexdigest() != expected:
+                  raise SystemExit("Private supplemental evidence digest mismatch")
           (root.parent / "release-manifest.sha256").write_text(
               hashlib.sha256(manifest.read_bytes()).hexdigest() + "\n"
           )
