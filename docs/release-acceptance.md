@@ -24,8 +24,18 @@ The Four Isolated Fixtures Validate Only Their Tested Configurations. Catalog-Wi
 
 For Future Releases, Follow The [Release Process](release-process.md), Collecting Fresh Evidence Against The Exact Source To Be Released. Unit Tests And Metadata Compatibility Do Not Substitute For Live Authorization Verification. Do Not Attach Production Policies Solely On The Basis Of These Reports.
 
-## v1.1.0 Preparation
+## Stable v1.1.0 Evidence
 
 Maintainer-Reported Acceptance On The Merged Source Revision `5bbef87ec3bbbca209242a3c1d979034522e5588`: Combined S3, SQS And DynamoDB Create, Update And Destroy Passed; Empty Terraform State Verified. Cleanup Was Also Reported Complete. EC2 Launch Was Blocked By An Explicit Organization SCP Deny. These Are Reported Results, Not Independently Reconciled Evidence Or Coverage Of Every Mapped Resource.
 
-The Existing Signing Gate Remains Mandatory. The Combined Fixture Does Not Replace The Four Exact Restricted-Role Fixtures Or Their Evidence Requirements. Fresh Evidence Must Be Collected Against The Exact Release Source, Reviewed Privately, And Sealed Before Signing. No Prior Evidence May Be Relabeled With A New Commit.
+The Existing Signing Gate Remains Mandatory. The Combined Fixture Does Not Replace The Four Exact Restricted-Role Fixtures Or Their Evidence Requirements. Fresh Evidence Was Required Against The Exact Release Source. No Prior Evidence May Be Relabeled With A New Commit.
+
+| Release Gate | Result |
+| --- | --- |
+| Exact Release Source | `f47c56999623945dc96135b772be4792e806bd3b` |
+| CLI Tests | [Passed](https://github.com/sm-joe/tf-iam/actions/runs/45059570544) |
+| Linux Build | [Passed](https://github.com/sm-joe/tf-iam/actions/runs/45059570560) |
+| Private Evidence Gate And Attested Build | [Passed](https://github.com/sm-joe/tf-iam/actions/runs/45066119415) |
+| Stable Publication | [v1.1.0](https://github.com/sm-joe/tf-iam/releases/tag/v1.1.0) |
+
+The Workflow Validates Evidence Structure And Digests; The Maintainer Confirmed Live Acceptance And Artifact Verification. Raw Private Evidence Is Not Published.
