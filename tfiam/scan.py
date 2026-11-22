@@ -156,6 +156,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
             for i,(source,module_path,doc) in enumerate(resolved_docs):
                 key='resolved:'+str(i); module_paths[key]=(source,module_path); analysis_docs.append((key,doc))
         role_targets={}
+        profile_targets={}
         identity_targets={}
         if plan is not None:
             analysis_docs=[]
@@ -181,6 +182,18 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                         target=f'arn:{partition}:iam::{account}:{kind}{path}{identity_name}'
                     else: target=None
                     if target and context: identity_targets.setdefault((account,partition,kind,identity_name),set()).add(target)
+            # Named IAM identities are unique within the account. Use a single
+            # current managed profile/role candidate only; never guess its path.
+            for task in plan_tasks:
+                entry=task['entry']; body=task['body']
+                if entry['type']!='aws_iam_instance_profile' or entry['mode']!='resource' or task['operation'] not in ('create','update','read'): continue
+                context=select_context(entry['address'])
+                if context is None: continue
+                a,rg,p=context
+                name=literal(body.get('name')); role=literal(body.get('role'))
+                targets=role_targets.get((a,p,role),set())
+                if name and len(targets)==1:
+                    profile_targets.setdefault((a,p,name),set()).update(targets)
         for src,doc in analysis_docs:
             for category in ('resource','data'):
                 for group in blocks(doc,category):
@@ -231,6 +244,14 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task,network_sources)}
                                 if operation=='create' and typ in EC2_TYPES and not body.get('id'):
                                     body['_tfiam_self_tags']=anchor(body)
+                            if task and operation in ('create','update','read') and typ in ('aws_instance','aws_iam_instance_profile'):
+                                # Only current role identities from same account/partition.
+                                if typ=='aws_instance':
+                                    targets=profile_targets.get((account,partition,resolve(body.get('iam_instance_profile'))),set())
+                                else:
+                                    targets=role_targets.get((account,partition,resolve(body.get('role'))),set())
+                                if len(targets)==1:
+                                    body['_tfiam_profile_role_arn']=next(iter(targets))
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
                                 network(typ,body,acts,account,region,partition,resolve,emit,omit,task,scope_resource_tags=scope_resource_tags)
                                 continue
