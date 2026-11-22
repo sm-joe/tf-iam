@@ -60,6 +60,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
         if exact: return exact
         if not scope_resource_tags: return None
         dynamic=body.get("_tfiam_dynamic_ec2",{}).get(field,{})
+        if not isinstance(dynamic,dict): return None
         condition=dynamic.get("condition")
         if dynamic.get("kind")==kind and condition and ec(kind,"*"):
             return (ec(kind,"*"),condition)
@@ -67,9 +68,16 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     def many(field,kind,prefix):
         raw=body.get(field)
         if not isinstance(raw,list) or not raw: return None
-        values=[resolve(x) for x in raw]
-        if any(not x or not re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",x) for x in values): return None
-        out=[ec(kind,x) for x in values]
+        dynamic=body.get("_tfiam_dynamic_ec2",{}).get(field,[])
+        out=[]
+        for i,item in enumerate(raw):
+            value=resolve(item)
+            if value and re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",value):
+                out.append(ec(kind,value)); continue
+            ref=dynamic[i] if scope_resource_tags and isinstance(dynamic,list) and len(dynamic)==len(raw) else None
+            if isinstance(ref,dict) and ref.get("kind")==kind and ref.get("condition") and ec(kind,"*"):
+                out.append((ec(kind,"*"),ref["condition"]))
+            else: return None
         return out if all(out) else None
     # Only documented EC2 resource-tag authorization paths are eligible.
     dynamic_actions={"CreateSubnet","CreateRouteTable","CreateSecurityGroup","CreateNetworkAcl","CreateNatGateway","CreateVpcEndpoint","AttachInternetGateway","DetachInternetGateway","AssociateRouteTable","ReplaceRouteTableAssociation","DisassociateRouteTable","CreateRoute","ReplaceRoute","DeleteRoute","AuthorizeSecurityGroupIngress","AuthorizeSecurityGroupEgress","RevokeSecurityGroupIngress","RevokeSecurityGroupEgress","ModifyVpcAttribute","DeleteVpc","ModifySubnetAttribute","DeleteSubnet","DeleteRouteTable","DeleteSecurityGroup","DeleteNetworkAcl","DeleteNatGateway","DeleteInternetGateway"}

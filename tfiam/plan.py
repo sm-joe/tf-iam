@@ -121,7 +121,7 @@ def parse_plan(doc, phase):
         for op,value in selected:
             masks=(change.get("before_sensitive"),) if value is before else (change.get("after_sensitive"),change.get("after_unknown"))
             unknown_fields=sorted({k for mask in masks if isinstance(mask,dict) for k,v in mask.items() if re.fullmatch(r"[a-z][a-z0-9_]*",k) and marked(v)})
-            tasks.append({"entry":entry,"operation":op,"body":value,"before":before,"unknown_fields":unknown_fields,"all_fields_masked":any(mask is True for mask in masks)})
+            tasks.append({"entry":entry,"operation":op,"body":value,"before":before,"unknown_fields":unknown_fields,"all_fields_masked":any(mask is True for mask in masks),"before_masked_fields":sorted(k for k,v in (change.get("before_sensitive") or {}).items() if marked(v)) if isinstance(change.get("before_sensitive"),dict) else [],"all_before_fields_masked":change.get("before_sensitive") is True})
         if phase=="plan" and actions==["update"] and before!=after:
             tasks.append({"entry":entry,"operation":"read","body":before})
     meta={"format_version":version,"terraform_version":terraform_version,

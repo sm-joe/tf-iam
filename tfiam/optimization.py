@@ -1,9 +1,9 @@
 """Narrow only reviewed, field-specific saved-plan actions."""
 def minimize(typ,actions,body,task):
     op=task.get("operation")
-    if op not in ("create","update") or task.get("all_fields_masked"): return actions
+    if op not in ("create","update") or task.get("all_fields_masked") or task.get("all_before_fields_masked"): return actions
     before=task.get("before",{})
-    unknown=set(task.get("unknown_fields",[]))
+    unknown=set(task.get("unknown_fields",[])) | set(task.get("before_masked_fields",[]))
     def changed(*fields):
         return any(f in unknown or before.get(f)!=body.get(f) for f in fields)
     out=set(actions)

@@ -90,7 +90,8 @@ def run(args):
     expected_actions={"sqs:GetQueueAttributes","sqs:GetQueueUrl","sqs:ListQueueTags","sqs:CreateQueue","sqs:SetQueueAttributes","sqs:TagQueue","sqs:UntagQueue","sqs:DeleteQueue"}
     if {a for a,_ in expected_grants}!=expected_actions: raise ValueError("Unexpected SQS acceptance action inventory")
     if not all(re.fullmatch(r"tfiam-test-[a-f0-9]{32}-[abc]",b) for b in info["queues"]) or len(set(info["queues"]))!=3: raise ValueError("Invalid fixture queue identities")
-    if {r for _,r in expected_grants}!={f"arn:aws:sqs:{info['region']}:{info['account']}:{b}" for b in info["queues"]}: raise ValueError("Candidate scopes do not match fixture queues")
+    expected_scopes={f"arn:aws:sqs:{info['region']}:{info['account']}:{b}" for b in info["queues"]}
+    if expected_grants!={(a,r) for a in expected_actions for r in expected_scopes}: raise ValueError("Candidate does not contain the exact action/queue grant matrix")
     if any(x.name not in {"prepare.json","candidate-policy.json","main.tf.json"} for x in root.iterdir()): raise ValueError("Acceptance requires a fresh dedicated fixture directory")
     if any(x.is_symlink() for x in root.iterdir()): raise ValueError("Fixture files must not be symlinks")
     if json.loads((root/"main.tf.json").read_bytes())!=config(info["version"],info["region"],info["queues"][0]): raise ValueError("Fixture configuration changed since preparation")
