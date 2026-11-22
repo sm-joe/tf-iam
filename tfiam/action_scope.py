@@ -114,7 +114,10 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     for action in sorted(actions,key=lambda a:(a in ("ec2:CreateTags","ec2:DeleteTags"),a)):
         short=action.split(":")[1]
         if action in EC2_GLOBAL:
-            if own and short in ("DescribeInstanceAttribute","DescribeVpcAttribute"):
+            # Preserve the lifecycle-tested region-scoped read policy for the
+            # original explicit tfiam:scope workflow. The new generated-name
+            # workflow can scope attribute reads to its opt-in Name anchor.
+            if isinstance(own,tuple) and "ec2:ResourceTag/Name" in own[1].get("StringEquals",{}) and short in ("DescribeInstanceAttribute","DescribeVpcAttribute"):
                 grant(action,[own]); continue
             emit(action,"*",{"StringEquals":{"aws:RequestedRegion":region}} if region else None); continue
         if short in CREATE and spec and spec[0]==CREATE[short][0]:
