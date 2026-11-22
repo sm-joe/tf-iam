@@ -39,23 +39,91 @@ python scripts/check-release.py "$EVIDENCE_DIR/release/lifecycle.json" \
 
 Set the manifest's `restricted-role-lifecycle` artifact to `lifecycle.json` and its actual SHA-256. Include the bundle's referenced files. Do not manufacture evidence or publish raw state, logs or plans. The fixture suite tests representative resource families, not every mapped AWS resource. If a fixture fails, retain private state and arrange authorized cleanup.
 
-## Acceptance
+## Acceptance and private signing
 
-Prepare a private evidence directory with manifest.json and sanitized artifacts. Each required check is defined in scripts/check-release.py and must contain status "passed", artifact (relative path), and sha256. Include the exact tested commit and provider_version. Use only reviewed real results; do not upload secrets or raw state. The checker verifies integrity and presence, not the truth of the contents.
+Keep the full evidence under a private persistent local directory. The public
+repository must not receive AWS account identifiers, session ARNs, candidate
+policies, state, plans, or CloudTrail exports as workflow artifacts or commits.
+A successful lifecycle bundle covers only the four exact fixtures, and the
+release gate verifies structure and digests rather than the truth of evidence.
+
+After all four Access Analyzer validations and session-filtered runtime audits
+have been collected, run from the exact clean accepted source checkout. The
+release tooling may be fetched separately without changing the accepted commit.
+Use the exact successful main CI and Linux build run IDs:
 
 ```bash
-python scripts/check-release.py evidence/manifest.json --expected-commit "$(git rev-parse HEAD)"
+umask 077
+git fetch origin main
+SOURCE_COMMIT=$(git rev-parse HEAD)
+git show origin/main:scripts/assemble-release-evidence.py > "$EVIDENCE_DIR/assemble-release-evidence.py"
+python "$EVIDENCE_DIR/assemble-release-evidence.py" prepare \
+  --evidence-dir "$EVIDENCE_DIR" --source-commit "$SOURCE_COMMIT" \
+  --provider-version "$AWS_PROVIDER_VERSION" \
+  --ci-run-id "$CI_RUN_ID" --linux-run-id "$LINUX_RUN_ID"
 ```
 
-The maintainer must review the actual evidence before using the manual signed-release workflow. Its artifact input must be a trusted GitHub Actions run containing the reviewed evidence manifest and files. Restrict access to acceptance evidence. The workflow refuses a mismatched commit, runs regressions, builds twice in the same environment, checks byte equality and smoke-tests the executable before creating signed GitHub build provenance. This repeatability check is not a guarantee of reproducibility across machines or future dependency selections; dependency ranges remain unlocked.
+Review `release/review-summary.json`, `release/provider-source-audit.json` and
+all referenced evidence privately. The source inventory may have review items:
+a match does not certify transitive provider calls. S3 v6.73.0 supports a
+fallback when newer AWS tagging calls are denied. VPC v6.73.0 logs warnings and
+may leave default network ACL, route table and security-group IDs unavailable
+when the corresponding discovery calls are denied. Configurations relying on
+those computed IDs are outside the validated fixture scope.
 
-Verify the resulting artifact:
+Only after independent review, seal the manifest and compact evidence archive:
 
 ```bash
-sha256sum -c SHA256SUMS
-gh attestation verify tfiam --repo sm-joe/tf-iam
+python "$EVIDENCE_DIR/assemble-release-evidence.py" seal \
+  --evidence-dir "$EVIDENCE_DIR" --source-commit "$SOURCE_COMMIT" \
+  --provider-version "$AWS_PROVIDER_VERSION" --confirm-reviewed
+python scripts/check-release.py "$EVIDENCE_DIR/release/manifest.json" \
+  --expected-commit "$SOURCE_COMMIT"
 ```
 
-Only after all checks and independent review should the maintainer create the stable v1.0.0 tag and release using the exact attested artifact. This workflow deliberately does not automatically publish a release. GitHub artifact attestation availability depends on repository visibility and plan.
+Transfer the compressed archive using a temporary Actions secret (not an
+artifact). The archive has a 36,000-byte limit before base64 encoding, and the
+helper refuses larger archives. Use only a trusted repository with reviewed
+workflows and restrict write access: privileged repository collaborators can
+modify workflows that consume secrets. Delete the temporary secret after the
+signing run has consumed it. Do not split or upload raw evidence to bypass a
+size error.
+
+```bash
+set -o pipefail
+ARCHIVE="$EVIDENCE_DIR/release-evidence.tar.gz"
+EVIDENCE_SHA256=$(sha256sum "$ARCHIVE" | cut -d' ' -f1)
+base64 -w 0 "$ARCHIVE" | gh secret set TFIAM_RELEASE_EVIDENCE --repo sm-joe/tf-iam
+gh workflow run release-prepare.yml --repo sm-joe/tf-iam --ref main \
+  -f source_commit="$SOURCE_COMMIT" -f evidence_sha256="$EVIDENCE_SHA256" \
+  -f review_confirmed=true
+```
+
+The workflow verifies the tested source is an ancestor of main, checks the
+reviewed archive and all evidence digests, removes the private files, and
+rebuilds that exact source twice. No AWS inputs are published. The public
+artifact contains the Linux executable, checksums, and an attested digest-only
+`release-source.json` that binds the binary to the tested source and evidence
+digests. GitHub's build provenance also identifies the workflow's own commit,
+which may be a later release-tooling commit; the release tag must identify the
+tested source commit, not the release-tooling commit.
+
+After the signed workflow succeeds, download its release artifact and verify:
+
+```bash
+gh run download "$SIGNED_RUN_ID" --repo sm-joe/tf-iam \
+  --name tfiam-linux-x86_64-release --dir "$EVIDENCE_DIR/signed"
+(cd "$EVIDENCE_DIR/signed" && sha256sum -c SHA256SUMS && \
+  gh attestation verify tfiam --repo sm-joe/tf-iam && \
+  gh attestation verify release-source.json --repo sm-joe/tf-iam)
+gh secret delete TFIAM_RELEASE_EVIDENCE --repo sm-joe/tf-iam
+```
+
+Review the receipt's tested source commit, archive digest, workflow run ID and
+binary digest. Publish stable v1.0.0 only after these checks and independent
+review, targeting the exact accepted commit. This workflow does not publish
+automatically. GitHub attestation availability depends on repository plan.
+Binary repeatability is measured within one build environment; unlocked
+dependency ranges prevent a guarantee of cross-machine reproducibility.
 
 See [acceptance checklist](release-acceptance.md).
