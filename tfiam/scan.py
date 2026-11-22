@@ -263,14 +263,23 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     target=next(iter(targets)) if len(targets)==1 else None
                                 if not account or not identity_name or not target or not re.fullmatch(rf'arn:{partition}:iam::{account}:{kind}/[^\s*?]+',target) or target.rsplit('/',1)[-1]!=identity_name:
                                     target=None
+                                # IAM identity names are unique within an account regardless of path.
+                                # Cover the root and any path, keeping the final identity name literal.
+                                # Never fall back to user/*, group/* or another account.
+                                targets=[target] if target else []
+                                if not target and account and re.fullmatch(r'[0-9]{12}',account) and identity_name and re.fullmatch(r'[A-Za-z0-9_+=,.@-]{1,128}',identity_name):
+                                    stem=f'arn:{partition}:iam::{account}:{kind}/'
+                                    targets=[stem+identity_name,stem+'*/'+identity_name]
+                                    info(address+': external identity path unknown; scope restricted to the exact configured identity name across IAM paths.')
                                 policy_arn=resolve(body.get('policy_arn'))
                                 valid_policy=bool(policy_arn and re.fullmatch(rf'arn:{partition}:iam::(?:aws|{account}):policy/[^\s*?]+',policy_arn))
                                 for action in acts:
-                                    if not target: unresolved(address,action)
-                                    elif action in ('iam:AttachUserPolicy','iam:DetachUserPolicy','iam:AttachGroupPolicy','iam:DetachGroupPolicy'):
-                                        if valid_policy: add(p,[action],target,address,condition={'ArnEquals':{'iam:PolicyARN':policy_arn}})
-                                        else: unresolved(address,action)
-                                    else: add(p,[action],target,address)
+                                    if not targets: unresolved(address,action); continue
+                                    if action in ('iam:AttachUserPolicy','iam:DetachUserPolicy','iam:AttachGroupPolicy','iam:DetachGroupPolicy'):
+                                        if not valid_policy: unresolved(address,action); continue
+                                        for target in targets: add(p,[action],target,address,condition={'ArnEquals':{'iam:PolicyARN':policy_arn}})
+                                    else:
+                                        for target in targets: add(p,[action],target,address)
                                 continue
                             if typ=='aws_iam_role_policy_attachment':
                                 role=resolve(body.get('role'))
