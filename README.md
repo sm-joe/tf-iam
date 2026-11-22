@@ -14,7 +14,7 @@ tf-iam analyzes Terraform configuration and saved plans, derives scoped AWS IAM 
 | --- | --- |
 | Static analysis | Terraform HCL and JSON, variables, local references and installed modules |
 | Plan analysis | Create, update, delete, replacement and no-op lifecycle candidates |
-| Permission catalog | 108 managed resource types and 37 data-source types with version-aware evidence |
+| Permission catalog | 120 managed resource types and 37 data-source types with version-aware evidence |
 | Least-privilege candidates | Scoped ARNs, bounded future identifiers, service conditions and dependency review |
 | Security enforcement | Delegation, destructive actions, privilege risk combinations and configurable gates |
 | Policy separation | Planner, applier and break-glass permission partitions |
@@ -193,3 +193,9 @@ Static evaluation distinguishes masked configuration fields from omitted permiss
 The primary workflow is `tfiam generate . --output policy.json`. Static configuration apply covers the full lifecycle, including replacement/deletion. A saved plan narrows the operation set. `compare` is optional and intended for evaluating a separately supplied existing policy; self-comparison is only an internal regression check. It counts conditional grants and does not label identical candidate conditions as unresolved comparisons.
 
 IAM user and group managed-policy attachments are supported. The generator resolves the identity ARN (including its IAM path) from a managed identity reference or a unique local declaration, or a matching saved-plan identity. Attach and detach grants are restricted by `iam:PolicyARN`; listing grants are scoped to the identity. For external identities with a known literal name but no known path, the offline generator uses two name-bound ARNs (`user/name` and `user/*/name`, or the group equivalent). IAM names are unique within an account regardless of path. This preserves the exact identity name and account without requiring AWS credentials. ARN names are case-sensitive: use the actual IAM name spelling. Unknown names or policy ARNs remain blocking.
+
+### Expanded AWS resource coverage
+
+The catalog adds IAM access keys and user-group membership, EC2 key pairs, S3 request-payment and acceleration configuration, RDS option groups, SQS queue policy/redrive resources, and SNS topics/policies/subscriptions. Instance-profile role delegation, Lambda aliases, ECS task definitions and EKS Fargate profiles use action-specific scopes. Known optional DynamoDB TTL and PITR changes are narrowed in saved plans. These are static candidates; complex RDS options, unknown dependencies and unsupported scopes remain blocking. No cloud lookup or resource creation is performed by generation.
+
+AWS-specific bounds: ECS DescribeTaskDefinition and DeregisterTaskDefinition require global resource scope; the generator restricts the requested region. IAM group membership mutation is authorized on the group (IAM provides no referenced-user condition for the operation). SNS subscription read/update/delete are topic scoped, while Subscribe is further restricted to the configured endpoint and protocol. These are platform authorization constraints, not proof of exclusively single-object access.

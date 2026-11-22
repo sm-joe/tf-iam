@@ -16,7 +16,7 @@ SERVICE=re.compile(r"[a-z0-9-]+")
 MAX_BYTES=32*1024*1024
 # Official SAR explicitly lists no resource types for these EKS actions.
 # Only fill an absent Resources field; never override a conflicting snapshot.
-DOCUMENTED_GLOBAL={"eks:createcluster","eks:describeaddonversions"}
+DOCUMENTED_GLOBAL={"eks:createcluster","eks:describeaddonversions","ecs:describetaskdefinition","ecs:deregistertaskdefinition","ec2:describekeypairs"}
 EKS_REFERENCE="https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html"
 
 def catalog_actions(version=None):
@@ -26,7 +26,7 @@ def catalog_actions(version=None):
             rule=get_rule("resource" if category=="resources" else "data",kind,version)
             for field in ("read","write","delete"): out.update(rule[field])
             for attr in rule["attributes"]: out.update(attr["actions"])
-    out.update({"iam:CreateServiceLinkedRole","eks:CreateAccessEntry","iam:PutRolePermissionsBoundary","iam:DeleteRolePermissionsBoundary","eks:AssociateEncryptionConfig"})
+    out.update({"iam:CreateServiceLinkedRole","eks:CreateAccessEntry","iam:PutRolePermissionsBoundary","iam:DeleteRolePermissionsBoundary","eks:AssociateEncryptionConfig","iam:PassRole"})
     return out
 
 def download_snapshot(folder,services):

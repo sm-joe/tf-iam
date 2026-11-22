@@ -707,14 +707,16 @@
       "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
       "read": [
         "iam:GetInstanceProfile",
-        "iam:ListInstanceProfileTags"
+        "iam:ListInstanceProfileTags",
+        "iam:GetRole"
       ],
       "write": [
         "iam:AddRoleToInstanceProfile",
         "iam:CreateInstanceProfile",
         "iam:RemoveRoleFromInstanceProfile",
         "iam:TagInstanceProfile",
-        "iam:UntagInstanceProfile"
+        "iam:UntagInstanceProfile",
+        "iam:PassRole"
       ],
       "delete": [
         "iam:RemoveRoleFromInstanceProfile",
@@ -724,13 +726,15 @@
       "create": [
         "iam:CreateInstanceProfile",
         "iam:AddRoleToInstanceProfile",
-        "iam:TagInstanceProfile"
+        "iam:TagInstanceProfile",
+        "iam:PassRole"
       ],
       "update": [
         "iam:AddRoleToInstanceProfile",
         "iam:RemoveRoleFromInstanceProfile",
         "iam:TagInstanceProfile",
-        "iam:UntagInstanceProfile"
+        "iam:UntagInstanceProfile",
+        "iam:PassRole"
       ],
       "scope_strategy": "profile"
     },
@@ -918,7 +922,8 @@
       "write": [
         "eks:CreateFargateProfile",
         "eks:TagResource",
-        "eks:UntagResource"
+        "eks:UntagResource",
+        "iam:PassRole"
       ],
       "delete": [
         "eks:DeleteFargateProfile"
@@ -926,7 +931,8 @@
       "attributes": [],
       "create": [
         "eks:CreateFargateProfile",
-        "eks:TagResource"
+        "eks:TagResource",
+        "iam:PassRole"
       ],
       "update": [
         "eks:TagResource",
@@ -2993,6 +2999,291 @@
         "iam:AttachGroupPolicy"
       ],
       "update": []
+    },
+    "aws_iam_access_key": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:ListAccessKeys"
+      ],
+      "write": [
+        "iam:CreateAccessKey",
+        "iam:UpdateAccessKey"
+      ],
+      "delete": [
+        "iam:DeleteAccessKey"
+      ],
+      "attributes": [],
+      "create": [
+        "iam:CreateAccessKey",
+        "iam:UpdateAccessKey"
+      ],
+      "update": [
+        "iam:UpdateAccessKey"
+      ]
+    },
+    "aws_iam_user_group_membership": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:ListGroupsForUser"
+      ],
+      "write": [
+        "iam:AddUserToGroup",
+        "iam:RemoveUserFromGroup"
+      ],
+      "delete": [
+        "iam:RemoveUserFromGroup"
+      ],
+      "attributes": [],
+      "create": [
+        "iam:AddUserToGroup"
+      ],
+      "update": [
+        "iam:AddUserToGroup",
+        "iam:RemoveUserFromGroup"
+      ]
+    },
+    "aws_key_pair": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeKeyPairs"
+      ],
+      "write": [
+        "ec2:ImportKeyPair",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "delete": [
+        "ec2:DeleteKeyPair"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:ImportKeyPair",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ]
+    },
+    "aws_s3_bucket_request_payment_configuration": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetBucketRequestPayment"
+      ],
+      "write": [
+        "s3:PutBucketRequestPayment"
+      ],
+      "delete": [
+        "s3:PutBucketRequestPayment"
+      ],
+      "attributes": [],
+      "create": [
+        "s3:PutBucketRequestPayment"
+      ],
+      "update": [
+        "s3:PutBucketRequestPayment"
+      ]
+    },
+    "aws_s3_bucket_accelerate_configuration": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_s3.html",
+      "read": [
+        "s3:GetAccelerateConfiguration"
+      ],
+      "write": [
+        "s3:PutAccelerateConfiguration"
+      ],
+      "delete": [
+        "s3:PutAccelerateConfiguration"
+      ],
+      "attributes": [],
+      "create": [
+        "s3:PutAccelerateConfiguration"
+      ],
+      "update": [
+        "s3:PutAccelerateConfiguration"
+      ]
+    },
+    "aws_db_option_group": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_rds.html",
+      "read": [
+        "rds:DescribeOptionGroups",
+        "rds:ListTagsForResource"
+      ],
+      "write": [
+        "rds:CreateOptionGroup",
+        "rds:AddTagsToResource",
+        "rds:ModifyOptionGroup",
+        "rds:RemoveTagsFromResource"
+      ],
+      "delete": [
+        "rds:DeleteOptionGroup"
+      ],
+      "attributes": [],
+      "create": [
+        "rds:CreateOptionGroup",
+        "rds:AddTagsToResource",
+        "rds:ModifyOptionGroup"
+      ],
+      "update": [
+        "rds:ModifyOptionGroup",
+        "rds:AddTagsToResource",
+        "rds:RemoveTagsFromResource"
+      ]
+    },
+    "aws_sqs_queue_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_sqs.html",
+      "read": [
+        "sqs:GetQueueAttributes"
+      ],
+      "write": [
+        "sqs:SetQueueAttributes"
+      ],
+      "delete": [
+        "sqs:SetQueueAttributes"
+      ],
+      "attributes": [],
+      "create": [
+        "sqs:SetQueueAttributes"
+      ],
+      "update": [
+        "sqs:SetQueueAttributes"
+      ]
+    },
+    "aws_sqs_queue_redrive_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_sqs.html",
+      "read": [
+        "sqs:GetQueueAttributes"
+      ],
+      "write": [
+        "sqs:SetQueueAttributes"
+      ],
+      "delete": [
+        "sqs:SetQueueAttributes"
+      ],
+      "attributes": [],
+      "create": [
+        "sqs:SetQueueAttributes"
+      ],
+      "update": [
+        "sqs:SetQueueAttributes"
+      ]
+    },
+    "aws_sqs_queue_redrive_allow_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_sqs.html",
+      "read": [
+        "sqs:GetQueueAttributes"
+      ],
+      "write": [
+        "sqs:SetQueueAttributes"
+      ],
+      "delete": [
+        "sqs:SetQueueAttributes"
+      ],
+      "attributes": [],
+      "create": [
+        "sqs:SetQueueAttributes"
+      ],
+      "update": [
+        "sqs:SetQueueAttributes"
+      ]
+    },
+    "aws_sns_topic": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_sns.html",
+      "read": [
+        "sns:GetTopicAttributes",
+        "sns:ListTagsForResource"
+      ],
+      "write": [
+        "sns:CreateTopic",
+        "sns:SetTopicAttributes",
+        "sns:TagResource",
+        "sns:UntagResource",
+        "iam:PassRole"
+      ],
+      "delete": [
+        "sns:DeleteTopic"
+      ],
+      "attributes": [],
+      "create": [
+        "sns:CreateTopic",
+        "sns:SetTopicAttributes",
+        "sns:TagResource",
+        "iam:PassRole"
+      ],
+      "update": [
+        "sns:SetTopicAttributes",
+        "sns:TagResource",
+        "sns:UntagResource",
+        "iam:PassRole"
+      ]
+    },
+    "aws_sns_topic_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_sns.html",
+      "read": [
+        "sns:GetTopicAttributes"
+      ],
+      "write": [
+        "sns:SetTopicAttributes"
+      ],
+      "delete": [
+        "sns:SetTopicAttributes"
+      ],
+      "attributes": [],
+      "create": [
+        "sns:SetTopicAttributes"
+      ],
+      "update": [
+        "sns:SetTopicAttributes"
+      ]
+    },
+    "aws_sns_topic_subscription": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_sns.html",
+      "read": [
+        "sns:GetSubscriptionAttributes",
+        "sns:ListSubscriptionsByTopic"
+      ],
+      "write": [
+        "sns:Subscribe",
+        "sns:SetSubscriptionAttributes",
+        "iam:PassRole"
+      ],
+      "delete": [
+        "sns:Unsubscribe"
+      ],
+      "attributes": [],
+      "create": [
+        "sns:Subscribe",
+        "sns:SetSubscriptionAttributes",
+        "iam:PassRole"
+      ],
+      "update": [
+        "sns:SetSubscriptionAttributes",
+        "iam:PassRole"
+      ]
     }
   },
   "data": {

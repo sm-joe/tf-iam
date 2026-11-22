@@ -148,6 +148,16 @@ class Context:
                 if not re.fullmatch(r"[\w+=,.@-]+",name) or not path.startswith("/") or not path.endswith("/"): return UNKNOWN
                 if any(c in path for c in "*?"): return UNKNOWN
                 return f"arn:{self.partition}:iam::{self.account}:{kind.removeprefix('aws_iam_')}{path}{name}"
+            if kind=="aws_sqs_queue" and attr in ("id","url","arn"):
+                name=self.evaluate(body.get("name",UNKNOWN),seen)
+                if self.account and self.region and isinstance(name,str) and re.fullmatch(r"[A-Za-z0-9_-]+(?:\.fifo)?",name):
+                    if attr=="arn": return f"arn:{self.partition}:sqs:{self.region}:{self.account}:{name}"
+                    suffix={"aws":"amazonaws.com","aws-cn":"amazonaws.com.cn","aws-us-gov":"amazonaws.com"}.get(self.partition)
+                    if suffix: return f"https://sqs.{self.region}.{suffix}/{self.account}/{name}"
+            if kind=="aws_sns_topic" and attr in ("id","arn"):
+                name=self.evaluate(body.get("name",UNKNOWN),seen)
+                if self.account and self.region and isinstance(name,str) and re.fullmatch(r"[A-Za-z0-9_-]+(?:\.fifo)?",name):
+                    return f"arn:{self.partition}:sns:{self.region}:{self.account}:{name}"
             # The AWS provider documents the S3 bucket ID as the bucket name.
             # Do not infer random names, prefix-generated names or arbitrary IDs.
             if attr=="id" and kind=="aws_s3_bucket":
@@ -311,6 +321,15 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                                         if len(matches)==1:
                                             resolved=ctx.reference(matches[0]+".arn",())
                                             if resolved is not UNKNOWN: evaluated["_tfiam_identity_arn"]=resolved
+                            if kind in ("aws_iam_access_key","aws_iam_user_group_membership","aws_iam_instance_profile"):
+                                field="role" if kind=="aws_iam_instance_profile" else "user"
+                                marker="_tfiam_profile_role_arn" if field=="role" else "_tfiam_user_arn"
+                                evaluated.pop(marker,None)
+                                original=body.get(field)
+                                match=EXPR.fullmatch(original) if isinstance(original,str) else None
+                                if match and match.group(1).startswith("aws_iam_"+field+".") and match.group(1).endswith(".name"):
+                                    resolved=ctx.reference(match.group(1)[:-5]+".arn",())
+                                    if resolved is not UNKNOWN: evaluated[marker]=resolved
                             mapped.setdefault(kind,{})[name]=sanitize(evaluated)
                 if mapped: transformed[category]=mapped
             result.append((src,ctx.path,transformed))
