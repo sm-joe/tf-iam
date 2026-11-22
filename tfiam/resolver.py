@@ -320,17 +320,24 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                             # A generated ID is never fabricated. Only direct references to
                             # same-context, explicitly tagged managed EC2 parents qualify.
                             dynamic={}
-                            for field,raw in body.items():
+                            def dynamic_reference(raw):
                                 match=EXPR.fullmatch(raw) if isinstance(raw,str) else None
-                                if not match or not match.group(1).endswith(".id"): continue
+                                if not match or not match.group(1).endswith(".id"): return None
                                 ref=match.group(1)[:-3]
                                 parent=ctx.resources.get(ref)
                                 parent_type=ref.split(".",1)[0]
-                                if not parent or parent_type not in EC2_TYPES or "count" in parent or "for_each" in parent or ctx.provider_context(parent)!=ctx.provider_context(body): continue
+                                context=ctx.provider_context(body)
+                                if not parent or parent_type not in EC2_TYPES or "count" in parent or "for_each" in parent or context is None or ctx.provider_context(parent)!=context: return None
                                 tags=ctx.evaluate(parent.get("tags",{}))
                                 condition=tag_conditions({"tags":{"tfiam:scope":tags["tfiam:scope"]}},"ec2:ResourceTag/") if isinstance(tags,dict) and isinstance(tags.get("tfiam:scope"),str) and tags["tfiam:scope"] else {}
-                                if condition:
-                                    dynamic[field]={"kind":EC2_TYPES[parent_type][0],"condition":condition}
+                                return {"kind":EC2_TYPES[parent_type][0],"condition":condition} if condition else None
+                            for field,raw in body.items():
+                                if isinstance(raw,list):
+                                    entries=[dynamic_reference(item) for item in raw]
+                                    if any(entries): dynamic[field]=entries
+                                else:
+                                    reference=dynamic_reference(raw)
+                                    if reference: dynamic[field]=reference
                             evaluated["_tfiam_dynamic_ec2"]=dynamic
                             if (body.get("count") is not None and evaluated.get("count")==0):
                                 continue
