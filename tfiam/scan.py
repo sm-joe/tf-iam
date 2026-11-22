@@ -272,7 +272,12 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 if len(targets)==1:
                                     body['_tfiam_profile_role_arn']=next(iter(targets))
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
-                                network(typ,body,acts,account,region,partition,resolve,emit,omit,task,scope_resource_tags=scope_resource_tags)
+                                if task and typ=='aws_instance' and operation=='create' and has_root:
+                                    from .plan_network import omitted_instance_key
+                                    if omitted_instance_key(plan,address,network_sources,version):
+                                        body['_tfiam_omitted_key_name']=True
+                                        info(address+': optional computed key_name is absent from source and plan configuration; no key-pair authorization required for direct creation.')
+                                network(typ,body,acts,account,region,partition,resolve,emit,omit,task,scope_resource_tags=scope_resource_tags,diagnose=lambda message: warn(address+': '+message))
                                 continue
                             if typ in ELB_TYPES:
                                 elb(typ,body,acts,account,region,partition,resolve,emit,omit,task)
