@@ -209,3 +209,13 @@ def test_s3_plan_dependency_rejects_masked_identity(tmp_path):
         return {"address":a,"type":t,"mode":"managed","provider_name":"registry.terraform.io/hashicorp/aws","change":change}
     doc={"configuration":{"root_module":{"resources":cfg}},"resource_changes":[row(target,"aws_s3_bucket",{"actions":["create"],"after":{"bucket":"private-bucket"},"after_sensitive":{"bucket":True}}),row(addr,"aws_s3_bucket_versioning",{"actions":["create"],"after":{},"after_unknown":{"bucket":True}})]}
     assert recover_bucket(doc,addr,{addr:{"bucket":"\u0024{"+target+".id}"}}) is None
+
+
+def test_random_id_plan_is_not_an_aws_mapping_gap():
+    doc={"format_version":"1.0","terraform_version":"1.10.5","resource_changes":[{"address":"random_id.suffix","type":"random_id","mode":"managed","provider_name":"registry.terraform.io/hashicorp/random","change":{"actions":["create"],"before":None,"after":{"byte_length":4},"after_unknown":{"hex":True}}}]}
+    result=run(doc=doc)
+    assert result["resources"][0]["mapping_status"]=="SKIPPED"
+    assert result["mapping_coverage"]["unmapped_resources"]==0
+    assert not result["permissions"]
+    doc["resource_changes"][0]["provider_name"]="registry.terraform.io/example/custom"
+    assert run(doc=doc)["mapping_coverage"]["unmapped_resources"]==1
