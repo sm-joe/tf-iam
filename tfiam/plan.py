@@ -119,7 +119,9 @@ def parse_plan(doc, phase):
             entry["status"]="SKIPPED"
             continue
         for op,value in selected:
-            tasks.append({"entry":entry,"operation":op,"body":value,"before":before})
+            masks=(change.get("before_sensitive"),) if value is before else (change.get("after_sensitive"),change.get("after_unknown"))
+            unknown_fields=sorted({k for mask in masks if isinstance(mask,dict) for k,v in mask.items() if re.fullmatch(r"[a-z][a-z0-9_]*",k) and marked(v)})
+            tasks.append({"entry":entry,"operation":op,"body":value,"before":before,"unknown_fields":unknown_fields,"all_fields_masked":any(mask is True for mask in masks)})
         if phase=="plan" and actions==["update"] and before!=after:
             tasks.append({"entry":entry,"operation":"read","body":before})
     meta={"format_version":version,"terraform_version":terraform_version,

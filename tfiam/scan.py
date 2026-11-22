@@ -158,6 +158,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             source,module_path=module_paths.get(src,(src,''))
                             address=task['entry']['address'] if task else ((module_path+'.' if module_path else '')+('data.' if category=='data' else '')+typ+'.'+name)
 
+                            unknown_fields=set(task.get('unknown_fields',[])) if task else set(body.get('_tfiam_unknown_fields',[]))
+                            def unknown_field(field):
+                                return field in unknown_fields or bool(task and task.get('all_fields_masked'))
                             operation=task['operation'] if task else None
                             resource_phase=('plan' if operation=='read' else 'destroy' if operation=='delete' else 'apply') if task else phase
                             if typ=='terraform_remote_state' and category=='data':
@@ -168,6 +171,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if not rule: entry['status']='UNSUPPORTED'
                             if not rule: warn(address+': no AWS '+category+' permission mapping'); continue
                             entry['validation']=rule['validation']; entry['reference']=rule['reference']
+                            if not task and unknown_fields:
+                                entry['unevaluated_fields']=sorted(unknown_fields)
+                                entry['unknown_values']=True
                             p='aws'; acts=operation_actions(rule,operation) if task else actions_for(rule, 'plan' if category=='data' else phase)
                             def emit(action,target,condition=None):
                                 add('aws',[action],target,address,condition=condition)
@@ -192,7 +198,13 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             attr_rules=[]
                             for attr in rule['attributes']:
                                 values=attribute_values(body,attr['path'])
-                                if resource_phase not in attr['phases'] or not values: continue
+                                if resource_phase not in attr['phases']: continue
+                                if not values and unknown_field(attr['path'].split('.')[0]):
+                                    if attr['scope']=='resource': acts=sorted(set(acts+attr['actions']))
+                                    else:
+                                        for action in attr['actions']: unresolved(address,action)
+                                    continue
+                                if not values: continue
                                 if attr['scope']=='resource':
                                     acts=sorted(set(acts+attr['actions']))
                                     if task and any(v is None for v in values):
@@ -283,29 +295,34 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                         if any(v in ('API','API_AND_CONFIG_MAP') for v in access) and (not task or operation=='create' or operation=='update' and access!=old_access):
                                             if cluster_arn!='*': add(p,['eks:CreateAccessEntry'],cluster_arn,address)
                                             else: unresolved(address,'eks:CreateAccessEntry')
-                                        elif any(v is None or isinstance(v,str) and v.startswith('${') for v in access):
+                                        elif unknown_field('access_config') or any(v is None or isinstance(v,str) and v.startswith('${') for v in access):
                                             unresolved(address,'eks:CreateAccessEntry')
-                                    if kind in ('addon','podidentityassociation') and (body.get('pod_identity_association') or body.get('target_role_arn')):
-                                        warn(address+': additional pod-identity role or association authorization requires explicit review; nested delegation is not inferred.')
+                                    if kind in ('addon','podidentityassociation') and (body.get('pod_identity_association') or body.get('target_role_arn') or unknown_field('pod_identity_association') or unknown_field('target_role_arn')):
+                                        unresolved(address,'iam:PassRole (additional pod identity role)')
+                                        if kind=='addon': unresolved(address,'eks:CreatePodIdentityAssociation')
                                     field,service={'cluster':('role_arn','eks.amazonaws.com'),'nodegroup':('node_role_arn','eks.amazonaws.com'),'addon':('service_account_role_arn','eks.amazonaws.com'),'podidentityassociation':('role_arn','pods.eks.amazonaws.com')}[kind]
                                     recovered=None
                                     if task and has_root and not body.get(field):
                                         recovered=recover_role_arn(plan,address,field,definitions,account,partition)
-                                    if kind!='addon' or body.get(field) or recovered:
+                                    if kind!='addon' or body.get(field) or recovered or unknown_field(field):
                                         arn=resolve(body.get(field)) or recovered
                                         if recovered:
                                             item={'source':address,'action':'iam:PassRole','scope':recovered,'method':'direct source and saved-plan role dependency'}
                                             if item not in report['resolved_dependencies']: report['resolved_dependencies'].append(item)
                                         if arn and re.fullmatch(r'arn:[a-z0-9-]+:iam::[0-9]{12}:role/[^\s*?]+',arn): add(p,['iam:PassRole'],arn,address,condition={'StringEquals':{'iam:PassedToService':service}})
                                         else: unresolved(address,'iam:PassRole')
-                                    if kind=='cluster' and body.get('compute_config'): warn(address+': EKS Auto Mode compute role dependencies require separate review.')
+                                    if kind=='cluster' and (unknown_field('compute_config') or any(v is True or v is None for v in attribute_values(body,'compute_config.enabled'))):
+                                        unresolved(address,'iam:PassRole (EKS Auto Mode compute role)')
                                 if scope=='*': warn(address+': provide account, region and resolvable resource names')
                                 continue
                             if typ=='aws_iam_role' and scope!='*' and category=='resource' and resource_phase=='apply' and operation not in ('read','no-op'):
                                 boundary=resolve(body.get('permissions_boundary'))
                                 old_boundary=resolve(task.get('before',{}).get('permissions_boundary')) if task else None
-                                if body.get('permissions_boundary') and not boundary:
+                                if unknown_field('permissions_boundary') or body.get('permissions_boundary') and not boundary:
                                     unresolved(address,'iam:PutRolePermissionsBoundary')
+                                    if 'iam:CreateRole' in acts:
+                                        acts=[a for a in acts if a!='iam:CreateRole']
+                                        unresolved(address,'iam:CreateRole')
                                 elif boundary and not re.fullmatch(r'arn:[a-z0-9-]+:iam::(?:[0-9]{12}|aws):policy/[^\s*?]+',boundary):
                                     unresolved(address,'iam:PutRolePermissionsBoundary')
                                 elif boundary:
@@ -315,8 +332,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     if not task or operation=='update' and boundary!=old_boundary:
                                         add(p,['iam:PutRolePermissionsBoundary'],scope,address,condition={'ArnEquals':{'iam:PermissionsBoundary':boundary}})
                                 elif task and operation=='update' and old_boundary and 'permissions_boundary' in body and body['permissions_boundary'] in ('',None):
-                                    if body['permissions_boundary']=='': add(p,['iam:DeleteRolePermissionsBoundary'],scope,address)
-                                    else: unresolved(address,'iam:DeleteRolePermissionsBoundary')
+                                    add(p,['iam:DeleteRolePermissionsBoundary'],scope,address)
                             if typ=='aws_iam_role' and scope=='*':
                                 for action in acts: unresolved(address,action)
                                 acts=[]
@@ -363,6 +379,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
             entry['validation_evidence']=[e for e in rule.get('evidence',[]) if e['provider_version']==version]
         verified+=status=='lifecycle-verified'
         reviewed+=status=='provider-source-reviewed'
+    for entry in report['resources']:
+        fields=entry.get('unevaluated_fields',[])
+        if fields and not any(p['source']==entry['address'] for p in report['unresolved_permissions']):
+            info(entry['address']+': unevaluated configuration fields ('+', '.join(fields)+'); no omitted mapped permission identified. Values withheld.')
     report['mapping_coverage']={'eligible_resources':eligible,'mapped_resources':mapped,'unmapped_resources':eligible-mapped,'mapping_percent':round(100*mapped/eligible,2) if eligible else None}
     report['authorization_confidence']={'provider_version':version,'lifecycle_verified_resources':verified,'source_reviewed_resources':reviewed,'unvalidated_mapped_resources':mapped-verified-reviewed,'status':'lifecycle-verified' if eligible and verified==eligible else 'partial-evidence' if verified else 'source-reviewed' if reviewed else 'unvalidated'}
     if not version: warn('AWS provider version unknown; supply the Terraform lockfile or --aws-provider-version')

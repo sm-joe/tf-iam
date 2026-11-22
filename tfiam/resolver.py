@@ -283,8 +283,10 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                             evaluated=ctx.evaluate(body)
                             if (body.get("count") is not None and evaluated.get("count")==0):
                                 continue
-                            if not static(sanitize(evaluated)) or contains_unknown(evaluated):
-                                warn(addr+": unresolved or sensitive attributes; candidate permissions may be incomplete")
+                            # Keep only top-level attribute names, never masked values or expressions.
+                            evaluated.pop("_tfiam_unknown_fields",None)
+                            evaluated["_tfiam_unknown_fields"]=sorted(k for k,v in evaluated.items()
+                                if re.fullmatch(r"[a-z][a-z0-9_]*",k) and (contains_unknown(v) or not static(sanitize(v))))
                             if kind=="aws_iam_role_policy_attachment":
                                 original=body.get("role")
                                 match=EXPR.fullmatch(original) if isinstance(original,str) else None

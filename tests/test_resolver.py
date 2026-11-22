@@ -81,3 +81,19 @@ def test_s3_generated_or_sensitive_bucket_id_not_guessed(tmp_path):
     r=scan(tmp_path)
     assert not r["permissions"]
     assert "private-bucket" not in json.dumps(r)
+
+def test_unevaluated_trust_and_dependency_fields_not_generic_warnings(tmp_path):
+    put(tmp_path,"main.tf.json",{"resource":{"aws_iam_role":{"r":{"name":"fixture","assume_role_policy":"\u0024{jsonencode(local.trust)}"}},"aws_eks_addon":{"a":{"cluster_name":"demo","addon_name":"coredns","depends_on":["\u0024{aws_iam_role.r}"]}}}})
+    r=scan(tmp_path,account="123456789012",region="us-east-1")
+    assert not r["unresolved_permissions"]
+    assert not any("unresolved or sensitive attributes" in w for w in r["warnings"])
+    assert any("assume_role_policy" in w for w in r["information"])
+    assert any(p["action"]=="iam:CreateRole" for p in r["permissions"])
+
+def test_unknown_optional_delegation_and_boundary_block_generation(tmp_path):
+    put(tmp_path,"main.tf.json",{"variable":{"secret":{"default":"arn:aws:iam::123456789012:policy/hidden","sensitive":True}},"resource":{"aws_iam_role":{"r":{"name":"fixture","permissions_boundary":"\u0024{var.secret}"}},"aws_eks_addon":{"a":{"cluster_name":"demo","addon_name":"coredns","service_account_role_arn":"\u0024{var.unknown}"}}}})
+    r=scan(tmp_path,account="123456789012",region="us-east-1")
+    assert {"iam:CreateRole","iam:PutRolePermissionsBoundary","iam:PassRole"} <= {p["action"] for p in r["unresolved_permissions"]}
+    assert not any(p["action"]=="iam:CreateRole" for p in r["permissions"])
+    assert "policy/hidden" not in json.dumps(r)
+    assert main(["generate",str(tmp_path),"--aws-account","123456789012","--aws-region","us-east-1","--output",str(tmp_path/"policy.json")])==4
