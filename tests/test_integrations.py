@@ -159,3 +159,15 @@ def test_comparison_distinguishes_missing_and_uncertain():
     doc={"Statement":[{"Effect":"Allow","Action":"s3:GetObject","Resource":"*","Condition":{"StringEquals":{"aws:PrincipalTag/Team":"test"}}}]}
     result=compare(report,"aws",doc)
     assert result["summary"]["missing"]==1 and result["summary"]["unverified"]==1
+
+def test_self_comparison_counts_conditional_grants_without_false_warnings():
+    from tfiam.cli import compare
+    grant=row("iam:PassRole","arn:aws:iam::123456789012:role/fixture")
+    grant["condition"]={"StringEquals":{"iam:PassedToService":"eks.amazonaws.com"}}
+    report={"permissions":[grant]}
+    doc={"Statement":[{"Effect":"Allow","Action":"iam:PassRole","Resource":grant["scope"],"Condition":grant["condition"]}]}
+    result=compare(report,"aws",doc)
+    assert result["summary"]["covered_candidates"]==1
+    assert result["summary"]["unique_existing_grants"]==1
+    assert result["summary"]["complex_statements"]==0
+    assert not result["warnings"] and not result["potentially_excessive"]

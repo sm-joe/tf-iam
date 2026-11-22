@@ -52,6 +52,35 @@ def render(command,r,compact=False):
         elif unmapped or unresolved: recommendation="INCOMPLETE CANDIDATE - resolve mapping/scope gaps before deployment."
         else: recommendation="CANDIDATE FOR REVIEW - validate against intended deployment identity and approve sensitive grants before use."
         metrics("RECOMMENDATION",{"Decision":recommendation})
+    if compact and command=="generate" and r.get("generation_status")!="BLOCKED":
+        mapping=r.get("mapping_coverage",{})
+        unmet=r.get("unresolved_permissions",[])
+        gaps=mapping.get("unmapped_resources",0)
+        meta=r.get("authorization_metadata",{}).get("status","not-run")
+        count=mapping.get("eligible_resources",0)
+        verified=r.get("authorization_confidence",{}).get("lifecycle_verified_resources",0)
+        global_actions=sorted({a for a,scope,_ in policy_rows(r) if scope=="*"})
+        metrics("POLICY SUMMARY",{
+            "Policy":r.get("policy_output","stdout"),
+            "Status":"INCOMPLETE - do not deploy" if gaps or unmet else "GENERATED - candidate",
+            "Resources mapped":str(mapping.get("mapped_resources",0))+"/"+str(count),
+            "Permission grants":len(policy_rows(r)),
+            "Unmapped resources":gaps,
+            "Unresolved permissions":len(unmet),
+            "Scope":"Full lifecycle (includes destroy)" if r.get("input")=="terraform-config" and r.get("phase")=="apply" else r.get("phase","-"),
+            "Global-scope actions":", ".join(global_actions) or "None",
+            "AWS metadata":meta,
+            "Lifecycle verified":str(verified)+"/"+str(count),
+            "Sensitive permission findings":len(r.get("risks",[])),
+        })
+        if gaps or unmet:
+            section("UNRESOLVED PERMISSIONS",["Resource","Action","Reason"],[(x["source"],x["action"],x["reason"]) for x in unmet],[52,36,52])
+            section("UNMAPPED RESOURCES",["Resource"],[(x["address"],) for x in r.get("resources",[]) if x.get("mapping_status")=="UNMAPPED"],[70])
+        # Preserve actionable warnings, but not repeated maintainer/field diagnostics.
+        notes=[n for n in r.get("warnings",[]) if "lack exact-version lifecycle authorization evidence" not in n and "omitted; action-specific" not in n]
+        if notes: section("INPUT WARNINGS",["Details"],[(n,) for n in notes],[100])
+        parts.append("Static policy candidate; live authorization and minimality are not proven. Use --show-table for grant and risk details.")
+        return "\n".join(parts)
     if command=="scan":
         decision()
         groups={}
@@ -72,7 +101,17 @@ def render(command,r,compact=False):
 
     elif command=="compare":
         summary=r["summary"]
-        metrics("SUMMARY",{k:v for k,v in summary.items() if k!="by_service"})
+        metrics("SUMMARY",{"Required grants":summary["unique_candidates"],"Covered":summary["covered_candidates"],"Missing":summary.get("missing",summary["missing_or_unverified"]),"Unverified":summary.get("unverified",0),"Denied":summary["explicitly_denied"],"Existing grants":summary["unique_existing_grants"],"Potentially excessive":summary["potentially_excessive"]})
+        if compact:
+            for k in ("missing","unverified","explicitly_denied"):
+                if r.get(k): section(k.replace("_"," ").upper(),["Action","Resource scope","Condition","Source"],grant_rows(r[k]),[38,60,45,45],100)
+            if r.get("potentially_excessive"):
+                section("POTENTIALLY EXCESSIVE",["Action","Resource scope","Reasons"],[(x["action"],x["scope"],", ".join(x["reasons"])) for x in r["potentially_excessive"]],[40,60,60],25)
+            if not summary["missing_or_unverified"] and not summary["explicitly_denied"] and not summary["potentially_excessive"]:
+                parts.append("No differences identified against the static permission candidates.")
+            if r.get("warnings"): section("COMPARISON LIMITATIONS",["Details"],[(n,) for n in r["warnings"]],[100])
+            parts.append("Static comparison only; not proof of effective authorization or least privilege. Use --show-table for full analysis.")
+            return "\n".join(parts)
         by=summary["by_service"]
         services=sorted(set().union(*(x.keys() for x in by.values())))
         section("BY AWS SERVICE",["Service","Missing / unverified","Denied","Potentially excessive"],[(s,by["missing_or_unverified"].get(s,0),by["explicitly_denied"].get(s,0),by["potentially_excessive"].get(s,0)) for s in services],[28,22,12,22])
