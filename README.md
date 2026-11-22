@@ -39,24 +39,46 @@ Determining The Permissions A Terraform Deployment Identity Needs Is Difficult W
 
 ### Standalone Linux Executable (Recommended)
 
-Requirements: Linux x86_64, Bash, Curl And GitHub CLI For Provenance Verification. Use The Signed Release Rather Than Ordinary CI Artifacts.
+Requirements: Linux x86_64, Bash And Authenticated GitHub CLI For Download And Provenance Verification. Use The Signed Release Rather Than Ordinary CI Artifacts.
 
 ~~~bash
-mkdir -p "$HOME/tfiam-download"
-cd "$HOME/tfiam-download"
+(
+  set -Eeuo pipefail
+  trap 'echo "ERROR: Installation Stopped At Line $LINENO." >&2' ERR
 
-BASE=https://github.com/sm-joe/tf-iam/releases/download/v1.0.0
-curl -fLO "$BASE/tfiam"
-curl -fLO "$BASE/SHA256SUMS"
-curl -fLO "$BASE/release-source.json"
+  WORK_DIR=$(mktemp -d)
+  cd "$WORK_DIR"
 
-sha256sum -c SHA256SUMS &&
-  gh attestation verify tfiam --repo sm-joe/tf-iam &&
-  gh attestation verify release-source.json --repo sm-joe/tf-iam &&
-  sudo install -m 0755 tfiam /usr/local/bin/tfiam
+  gh auth status
+  gh release download v1.0.0 --repo sm-joe/tf-iam \
+    --pattern tfiam --pattern SHA256SUMS --pattern release-source.json
 
-tfiam --help
+  sha256sum -c SHA256SUMS
+  gh attestation verify tfiam --repo sm-joe/tf-iam
+  gh attestation verify release-source.json --repo sm-joe/tf-iam
+
+  chmod +x tfiam
+  ./tfiam generate --help > generate-help.txt
+  grep -F -- '{json,terraform,table}' generate-help.txt
+  grep -F -- '--show-table' generate-help.txt
+  grep -F -- '[--allow-partial]' generate-help.txt
+
+  if [ "$(id -u)" -eq 0 ]; then
+    install -m 0755 tfiam /usr/local/bin/tfiam
+  else
+    sudo install -m 0755 tfiam /usr/local/bin/tfiam
+  fi
+
+  cmp tfiam /usr/local/bin/tfiam
+  sha256sum /usr/local/bin/tfiam
+  /usr/local/bin/tfiam generate --help
+  echo "PASS: Verified Release Installed"
+)
+hash -r
+type -a tfiam
 ~~~
+
+If Any Verification Fails, Installation Stops And The Existing Executable Is Not Replaced. Use The Absolute Path Above To Avoid An Older Virtual Environment, Alias Or PATH Entry. Resolve Any GitHub Authentication Or Attestation Error Before Continuing.
 
 The Executable Includes The Catalog And AWS Authorization Metadata And Does Not Require A Separate Python Installation. Download Outside The Repository Checkout To Avoid A Name Collision With The Python Package Directory.
 
