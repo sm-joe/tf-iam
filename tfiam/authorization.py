@@ -19,7 +19,7 @@ MAX_BYTES=32*1024*1024
 DOCUMENTED_GLOBAL={"eks:createcluster","eks:describeaddonversions","ecs:describetaskdefinition","ecs:deregistertaskdefinition","ec2:describekeypairs"}
 EKS_REFERENCE="https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html"
 EC2_REFERENCE="https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html"
-EC2_DOCUMENTED_GLOBAL={"ec2:"+x.lower() for x in "DescribeImages DescribeInstanceStatus DescribeInstances DescribeInternetGateways DescribeNetworkInterfaces DescribeRouteTables DescribeSecurityGroupRules DescribeSecurityGroups DescribeTags DescribeVolumes DescribeVpcs DescribeVpcEndpoints DescribeVpcPeeringConnections DescribeNatGateways DescribeNetworkAcls DescribeLaunchTemplates DescribeLaunchTemplateVersions".split()}
+EC2_DOCUMENTED_GLOBAL={"ec2:"+x.lower() for x in "DescribeSubnets DescribeImages DescribeInstanceStatus DescribeInstances DescribeInternetGateways DescribeNetworkInterfaces DescribeRouteTables DescribeSecurityGroupRules DescribeSecurityGroups DescribeTags DescribeVolumes DescribeVpcs DescribeVpcEndpoints DescribeVpcPeeringConnections DescribeNatGateways DescribeNetworkAcls DescribeLaunchTemplates DescribeLaunchTemplateVersions".split()}
 DOCUMENTED_GLOBAL.update(EC2_DOCUMENTED_GLOBAL)
 
 def catalog_actions(version=None):
