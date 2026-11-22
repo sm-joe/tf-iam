@@ -233,10 +233,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
                             if category=='resource':
-                                if typ in ('aws_db_instance','aws_rds_cluster') and resource_phase=='apply' and (not task or operation=='create') and (body.get('snapshot_identifier') or unknown_field('snapshot_identifier')):
-                                    create='rds:CreateDBCluster' if typ=='aws_rds_cluster' else 'rds:CreateDBInstance'
-                                    restore='rds:RestoreDBClusterFromSnapshot' if typ=='aws_rds_cluster' else 'rds:RestoreDBInstanceFromDBSnapshot'
-                                    if create in acts: acts=sorted(set([a for a in acts if a!=create]+[restore]))
+                                if resource_phase=='apply':
+                                    from .dependencies import rds_create_actions
+                                    acts,blocked=rds_create_actions(typ,body,acts,task)
+                                    for action in blocked: omit(action)
                                 dependencies(typ,body,acts,account,region,partition,resolve,emit,omit,task,resource_phase)
                             if rule.get('scope_strategy'):
                                 expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task,unresolved=omit)
