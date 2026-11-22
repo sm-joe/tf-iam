@@ -8,7 +8,7 @@ DELEGATION={
     "iam:AttachGroupPolicy":"HIGH","iam:AddUserToGroup":"HIGH",
     "iam:DeleteRolePermissionsBoundary":"CRITICAL","iam:DeleteUserPermissionsBoundary":"CRITICAL",
     "iam:PutRolePermissionsBoundary":"HIGH","iam:PutUserPermissionsBoundary":"HIGH",
-    "kms:PutKeyPolicy":"HIGH","s3:PutBucketPolicy":"HIGH","eks:AssociateAccessPolicy":"HIGH",
+    "kms:CreateGrant":"HIGH","secretsmanager:CreateSecret":"HIGH","rds:PromoteReadReplica":"HIGH","kms:PutKeyPolicy":"HIGH","s3:PutBucketPolicy":"HIGH","eks:AssociateAccessPolicy":"HIGH",
     "lambda:AddPermission":"HIGH",
 }
 COMBOS=[
@@ -82,6 +82,6 @@ def gate(report,threshold=None,unresolved=False,unmapped=False,metadata=False,li
     if lifecycle_verified:
         ac=report["authorization_confidence"]
         total=report["mapping_coverage"]["eligible_resources"]
-        if not ac["provider_version"] or not total or ac["lifecycle_verified_resources"]!=total or report.get("unresolved_permissions"):
+        if not ac["provider_version"] or not total or ac["lifecycle_verified_resources"]!=total or report.get("unresolved_permissions") or report.get("input_blockers"):
             failures.append({"kind":"lifecycle-evidence","provider_version":ac["provider_version"],"eligible_resources":total,"verified_resources":ac["lifecycle_verified_resources"]})
     return failures
