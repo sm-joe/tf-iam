@@ -27,6 +27,17 @@ def config(info,revision):
     prefix=info["prefix"]
     def tags(name): return {"Name":prefix+"-"+name,"Revision":str(revision)}
     def ref(x): return "${"+x+"}"
+    if info.get("suite")=="storage-messaging":
+        return {"terraform":{"required_providers":{"aws":{"source":"hashicorp/aws","version":"="+VERSION},"random":{"source":"hashicorp/random","version":"=3.7.2"}}},
+          "provider":{"aws":{"region":info["region"],"allowed_account_ids":[info["account"]]}},
+          "resource":{
+            "random_id":{"suffix":{"byte_length":4}},
+            "aws_s3_bucket":{"storage":{"bucket":prefix+"-storage-"+ref("random_id.suffix.hex"),"tags":tags("storage")}},
+            "aws_s3_bucket_public_access_block":{"storage":{"bucket":ref("aws_s3_bucket.storage.id"),"block_public_acls":True,"block_public_policy":True,"ignore_public_acls":True,"restrict_public_buckets":True}},
+            "aws_s3_bucket_versioning":{"storage":{"bucket":ref("aws_s3_bucket.storage.id"),"versioning_configuration":{"status":"Enabled"}}},
+            "aws_sqs_queue":{"jobs":{"name":prefix+"-jobs","visibility_timeout_seconds":30 if revision==1 else 60,"sqs_managed_sse_enabled":True,"tags":tags("jobs")}},
+            "aws_dynamodb_table":{"jobs":{"name":prefix+"-jobs","billing_mode":"PAY_PER_REQUEST","hash_key":"id","attribute":[{"name":"id","type":"S"}],"tags":tags("table")}}
+          }}
     return {"terraform":{"required_providers":{"aws":{"source":"hashicorp/aws","version":"="+VERSION},"random":{"source":"hashicorp/random","version":"=3.7.2"}}},
       "provider":{"aws":{"region":info["region"],"allowed_account_ids":[info["account"]]}},
       "data":{"aws_ami":{"linux":{"most_recent":True,"owners":["amazon"],"filter":[{"name":"name","values":["al2023-ami-2023.*-x86_64"]},{"name":"virtualization-type","values":["hvm"]},{"name":"root-device-type","values":["ebs"]}]}}},
@@ -77,7 +88,7 @@ def operations(plan,phase,info):
     rows={}
     for row in plan.get("resource_changes",[]):
         if row.get("mode")=="data":
-            if row["address"]!="data.aws_ami.linux" or row.get("provider_name")!=AWS: raise ValueError("Unexpected data resource")
+            if info.get("suite")=="storage-messaging" or row["address"]!="data.aws_ami.linux" or row.get("provider_name")!=AWS: raise ValueError("Unexpected data resource")
             continue
         addr=row["address"]; base=re.sub(r"\[[0-9]+\]$","",addr)
         if base not in allowed or addr in rows: raise ValueError("Unexpected resource address")
@@ -86,8 +97,13 @@ def operations(plan,phase,info):
         actions=row["change"]["actions"]
         if actions not in ({"create":[["create"]],"update":[["update"],["no-op"]],"destroy":[["delete"]]}[phase]): raise ValueError("Unexpected lifecycle operation")
         rows[addr]=actions
-    expected_addresses={a for a in allowed if a not in ("aws_subnet.private","aws_route_table_association.private")}
-    expected_addresses.update(a+"["+str(i)+"]" for a in ("aws_subnet.private","aws_route_table_association.private") for i in range(2))
+    expected_addresses=set()
+    for typ,items in expected.items():
+        for name,body in items.items():
+            base=typ+"."+name
+            if "count" in body:
+                expected_addresses.update(base+"["+str(i)+"]" for i in range(body["count"]))
+            else: expected_addresses.add(base)
     if set(rows)!=expected_addresses: raise ValueError("Missing or extra fixture resources")
     if phase=="update" and not any(v==["update"] for v in rows.values()): raise ValueError("No actual update in plan")
     return rows
@@ -95,7 +111,7 @@ def operations(plan,phase,info):
 def prepare(args,root):
     if not re.fullmatch(r"[0-9]{12}",args.account) or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-[0-9]+",args.region): raise ValueError("Invalid account/region")
     root.mkdir(mode=0o700)
-    info={"account":args.account,"region":args.region,"prefix":"tfiam-live-"+uuid.uuid4().hex[:16],"next":"create","steps":{}}
+    info={"account":args.account,"region":args.region,"prefix":"tfiam-live-"+uuid.uuid4().hex[:16],"next":"create","steps":{},"suite":args.suite}
     write(root/"fixture.json",info)
     (root/"terraform-cli.rc").write_text("")
     print("Created private isolated fixture directory:",root)
@@ -104,6 +120,7 @@ def load(root,args):
     if root.stat().st_mode & 0o077 or any(p.is_symlink() for p in root.iterdir()): raise ValueError("Fixture directory must be private/no symlinks")
     info=json.loads((root/"fixture.json").read_bytes())
     if args.account!=info["account"] or not re.fullmatch(r"tfiam-live-[a-f0-9]{16}",info["prefix"]): raise ValueError("Fixture account or namespace mismatch")
+    if info.get("suite","mixed") not in ("mixed","storage-messaging"): raise ValueError("Unknown fixture suite")
     return info
 
 def plan_phase(args,root,info):
@@ -186,6 +203,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("mode",choices=["prepare","plan","apply"])
     p.add_argument("directory",type=Path); p.add_argument("--account",required=True)
+    p.add_argument("--suite",choices=["mixed","storage-messaging"],default="mixed",help="Select fixture at prepare time; recorded for all later phases")
     p.add_argument("--region",default="us-east-1"); p.add_argument("--phase",choices=["create","update","destroy"])
     p.add_argument("--planner-profile"); p.add_argument("--test-profile"); p.add_argument("--audit-profile"); p.add_argument("--role-name")
     p.add_argument("--confirm-isolated-aws-account",action="store_true")
