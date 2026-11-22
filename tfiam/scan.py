@@ -2,6 +2,7 @@ import json, re
 from pathlib import Path
 from .catalog_loader import get_rule, actions_for, operation_actions, attribute_values, CATALOG
 from .plan import parse_plan
+from .provider_context import validate as validate_contexts, plan_contexts
 from .plan_roles import recover_role_arn
 from .plan_buckets import recover_bucket, source_only_resources
 from .risk import assess
@@ -20,7 +21,9 @@ def blocks(doc, key):
 def literal(v):
     return v if isinstance(v,str) and v and not any(c in v for c in ('${','%{','*','?')) else None
 
-def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None, scope_resource_tags=False, provider_version=None, authorization_metadata=None):
+def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None, scope_resource_tags=False, provider_version=None, authorization_metadata=None, provider_contexts=None):
+    provider_contexts=validate_contexts(provider_contexts)
+    default_context=provider_contexts.get("aws",(account,region,partition))
     if root is None and plan is None: raise ValueError('Provide a Terraform directory or saved plan JSON')
     has_root=root is not None
     root=Path(root or '.').resolve()
@@ -78,9 +81,11 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
         elif kind not in ('local',): warn(src+': unsupported backend '+kind)
     resolved_docs=[]
     if plan is None:
-        resolved_docs,report['modules'],report['dependencies']=discover(root,account,region,partition,var_files,variables,warn)
+        resolved_docs,report['modules'],report['dependencies']=discover(root,account,region,partition,var_files,variables,warn,provider_contexts=provider_contexts)
     elif var_files or variables: raise ValueError('Variable overrides cannot be used with an already evaluated saved plan')
     def visit(folder,is_root=False):
+        account,region,partition=default_context
+        select_context=plan_contexts(plan,default_context,provider_contexts) if plan is not None else None
         folder=folder.resolve()
         if folder in visited: return
         visited.add(folder)
@@ -147,11 +152,13 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
             analysis_docs=[]
             for i,task in enumerate(plan_tasks):
                 key='plan:'+str(i); task_lookup[key]=task
-                entry=task['entry']; body=task['body']
+                entry=task['entry']; body={k:v for k,v in task['body'].items() if not k.startswith('_tfiam_')}
+                context=select_context(entry['address'])
+                account,region,partition=context or (None,None,None)
                 analysis_docs.append((key,{entry['mode']:{entry['type']:{'instance':body}}}))
                 if entry['type']=='aws_iam_role' and entry['mode'] in ('resource','data'):
                     role=resolve(body.get('name')); arn=role_arn(body)
-                    if role and arn: role_targets.setdefault(role,set()).add(arn)
+                    if role and arn and context: role_targets.setdefault((account,partition,role),set()).add(arn)
                 if entry['type'] in ('aws_iam_user','aws_iam_group') and entry['mode'] in ('resource','data'):
                     kind=entry['type'].split('_')[-1]
                     identity_name=resolve(body.get('name') or body.get('user_name') or body.get('group_name'))
@@ -164,7 +171,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                     elif account and entry['mode']=='resource' and identity_name and re.fullmatch(r'[\w+=,.@-]+',identity_name) and path and path.startswith('/') and path.endswith('/'):
                         target=f'arn:{partition}:iam::{account}:{kind}{path}{identity_name}'
                     else: target=None
-                    if target: identity_targets.setdefault((kind,identity_name),set()).add(target)
+                    if target and context: identity_targets.setdefault((account,partition,kind,identity_name),set()).add(target)
         for src,doc in analysis_docs:
             for category in ('resource','data'):
                 for group in blocks(doc,category):
@@ -187,14 +194,31 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if not rule: entry['status']='UNSUPPORTED'
                             if not rule: warn(address+': no AWS '+category+' permission mapping'); continue
                             entry['validation']=rule['validation']; entry['reference']=rule['reference']
+                            context=select_context(address) if task else body.get('_tfiam_context',default_context)
+                            if context is None:
+                                unresolved(address,'AWS provider context')
+                                continue
+                            account,region,partition=context
+                            entry['provider_context']={'account':account,'region':region,'partition':partition}
+                            if body.get('region') and typ.startswith('aws_') and body.get('region')!=region:
+                                unresolved(address,'AWS resource region differs from provider context')
+                                continue
                             if not task and unknown_fields:
                                 entry['unevaluated_fields']=sorted(unknown_fields)
                                 entry['unknown_values']=True
                             p='aws'; acts=operation_actions(rule,operation) if task else actions_for(rule, 'plan' if category=='data' else phase)
+                            if task and category=='resource':
+                                from .optimization import minimize
+                                acts=minimize(typ,acts,body,task)
                             def emit(action,target,condition=None):
                                 add('aws',[action],target,address,condition=condition)
                             def omit(action):
                                 unresolved(address,action)
+                            if task and scope_resource_tags and has_root:
+                                from .plan_network import recover, anchor
+                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task)}
+                                if operation=='create' and typ in EC2_TYPES and not body.get('id'):
+                                    body['_tfiam_self_tags']=anchor(body)
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
                                 network(typ,body,acts,account,region,partition,resolve,emit,omit,task,scope_resource_tags=scope_resource_tags)
                                 continue
@@ -205,6 +229,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
                             if category=='resource':
+                                if typ in ('aws_db_instance','aws_rds_cluster') and resource_phase=='apply' and (not task or operation=='create') and (body.get('snapshot_identifier') or unknown_field('snapshot_identifier')):
+                                    create='rds:CreateDBCluster' if typ=='aws_rds_cluster' else 'rds:CreateDBInstance'
+                                    restore='rds:RestoreDBClusterFromSnapshot' if typ=='aws_rds_cluster' else 'rds:RestoreDBInstanceFromDBSnapshot'
+                                    if create in acts: acts=sorted(set([a for a in acts if a!=create]+[restore]))
                                 dependencies(typ,body,acts,account,region,partition,resolve,emit,omit,task,resource_phase)
                             if rule.get('scope_strategy'):
                                 expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task,unresolved=omit)
@@ -274,7 +302,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 identity_name=resolve(body.get(kind))
                                 target=resolve(body.get('_tfiam_identity_arn')) if not task else None
                                 if task:
-                                    targets=identity_targets.get((kind,identity_name),set())
+                                    targets=identity_targets.get((account,partition,kind,identity_name),set())
                                     target=next(iter(targets)) if len(targets)==1 else None
                                 if not account or not identity_name or not target or not re.fullmatch(rf'arn:{partition}:iam::{account}:{kind}/[^\s*?]+',target) or target.rsplit('/',1)[-1]!=identity_name:
                                     target=None
@@ -305,7 +333,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     inferred=resolve(body.get('_tfiam_role_arn'))
                                     scope=inferred if inferred else '*'
                                 if task:
-                                    targets=role_targets.get(role,set())
+                                    targets=role_targets.get((account,partition,role),set())
                                     scope=next(iter(targets)) if len(targets)==1 else '*'
                                 policy_arn=resolve(body.get('policy_arn'))
                                 for action in acts:

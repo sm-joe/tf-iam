@@ -3,6 +3,8 @@ import json
 import os
 import re
 from pathlib import Path
+from .provider_context import normalize, configured
+from .action_scope import EC2_TYPES, tag_conditions
 
 UNKNOWN = object()
 EXPR = re.compile(r"\$\{([^{}]+)\}")
@@ -87,6 +89,7 @@ class Context:
         self.outputs={}
         self.children={}
         self.declarations={}
+        self.provider_bindings={"aws":(account,region,partition)}
         for _,doc in docs:
             for group in groups(doc,"variable"):
                 self.declarations.update(group)
@@ -98,6 +101,10 @@ class Context:
                 for kind,instances in group.items():
                     for name,body in instances.items():
                         self.resources[kind+"."+name]=body
+
+    def provider_context(self,body):
+        key=normalize(body.get("provider","aws"))
+        return self.provider_bindings.get(key)
 
     def evaluate(self,value,seen=()):
         if value is UNKNOWN: return UNKNOWN
@@ -141,23 +148,26 @@ class Context:
             kind,name,attr=parts
             body=self.resources.get(kind+"."+name)
             if body is None or "count" in body or "for_each" in body: return UNKNOWN
+            context=self.provider_context(body)
+            if context is None: return UNKNOWN
+            account,region,partition=context
             if attr=="arn" and kind in ("aws_iam_role","aws_iam_policy","aws_iam_user","aws_iam_group"):
                 name=self.evaluate(body.get("name",UNKNOWN),seen)
                 path=self.evaluate(body.get("path","/"),seen)
-                if not self.account or not isinstance(name,str) or not isinstance(path,str): return UNKNOWN
+                if not account or not isinstance(name,str) or not isinstance(path,str): return UNKNOWN
                 if not re.fullmatch(r"[\w+=,.@-]+",name) or not path.startswith("/") or not path.endswith("/"): return UNKNOWN
                 if any(c in path for c in "*?"): return UNKNOWN
-                return f"arn:{self.partition}:iam::{self.account}:{kind.removeprefix('aws_iam_')}{path}{name}"
+                return f"arn:{partition}:iam::{account}:{kind.removeprefix('aws_iam_')}{path}{name}"
             if kind=="aws_sqs_queue" and attr in ("id","url","arn"):
                 name=self.evaluate(body.get("name",UNKNOWN),seen)
-                if self.account and self.region and isinstance(name,str) and re.fullmatch(r"[A-Za-z0-9_-]+(?:\.fifo)?",name):
-                    if attr=="arn": return f"arn:{self.partition}:sqs:{self.region}:{self.account}:{name}"
-                    suffix={"aws":"amazonaws.com","aws-cn":"amazonaws.com.cn","aws-us-gov":"amazonaws.com"}.get(self.partition)
-                    if suffix: return f"https://sqs.{self.region}.{suffix}/{self.account}/{name}"
+                if account and region and isinstance(name,str) and re.fullmatch(r"[A-Za-z0-9_-]+(?:\.fifo)?",name):
+                    if attr=="arn": return f"arn:{partition}:sqs:{region}:{account}:{name}"
+                    suffix={"aws":"amazonaws.com","aws-cn":"amazonaws.com.cn","aws-us-gov":"amazonaws.com"}.get(partition)
+                    if suffix: return f"https://sqs.{region}.{suffix}/{account}/{name}"
             if kind=="aws_sns_topic" and attr in ("id","arn"):
                 name=self.evaluate(body.get("name",UNKNOWN),seen)
-                if self.account and self.region and isinstance(name,str) and re.fullmatch(r"[A-Za-z0-9_-]+(?:\.fifo)?",name):
-                    return f"arn:{self.partition}:sns:{self.region}:{self.account}:{name}"
+                if account and region and isinstance(name,str) and re.fullmatch(r"[A-Za-z0-9_-]+(?:\.fifo)?",name):
+                    return f"arn:{partition}:sns:{region}:{account}:{name}"
             # The AWS provider documents the S3 bucket ID as the bucket name.
             # Do not infer random names, prefix-generated names or arbitrary IDs.
             if attr=="id" and kind=="aws_s3_bucket":
@@ -192,7 +202,8 @@ def dependencies(value):
         for v in value: refs.update(dependencies(v))
     return refs
 
-def discover(root,account,region,partition,var_files,overrides,warn,environ=None):
+def discover(root,account,region,partition,var_files,overrides,warn,environ=None,provider_contexts=None):
+    provider_contexts=provider_contexts or {}
     """Resolve each module call independently, with installed module manifest only."""
     root=Path(root).resolve()
     manifest={}
@@ -209,7 +220,7 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
             manifest={}
             warn("Installed module manifest invalid; remote module discovery disabled")
     inventory=[]; contexts=[]; edges=[]
-    def collect(folder,path,parent_inputs,stack,root_call=False):
+    def collect(folder,path,parent_inputs,stack,root_call=False,inherited=None):
         folder=folder.resolve()
         if folder in stack or len(stack)>=64:
             warn((path or "root")+": module cycle or depth limit; skipped")
@@ -233,6 +244,17 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
             for name,decl in ctx.declarations.items():
                 value=parent_inputs.get(name,decl.get("default",UNKNOWN))
                 ctx.inputs[name]=UNKNOWN if decl.get("sensitive") is True or decl.get("ephemeral") is True else value
+        ctx.provider_bindings=dict(inherited or {"aws":provider_contexts.get("aws",(account,region,partition))})
+        for _,doc in docs:
+            for group in groups(doc,"provider"):
+                if "aws" not in group: continue
+                for cfg in group["aws"] if isinstance(group["aws"],list) else [group["aws"]]:
+                    if not isinstance(cfg,dict): continue
+                    alias=cfg.get("alias")
+                    key="aws."+alias if isinstance(alias,str) else "aws"
+                    qualified=(path+"."+key) if path else key
+                    resolved={k:ctx.evaluate(v) for k,v in cfg.items()}
+                    ctx.provider_bindings[key]=configured(qualified,resolved,(account,region,partition),provider_contexts)
         contexts.append((ctx,docs))
         calls={}
         for _,doc in docs:
@@ -270,7 +292,10 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                     if not target.resolve().is_relative_to((root/".terraform/modules").resolve()):
                         warn(child_path+": installed module outside cache; skipped"); continue
                 inputs={k:ctx.evaluate(v) for k,v in body.items() if k not in MODULE_META}
-                child=collect(target,child_path,inputs,stack+(folder,))
+                bindings={"aws":ctx.provider_bindings.get("aws")}
+                for local,parent in body.get("providers",{}).items() if isinstance(body.get("providers",{}),dict) else []:
+                    if normalize(local): bindings[normalize(local)]=ctx.provider_bindings.get(normalize(parent))
+                child=collect(target,child_path,inputs,stack+(folder,),inherited=bindings)
                 if child:
                     ctx.children[name]=child
                     record["status"]="RESOLVED"
@@ -291,6 +316,22 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                             refs=dependencies(body)
                             edges.extend({"source":addr,"reference":r} for r in sorted(refs))
                             evaluated=ctx.evaluate(body)
+                            evaluated["_tfiam_context"]=ctx.provider_context(body)
+                            # A generated ID is never fabricated. Only direct references to
+                            # same-context, explicitly tagged managed EC2 parents qualify.
+                            dynamic={}
+                            for field,raw in body.items():
+                                match=EXPR.fullmatch(raw) if isinstance(raw,str) else None
+                                if not match or not match.group(1).endswith(".id"): continue
+                                ref=match.group(1)[:-3]
+                                parent=ctx.resources.get(ref)
+                                parent_type=ref.split(".",1)[0]
+                                if not parent or parent_type not in EC2_TYPES or "count" in parent or "for_each" in parent or ctx.provider_context(parent)!=ctx.provider_context(body): continue
+                                tags=ctx.evaluate(parent.get("tags",{}))
+                                condition=tag_conditions({"tags":{"tfiam:scope":tags["tfiam:scope"]}},"ec2:ResourceTag/") if isinstance(tags,dict) and isinstance(tags.get("tfiam:scope"),str) and tags["tfiam:scope"] else {}
+                                if condition:
+                                    dynamic[field]={"kind":EC2_TYPES[parent_type][0],"condition":condition}
+                            evaluated["_tfiam_dynamic_ec2"]=dynamic
                             if (body.get("count") is not None and evaluated.get("count")==0):
                                 continue
                             # Keep only top-level attribute names, never masked values or expressions.
@@ -341,6 +382,10 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                                     if role_ref and role_ref.group(1).startswith("aws_iam_role.") and role_ref.group(1).endswith(".name"):
                                         role=ctx.reference(role_ref.group(1)[:-5]+".arn",())
                                         if role is not UNKNOWN: evaluated["_tfiam_profile_role_arn"]=role
+                            # Mark self only for explicitly tagged managed EC2 resources.
+                            if category=="resource" and kind in EC2_TYPES:
+                                tags=evaluated.get("tags",{})
+                                evaluated["_tfiam_self_tags"]=tag_conditions({"tags":{"tfiam:scope":tags["tfiam:scope"]}},"ec2:ResourceTag/") if isinstance(tags,dict) and isinstance(tags.get("tfiam:scope"),str) and tags["tfiam:scope"] else {}
                             mapped.setdefault(kind,{})[name]=sanitize(evaluated)
                 if mapped: transformed[category]=mapped
             result.append((src,ctx.path,transformed))

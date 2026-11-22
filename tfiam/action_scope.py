@@ -55,7 +55,15 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     def ident(field,prefix):
         v=val(field)
         return v if v and re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",v) else None
-    def dep(field,kind,prefix): return ec(kind,ident(field,prefix))
+    def dep(field,kind,prefix):
+        exact=ec(kind,ident(field,prefix))
+        if exact: return exact
+        if not scope_resource_tags: return None
+        dynamic=body.get("_tfiam_dynamic_ec2",{}).get(field,{})
+        condition=dynamic.get("condition")
+        if dynamic.get("kind")==kind and condition and ec(kind,"*"):
+            return (ec(kind,"*"),condition)
+        return None
     def many(field,kind,prefix):
         raw=body.get(field)
         if not isinstance(raw,list) or not raw: return None
@@ -63,13 +71,22 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
         if any(not x or not re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",x) for x in values): return None
         out=[ec(kind,x) for x in values]
         return out if all(out) else None
+    # Only documented EC2 resource-tag authorization paths are eligible.
+    dynamic_actions={"CreateSubnet","CreateRouteTable","CreateSecurityGroup","CreateNetworkAcl","CreateNatGateway","CreateVpcEndpoint","AttachInternetGateway","DetachInternetGateway","AssociateRouteTable","ReplaceRouteTableAssociation","DisassociateRouteTable","CreateRoute","ReplaceRoute","DeleteRoute","AuthorizeSecurityGroupIngress","AuthorizeSecurityGroupEgress","RevokeSecurityGroupIngress","RevokeSecurityGroupEgress","ModifyVpcAttribute","DeleteVpc","ModifySubnetAttribute","DeleteSubnet","DeleteRouteTable","DeleteSecurityGroup","DeleteNetworkAcl","DeleteNatGateway","DeleteInternetGateway"}
     def grant(action,targets,condition=None):
         if not targets or any(t is None for t in targets):
             omit(action); return False
-        for t in sorted(set(targets)): emit(action,t,condition)
+        if any(isinstance(t,tuple) for t in targets) and action.split(":")[1] not in dynamic_actions:
+            omit(action); return False
+        for t in targets:
+            if isinstance(t,tuple):
+                emit(action,t[0],t[1])
+            else: emit(action,t,condition)
         return True
     spec=EC2_TYPES.get(typ)
     own=dep("id",*spec) if spec else None
+    if not own and scope_resource_tags and spec and body.get("_tfiam_self_tags") and ec(spec[0],"*"):
+        own=(ec(spec[0],"*"),body["_tfiam_self_tags"])
     if typ=="aws_eip": own=dep("allocation_id","elastic-ip","eipalloc") or own
     if typ in ("aws_route","aws_route_table_association"): own=dep("route_table_id","route-table","rtb")
     if typ=="aws_security_group_rule": own=dep("security_group_id","security-group","sg")
@@ -88,7 +105,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             if typ=="aws_ebs_volume" and body.get("snapshot_id"):
                 deps.append(ec("snapshot",ident("snapshot_id","snap"),""))
             if target and all(deps):
-                for d in deps: emit(action,d)
+                if deps and not grant(action,deps): continue
                 emit(action,target,tag_conditions(body,"aws:RequestTag/") or None)
                 creates.add(short)
             else: omit(action)
@@ -105,7 +122,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             targets=[subnet]+([allocation] if connectivity=="public" else [])
             target=ec("natgateway","*")
             if target and all(targets):
-                for d in targets: emit(action,d)
+                if not grant(action,targets): continue
                 emit(action,target,tag_conditions(body,"aws:RequestTag/") or None)
                 creates.add(short)
             else: omit(action)
@@ -152,8 +169,8 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 if field in body and body[field]!=[]: optional.extend(many(field,kind,prefix) or [None])
             service=val("service_name")
             if vpc and endpoint and service and all(optional):
+                if not grant(action,[vpc]+optional): continue
                 emit(action,endpoint,{"StringEquals":{"ec2:VpceServiceName":service}})
-                for d in [vpc]+optional: emit(action,d)
                 creates.add(short)
             else: omit(action)
             continue
@@ -176,8 +193,18 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                     condition=tag_conditions({"tags":stable},"ec2:ResourceTag/") or None
             grant(action,[own],condition); continue
         if short in ("CreateTags","DeleteTags"):
-            if own and (op!="create"):
+            if own and (op!="create") and not isinstance(own,tuple):
                 emit(action,own)
+            elif isinstance(own,tuple) and op!="create":
+                # Creation tags are authorized independently. On existing objects,
+                # only known non-anchor tag keys may be changed, never the binding tag.
+                if short=="CreateTags" and creates and spec:
+                    for create in sorted(creates):
+                        emit(action,ec(spec[0],"*"),{"StringEquals":{"ec2:CreateAction":create}})
+                tags=body.get("tags",{})
+                keys=sorted(k for k in tags if k!="tfiam:scope") if isinstance(tags,dict) else []
+                if keys:
+                    emit(action,own[0],{**own[1],"ForAllValues:StringEquals":{"aws:TagKeys":keys}})
             elif short=="CreateTags" and creates and spec:
                 for create in sorted(creates):
                     emit(action,ec(spec[0],"*"),{"StringEquals":{"ec2:CreateAction":create}})
