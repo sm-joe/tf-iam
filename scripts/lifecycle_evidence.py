@@ -13,6 +13,7 @@ from pathlib import Path
 FIXTURES={
     "s3-general-purpose-empty":({"aws_s3_bucket.example","aws_s3_bucket_versioning.example","aws_s3_bucket_public_access_block.example"},"s3:ListAllMyBuckets"),
     "sqs-standard-empty":({"aws_sqs_queue.example"},"sqs:ListQueues"),
+    "dynamodb-ondemand-empty":({"aws_dynamodb_table.example"},"dynamodb:ListTables"),
     "vpc-private-subnet":({"aws_vpc.example","aws_subnet.example"},"ec2:CreateInternetGateway"),
 }
 STEPS={"create":["create"],"read":["no-op"],"update":["update"],"replace-delete-first":["delete","create"],"replace-create-first":["create","delete"],"destroy":["delete"]}
@@ -81,7 +82,7 @@ def check_bundle(path,commit,version):
     if not isinstance(doc,dict) or doc.get("schema_version")!=1 or doc.get("commit")!=commit or doc.get("provider_version")!=version:
         raise ValueError("Lifecycle bundle does not match release commit/provider")
     fixtures=doc.get("fixtures")
-    if not isinstance(fixtures,dict) or set(fixtures)!=set(FIXTURES): raise ValueError("All three restricted-role fixtures are required")
+    if not isinstance(fixtures,dict) or set(fixtures)!=set(FIXTURES): raise ValueError("All four restricted-role fixtures are required")
     roles=set()
     for name,records in fixtures.items():
         if not isinstance(records,dict) or set(records)!={"evidence","candidate","lockfile"}: raise ValueError("Incomplete fixture bundle")
@@ -108,7 +109,7 @@ def collect_bundle(destination,dirs,commit,version):
         if name not in FIXTURES or name in found: raise ValueError("Unknown or duplicate fixture")
         check_fixture(data,name,version,commit,candidate,lockfile)
         found[name]=(evidence,candidate,lockfile)
-    if set(found)!=set(FIXTURES): raise ValueError("All three fixtures must be provided")
+    if set(found)!=set(FIXTURES): raise ValueError("All four fixtures must be provided")
     destination.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
     out={"schema_version":1,"commit":commit,"provider_version":version,"fixtures":{}}
     base=destination.parent

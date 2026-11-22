@@ -14,7 +14,7 @@
 ## Outstanding stable-release requirements
 
 - [ ] Exact final commit CI and binary smoke test.
-- [ ] Real isolated AWS create, read, update, delete and both replacement order tests using separate restricted Terraform identities for S3, SQS and VPC/subnet; service-specific denied operations and empty-state verification. Collect all three results using the structured evidence bundle described in [release process](release-process.md).
+- [ ] Real isolated AWS create, read, update, delete and both replacement order tests using separate restricted Terraform identities for S3, SQS, DynamoDB and VPC/subnet; service-specific denied operations and empty-state verification. Collect all four results using the structured evidence bundle described in [release process](release-process.md).
 - [ ] Verify provider-version-specific API calls and action/ARN/condition compatibility across supported service families.
 - [ ] Positive CloudTrail role activity and denial observations; verify no false claim of unused permissions.
 - [ ] Validate module resolution, backend locking, privilege separation, security gates and secret redaction with reviewed evidence.

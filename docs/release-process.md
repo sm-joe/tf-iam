@@ -4,13 +4,13 @@ CI tests Python 3.10, 3.12, 3.13 and 3.14 and builds a standalone Linux x86_64 e
 
 ## Isolated AWS lifecycle acceptance
 
-Use a clean checkout at the release commit, Terraform, and `python -m pip install -e '.[aws,test]'`. Use an isolated commercial AWS account and three dedicated test roles, plus a separate audit identity. These tests create and destroy real resources and can incur charges. Never use production identities or upload the fixture directories.
+Use a clean checkout at the release commit, Terraform, and `python -m pip install -e '.[aws,test]'`. Use an isolated commercial AWS account and four dedicated test roles, plus a separate audit identity. These tests create and destroy real resources and can incur charges. Never use production identities or upload the fixture directories.
 
 ```bash
 umask 077
 export AWS_PROVIDER_VERSION=6.73.0
 EVIDENCE_DIR=$(mktemp -d)
-for service in s3 sqs vpc; do
+for service in s3 sqs vpc dynamodb; do
   python "scripts/accept-$service.py" prepare "$EVIDENCE_DIR/$service" \
     --version "$AWS_PROVIDER_VERSION" --account "$AWS_ACCOUNT_ID" --region "$AWS_REGION"
 done
@@ -19,7 +19,7 @@ done
 Review each generated candidate policy independently, provision a dedicated temporary assumed role with exactly those identity grants, and configure the test and audit profiles locally. No script creates or attaches IAM policies. Run each fixture with its own role and profile:
 
 ```bash
-for service in s3 sqs vpc; do
+for service in s3 sqs vpc dynamodb; do
   python "scripts/accept-$service.py" run "$EVIDENCE_DIR/$service" \
     --account "$AWS_ACCOUNT_ID" --test-profile "tfiam-$service" \
     --audit-profile tfiam-audit --role-name "tfiam-$service" \
@@ -27,13 +27,13 @@ for service in s3 sqs vpc; do
 done
 ```
 
-After all three pass, independently review their CloudTrail and identity evidence, then collect only the required sanitized evidence artifacts:
+After all four pass, independently review their CloudTrail and identity evidence, then collect only the required sanitized evidence artifacts:
 
 ```bash
 mkdir -p "$EVIDENCE_DIR/release"
 python scripts/check-release.py "$EVIDENCE_DIR/release/lifecycle.json" \
   --collect-lifecycle --fixture-dir "$EVIDENCE_DIR/s3" \
-  --fixture-dir "$EVIDENCE_DIR/sqs" --fixture-dir "$EVIDENCE_DIR/vpc" \
+  --fixture-dir "$EVIDENCE_DIR/sqs" --fixture-dir "$EVIDENCE_DIR/vpc" --fixture-dir "$EVIDENCE_DIR/dynamodb" \
   --expected-commit "$(git rev-parse HEAD)" --provider-version "$AWS_PROVIDER_VERSION"
 ```
 
