@@ -293,13 +293,24 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                                 if match and match.group(1).endswith(".name"):
                                     arn=ctx.reference(match.group(1)[:-5]+".arn",())
                                     if arn is not UNKNOWN: evaluated["_tfiam_role_arn"]=arn
-                            if kind in ("aws_iam_role_policy","aws_iam_user_policy","aws_iam_group_policy"):
+                            if kind in ("aws_iam_role_policy","aws_iam_user_policy","aws_iam_group_policy","aws_iam_user_policy_attachment","aws_iam_group_policy_attachment"):
                                 field=kind.split("_")[2]
                                 original=body.get(field)
                                 match=EXPR.fullmatch(original) if isinstance(original,str) else None
-                                if match and match.group(1).endswith(".name"):
-                                    resolved=ctx.reference(match.group(1)[:-5]+".arn",())
-                                    if resolved is not UNKNOWN: evaluated["_tfiam_identity_arn"]=resolved
+                                evaluated.pop("_tfiam_identity_arn",None)
+                                if match and match.group(1).endswith((".name",".user_name",".group_name")):
+                                    ref=match.group(1).rsplit(".",1)[0]
+                                    if ref.startswith("aws_iam_"+field+"."):
+                                        resolved=ctx.reference(ref+".arn",())
+                                        if resolved is not UNKNOWN: evaluated["_tfiam_identity_arn"]=resolved
+                                if kind.endswith("_policy_attachment") and "_tfiam_identity_arn" not in evaluated:
+                                    # A literal name may identify a unique managed identity in this module.
+                                    name_value=evaluated.get(field)
+                                    if isinstance(name_value,str):
+                                        matches=[ref for ref,obj in ctx.resources.items() if ref.startswith("aws_iam_"+field+".") and "count" not in obj and "for_each" not in obj and ctx.evaluate(obj.get("name",UNKNOWN))==name_value]
+                                        if len(matches)==1:
+                                            resolved=ctx.reference(matches[0]+".arn",())
+                                            if resolved is not UNKNOWN: evaluated["_tfiam_identity_arn"]=resolved
                             mapped.setdefault(kind,{})[name]=sanitize(evaluated)
                 if mapped: transformed[category]=mapped
             result.append((src,ctx.path,transformed))

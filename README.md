@@ -14,7 +14,7 @@ tf-iam analyzes Terraform configuration and saved plans, derives scoped AWS IAM 
 | --- | --- |
 | Static analysis | Terraform HCL and JSON, variables, local references and installed modules |
 | Plan analysis | Create, update, delete, replacement and no-op lifecycle candidates |
-| Permission catalog | 106 managed resource types and 37 data-source types with version-aware evidence |
+| Permission catalog | 108 managed resource types and 37 data-source types with version-aware evidence |
 | Least-privilege candidates | Scoped ARNs, bounded future identifiers, service conditions and dependency review |
 | Security enforcement | Delegation, destructive actions, privilege risk combinations and configurable gates |
 | Policy separation | Planner, applier and break-glass permission partitions |
@@ -191,3 +191,5 @@ Cluster and node group creation includes exact service-linked role bootstrap ARN
 Static evaluation distinguishes masked configuration fields from omitted permission grants. Unevaluated trust documents and dependency expressions are informational; unknown optional delegation or permissions boundaries remain explicit unresolved permissions and block ordinary generation. Only top-level attribute names are retained, never their values.
 
 The primary workflow is `tfiam generate . --output policy.json`. Static configuration apply covers the full lifecycle, including replacement/deletion. A saved plan narrows the operation set. `compare` is optional and intended for evaluating a separately supplied existing policy; self-comparison is only an internal regression check. It counts conditional grants and does not label identical candidate conditions as unresolved comparisons.
+
+IAM user and group managed-policy attachments are supported. The generator resolves the identity ARN (including its IAM path) from a managed identity reference or a unique local declaration, or a matching saved-plan identity. Attach and detach grants are restricted by `iam:PolicyARN`; listing grants are scoped to the identity. For external identities with a known literal name but no known path, the offline generator uses two name-bound ARNs (`user/name` and `user/*/name`, or the group equivalent). IAM names are unique within an account regardless of path. This preserves the exact identity name and account without requiring AWS credentials. ARN names are case-sensitive: use the actual IAM name spelling. Unknown names or policy ARNs remain blocking.

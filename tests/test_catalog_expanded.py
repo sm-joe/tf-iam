@@ -6,7 +6,8 @@ def write(root, resources, data=None):
     (root/"main.tf.json").write_text(json.dumps({"resource":resources,"data":data or {}}))
 
 def test_catalog_inventory():
-    assert len(CATALOG["resources"])==106
+    assert len(CATALOG["resources"])>=108
+    assert {"aws_iam_user_policy_attachment","aws_iam_group_policy_attachment"} <= CATALOG["resources"].keys()
     assert len(CATALOG["data"])==37
     for kind, rule in CATALOG["resources"].items():
         assert rule["validation"]=="candidate"
