@@ -3,6 +3,15 @@ import re
 
 def dependencies(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,phase="apply"):
     op=task.get("operation") if task else None
+    # DeleteDBCluster authorizes a named final cluster snapshot separately.
+    # See AWS RDS Service Authorization Reference, DeleteDBCluster.
+    if typ=="aws_rds_cluster" and "rds:DeleteDBCluster" in actions and op not in ("read","no-op","update","create"):
+        unknown=set(task.get("unknown_fields",[]) if task else body.get("_tfiam_unknown_fields",[]))
+        final=resolve(body.get("final_snapshot_identifier"))
+        if body.get("skip_final_snapshot") is not True and (final or "final_snapshot_identifier" in unknown or "skip_final_snapshot" in unknown or body.get("skip_final_snapshot") is False):
+            if account and region and final and re.fullmatch(r"[A-Za-z][A-Za-z0-9-]*",final) and "skip_final_snapshot" not in unknown:
+                emit("rds:DeleteDBCluster",f"arn:{partition}:rds:{region}:{account}:cluster-snapshot:{final.lower()}")
+            else: omit("rds:DeleteDBCluster")
     if phase!="apply" or op in ("read","no-op","delete"): return
     before=task.get("before",{}) if task else {}
     unknown=set(task.get("unknown_fields",[]) if task else body.get("_tfiam_unknown_fields",[]))
