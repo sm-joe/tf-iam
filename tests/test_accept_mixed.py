@@ -33,3 +33,23 @@ def test_expected_operations(phase,action):
     rows[0]["change"]["actions"]=[action]
     rows.pop()
     with pytest.raises(ValueError): mod.operations(plan,phase,INFO)
+
+
+def test_storage_messaging_fixture_and_operations():
+    info={**INFO,"suite":"storage-messaging"}
+    first=mod.config(info,1)
+    second=mod.config(info,2)
+    assert set(first["resource"])=={"random_id","aws_s3_bucket","aws_s3_bucket_public_access_block","aws_s3_bucket_versioning","aws_sqs_queue","aws_dynamodb_table"}
+    assert "data" not in first
+    assert first["resource"]["aws_sqs_queue"]["jobs"]["visibility_timeout_seconds"]==30
+    assert second["resource"]["aws_sqs_queue"]["jobs"]["visibility_timeout_seconds"]==60
+    assert first["resource"]["aws_sqs_queue"]["jobs"]["sqs_managed_sse_enabled"]
+    assert first["resource"]["aws_dynamodb_table"]["jobs"]["billing_mode"]=="PAY_PER_REQUEST"
+    for phase in ("create","update","destroy"):
+        rows=[]
+        for typ,items in first["resource"].items():
+            for name in items:
+                rows.append({"address":typ+"."+name,"mode":"managed","provider_name":"registry.terraform.io/hashicorp/random" if typ=="random_id" else mod.AWS,"change":{"actions":[{"create":"create","update":"update" if typ=="aws_sqs_queue" else "no-op","destroy":"delete"}[phase]]}})
+        assert len(mod.operations({"resource_changes":rows},phase,info))==6
+        rows.append({"address":"data.aws_ami.linux","mode":"data","provider_name":mod.AWS,"change":{"actions":["read"]}})
+        with pytest.raises(ValueError): mod.operations({"resource_changes":rows},phase,info)
