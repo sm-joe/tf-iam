@@ -84,9 +84,13 @@ def allowed_refs(meta,raw,concrete,base):
     refs=meta.get("references",[]) if isinstance(meta,dict) else []
     if not isinstance(refs,list) or not refs or not all(isinstance(x,str) for x in refs): return False
     allowed={concrete,base,concrete.rsplit(".",1)[0],base.rsplit(".",1)[0]}
-    if "count.index" in raw: allowed.add("count.index")
-    if "each.key" in raw: allowed.add("each.key")
-    return bool(set(refs)&{concrete,base}) and set(refs)<=allowed
+    tokens={token for token in ("count.index","each.key") if "["+token+"]" in raw}
+    allowed.update(tokens)
+    if not tokens.issubset(refs): return False
+    # A literal selector must itself be present in the configuration reference;
+    # a reference to the unindexed collection cannot verify its chosen element.
+    required={concrete} if concrete!=base and not tokens else {concrete,base}
+    return bool(set(refs)&required) and set(refs)<=allowed
 
 def resolve_source(raw,meta,prefix,index,sources,depth=0):
     if depth>=32: return None
@@ -168,9 +172,11 @@ def recover(plan,address,definitions,select,body,task,sources=None):
             if ref: out[field]=ref
         # All elements must be proven generated references. Do not guess set order
         # or match unknown entries against a partially known list.
-        elif isinstance(raw,list) and raw and isinstance(body.get(field),list) and len(raw)==len(body[field]) and all(x is None for x in body[field]):
+        elif isinstance(raw,list) and raw:
             flags=unknown.get(field)
-            if not isinstance(flags,list) or len(flags)!=len(raw) or not all(x is True for x in flags): continue
+            fully_unknown=flags is True and body.get(field) is None
+            element_unknown=isinstance(flags,list) and len(flags)==len(raw) and all(x is True for x in flags) and isinstance(body.get(field),list) and len(raw)==len(body[field]) and all(x is None for x in body[field])
+            if not (fully_unknown or element_unknown): continue
             refs=meta.get("references",[])
             if not isinstance(refs,list): continue
             resolved=[]; allowed=set()
