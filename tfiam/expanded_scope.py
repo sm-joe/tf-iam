@@ -181,8 +181,23 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
         if action in ("iam:AddRoleToInstanceProfile","iam:RemoveRoleFromInstanceProfile"):
             # Requires both profile and role. Explicit role ARN inference is a separate milestone.
             omit(action); continue
-        if action=="ecs:CreateService" or action=="ecs:UpdateService":
-            warn(source+": verify ECS task-definition and service-linked-role dependencies")
+        if strategy=="ecs-service" and action in ("ecs:CreateService","ecs:UpdateService") and (not task or task.get("operation")!="delete"):
+            task_definition=value("task_definition")
+            if task_definition:
+                prefix=arn("ecs","task-definition/")
+                if prefix and re.fullmatch(re.escape(prefix)+r"[A-Za-z0-9_-]+:[0-9]+",task_definition):
+                    task_arn=task_definition
+                elif prefix and re.fullmatch(r"[A-Za-z0-9_-]+:[0-9]+",task_definition):
+                    task_arn=prefix+task_definition
+                elif prefix and re.fullmatch(r"[A-Za-z0-9_-]+",task_definition):
+                    task_arn=prefix+task_definition+":*"
+                else: task_arn=None
+                if not task_arn: omit(action); continue
+                # UpdateService also serves non-task-definition updates and scale-down.
+                condition={"ArnLike":{"ecs:task-definition":task_arn}} if action=="ecs:CreateService" else {"ArnLikeIfExists":{"ecs:task-definition":task_arn}}
+                emit(action,target,condition); continue
+            if action=="ecs:CreateService" or "task_definition" in (task.get("unknown_fields",[]) if task else body.get("_tfiam_unknown_fields",[])):
+                omit(action); continue
         if action in ("logs:DescribeLogStreams","logs:DescribeMetricFilters","logs:DescribeSubscriptionFilters") and strategy=="log-stream":
             omit(action); continue
         emit(action,target)
