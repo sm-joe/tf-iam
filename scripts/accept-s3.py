@@ -106,6 +106,7 @@ def run(args):
     if expected_grants!=grants(candidate_for(info)): raise ValueError("Candidate differs from regenerated fixture policy")
     if any(x.name not in {"prepare.json","candidate-policy.json","main.tf.json"} for x in root.iterdir()): raise ValueError("Acceptance requires a fresh dedicated fixture directory")
     if any(x.is_symlink() for x in root.iterdir()): raise ValueError("Fixture files must not be symlinks")
+    if json.loads((root/"main.tf.json").read_bytes())!=config(info["version"],info["region"],info["buckets"][0]): raise ValueError("Fixture configuration changed since preparation")
     region=info["region"]; version=info["version"]
     test=boto3.Session(profile_name=args.test_profile,region_name=region)
     credentials=test.get_credentials()
@@ -127,12 +128,15 @@ def run(args):
         if grants(existing)!=expected_grants: raise ValueError("Test role's identity grants differ from the reviewed candidate")
         return role["Arn"]
     role_arn=check_role()
+    checkout=Path(__file__).resolve().parents[1]
+    source_commit=subprocess.check_output(["git","rev-parse","HEAD"],cwd=checkout,text=True).strip()
+    if not re.fullmatch(r"[a-f0-9]{40}",source_commit) or subprocess.check_output(["git","status","--porcelain","--untracked-files=no"],cwd=checkout).strip(): raise ValueError("Run acceptance from a clean committed repository checkout")
     # Prevent ambient AWS or Terraform CLI settings from changing credentials,
     # backend, provider source, CLI arguments or workspace.
     env={k:v for k,v in os.environ.items() if not k.startswith(("AWS_","TF_"))}
     (root/"terraform-cli.rc").write_text("")
     env.update({"AWS_ACCESS_KEY_ID":frozen.access_key,"AWS_SECRET_ACCESS_KEY":frozen.secret_key,"AWS_SESSION_TOKEN":frozen.token,"AWS_REGION":region,"AWS_DEFAULT_REGION":region,"AWS_EC2_METADATA_DISABLED":"true","TF_IN_AUTOMATION":"1","TF_CLI_CONFIG_FILE":str(root/"terraform-cli.rc")})
-    evidence={"schema_version":1,"fixture":"s3-general-purpose-empty","provider_version":version,"candidate_sha256":info["candidate_sha256"],"role_arn":role_arn,"session_arn":identity["Arn"],"region":region,"start":now(),"steps":{},"status":"incomplete"}
+    evidence={"schema_version":1,"fixture":"s3-general-purpose-empty","provider_version":version,"source_commit":source_commit,"candidate_sha256":info["candidate_sha256"],"role_arn":role_arn,"session_arn":identity["Arn"],"region":region,"start":now(),"steps":{},"status":"incomplete"}
     out=root/"lifecycle-evidence.json"
     write(out,evidence)
     def command(label,*arguments,allowed=(0,)):
@@ -141,6 +145,7 @@ def run(args):
         if result.returncode not in allowed: raise ValueError(label+" failed; inspect private local log")
         return result.stdout
     def stage(name,expected,extra=(),apply=True):
+        check_role()
         print("Lifecycle:",name,flush=True)
         path=root/(name+".tfplan")
         command(name+"-plan","plan","-input=false","-out="+str(path),*extra)
@@ -148,7 +153,9 @@ def run(args):
         # Terraform's binary plans and local logs must remain private.
         shown=subprocess.run(["terraform","show","-json",str(path)],cwd=root,env=env,check=True,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL).stdout
         actions=check_operations(json.loads(shown),expected)
+        check_role()
         if apply: command(name+"-apply","apply","-input=false",str(path))
+        check_role()
         evidence["steps"][name]={"status":"passed","operations":actions,"plan_sha256":digest(path),"completed":now()}
         write(out,evidence)
     try:
