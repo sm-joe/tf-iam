@@ -13,11 +13,14 @@ RESOURCE=re.compile(r'(aws_[a-z0-9_]+\.'+NAME+r')('+KEY+r')?')
 MODULE=re.compile(r'module\.('+NAME+r')('+KEY+r')?\.')
 DIRECT=re.compile(r'\x24\{(.+)\}')
 
-def anchor(body):
+def anchor(body,allow_name=False):
     tags=body.get("tags",{})
     value=tags.get("tfiam:scope") if isinstance(tags,dict) else None
-    if not isinstance(value,str) or not value: return {}
-    return tag_conditions({"tags":{"tfiam:scope":value}},"ec2:ResourceTag/")
+    if isinstance(value,str) and value: return tag_conditions({"tags":{"tfiam:scope":value}},"ec2:ResourceTag/")
+    name=tags.get("Name") if isinstance(tags,dict) else None
+    if allow_name and isinstance(name,str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{7,127}",name):
+        return tag_conditions({"tags":{"Name":name}},"ec2:ResourceTag/")
+    return {}
 
 def clean(address):
     return INDEX.sub("",address)
@@ -89,7 +92,8 @@ def allowed_refs(meta,raw,concrete,base):
     if not tokens.issubset(refs): return False
     # A literal selector must itself be present in the configuration reference;
     # a reference to the unindexed collection cannot verify its chosen element.
-    required={concrete} if concrete!=base and not tokens else {concrete,base}
+    required={concrete,concrete.rsplit(".",1)[0]} if concrete!=base and not tokens else {concrete,base}
+    if tokens: required.add(base.rsplit(".",1)[0])
     return bool(set(refs)&required) and set(refs)<=allowed
 
 def resolve_source(raw,meta,prefix,index,sources,depth=0):
@@ -137,7 +141,7 @@ def resolve_source(raw,meta,prefix,index,sources,depth=0):
         return resolve_source(call.get(name),call_cfg.get("expressions",{}).get(name,{}),parent_prefix,last.group(2),sources,depth+1)
     return None
 
-def recover(plan,address,definitions,select,body,task,sources=None):
+def recover(plan,address,definitions,select,body,task,sources=None,allow_name=False):
     out={}
     parsed=split_address(address)
     if not parsed or task.get("operation")!="create" or task.get("all_fields_masked"): return out
@@ -161,7 +165,7 @@ def recover(plan,address,definitions,select,body,task,sources=None):
         pc=parent.get("change",{})
         if pc.get("actions") not in (["create"],["delete","create"],["create","delete"]): return None
         parent_body=masked(pc.get("after") or {},pc.get("after_sensitive"),pc.get("after_unknown"))
-        condition=anchor(parent_body) if isinstance(parent_body,dict) else {}
+        condition=anchor(parent_body,allow_name) if isinstance(parent_body,dict) else {}
         if condition: return {"kind":EC2_TYPES[kind][0],"condition":condition}
         return None
     for field,raw in row[0].get(base,{}).items():
