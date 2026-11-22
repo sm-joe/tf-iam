@@ -97,3 +97,30 @@ def test_unknown_optional_delegation_and_boundary_block_generation(tmp_path):
     assert not any(p["action"]=="iam:CreateRole" for p in r["permissions"])
     assert "policy/hidden" not in json.dumps(r)
     assert main(["generate",str(tmp_path),"--aws-account","123456789012","--aws-region","us-east-1","--output",str(tmp_path/"policy.json")])==4
+
+def test_new_iam_user_and_group_attachment_files(tmp_path):
+    put(tmp_path,"main.tf.json",{"resource":{"aws_s3_bucket":{"b":{"bucket":"fixture-bucket"}}}})
+    initial=scan(tmp_path,account="123456789012",region="us-east-1")
+    assert len(initial["resources"])==1
+    policy="arn:aws:iam::aws:policy/ReadOnlyAccess"
+    put(tmp_path,"iam-user.tf.json",{"resource":{"aws_iam_user":{"dev":{"name":"developer","path":"/team/"}},"aws_iam_user_policy_attachment":{"dev_readonly":{"user":"\u0024{aws_iam_user.dev.name}","policy_arn":policy}},"aws_iam_group":{"dev":{"name":"developers","path":"/team/"}},"aws_iam_group_policy_attachment":{"dev_readonly":{"group":"developers","policy_arn":policy}}}})
+    result=scan(tmp_path,account="123456789012",region="us-east-1")
+    assert len(result["resources"])==5
+    assert not result["unresolved_permissions"]
+    assert result["mapping_coverage"]["unmapped_resources"]==0
+    for kind,name in (("User","developer"),("Group","developers")):
+        source="aws_iam_"+kind.lower()+"_policy_attachment.dev_readonly"
+        rows={p["action"]:p for p in result["permissions"] if p["source"]==source}
+        assert set(rows)=={"iam:Attach"+kind+"Policy","iam:Detach"+kind+"Policy","iam:ListAttached"+kind+"Policies"}
+        assert all(p["scope"]=="arn:aws:iam::123456789012:"+kind.lower()+"/team/"+name for p in rows.values())
+        assert rows["iam:Attach"+kind+"Policy"]["condition"]=={"ArnEquals":{"iam:PolicyARN":policy}}
+        assert rows["iam:Detach"+kind+"Policy"]["condition"]==rows["iam:Attach"+kind+"Policy"]["condition"]
+        assert not rows["iam:ListAttached"+kind+"Policies"].get("condition")
+    assert main(["generate",str(tmp_path),"--aws-account","123456789012","--aws-region","us-east-1","--output",str(tmp_path/"policy.json")])==0
+
+def test_external_user_attachment_does_not_guess_path(tmp_path):
+    put(tmp_path,"main.tf.json",{"resource":{"aws_iam_user_policy_attachment":{"a":{"user":"external","policy_arn":"arn:aws:iam::aws:policy/ReadOnlyAccess"}}}})
+    result=scan(tmp_path,account="123456789012",region="us-east-1")
+    assert result["mapping_coverage"]["unmapped_resources"]==0
+    assert not result["permissions"]
+    assert len(result["unresolved_permissions"])==3

@@ -140,6 +140,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
             for i,(source,module_path,doc) in enumerate(resolved_docs):
                 key='resolved:'+str(i); module_paths[key]=(source,module_path); analysis_docs.append((key,doc))
         role_targets={}
+        identity_targets={}
         if plan is not None:
             analysis_docs=[]
             for i,task in enumerate(plan_tasks):
@@ -149,6 +150,19 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                 if entry['type']=='aws_iam_role' and entry['mode'] in ('resource','data'):
                     role=resolve(body.get('name')); arn=role_arn(body)
                     if role and arn: role_targets.setdefault(role,set()).add(arn)
+                if entry['type'] in ('aws_iam_user','aws_iam_group') and entry['mode'] in ('resource','data'):
+                    kind=entry['type'].split('_')[-1]
+                    identity_name=resolve(body.get('name') or body.get('user_name') or body.get('group_name'))
+                    known=resolve(body.get('arn'))
+                    path=resolve(body.get('path','/'))
+                    expected=rf'arn:{partition}:iam::{account}:{kind}/[^\s*?]+' if account else None
+                    # Do not guess the path of an external identity.
+                    if known and expected and re.fullmatch(expected,known) and known.rsplit('/',1)[-1]==identity_name:
+                        target=known
+                    elif account and entry['mode']=='resource' and identity_name and re.fullmatch(r'[\w+=,.@-]+',identity_name) and path and path.startswith('/') and path.endswith('/'):
+                        target=f'arn:{partition}:iam::{account}:{kind}{path}{identity_name}'
+                    else: target=None
+                    if target: identity_targets.setdefault((kind,identity_name),set()).add(target)
         for src,doc in analysis_docs:
             for category in ('resource','data'):
                 for group in blocks(doc,category):
@@ -240,6 +254,24 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 if scope=='*':
                                     for action in acts: unresolved(address,action)
                                     acts=[]
+                            if typ in ('aws_iam_user_policy_attachment','aws_iam_group_policy_attachment'):
+                                kind=typ.split('_')[2]
+                                identity_name=resolve(body.get(kind))
+                                target=resolve(body.get('_tfiam_identity_arn')) if not task else None
+                                if task:
+                                    targets=identity_targets.get((kind,identity_name),set())
+                                    target=next(iter(targets)) if len(targets)==1 else None
+                                if not account or not identity_name or not target or not re.fullmatch(rf'arn:{partition}:iam::{account}:{kind}/[^\s*?]+',target) or target.rsplit('/',1)[-1]!=identity_name:
+                                    target=None
+                                policy_arn=resolve(body.get('policy_arn'))
+                                valid_policy=bool(policy_arn and re.fullmatch(rf'arn:{partition}:iam::(?:aws|{account}):policy/[^\s*?]+',policy_arn))
+                                for action in acts:
+                                    if not target: unresolved(address,action)
+                                    elif action in ('iam:AttachUserPolicy','iam:DetachUserPolicy','iam:AttachGroupPolicy','iam:DetachGroupPolicy'):
+                                        if valid_policy: add(p,[action],target,address,condition={'ArnEquals':{'iam:PolicyARN':policy_arn}})
+                                        else: unresolved(address,action)
+                                    else: add(p,[action],target,address)
+                                continue
                             if typ=='aws_iam_role_policy_attachment':
                                 role=resolve(body.get('role'))
                                 # Resolve role paths from direct references when possible.

@@ -2955,6 +2955,44 @@
         "route53:AssociateVPCWithHostedZone"
       ],
       "scope_strategy": "route-zone"
+    },
+    "aws_iam_user_policy_attachment": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:ListAttachedUserPolicies"
+      ],
+      "write": [
+        "iam:AttachUserPolicy"
+      ],
+      "delete": [
+        "iam:DetachUserPolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "iam:AttachUserPolicy"
+      ],
+      "update": []
+    },
+    "aws_iam_group_policy_attachment": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_iam.html",
+      "read": [
+        "iam:ListAttachedGroupPolicies"
+      ],
+      "write": [
+        "iam:AttachGroupPolicy"
+      ],
+      "delete": [
+        "iam:DetachGroupPolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "iam:AttachGroupPolicy"
+      ],
+      "update": []
     }
   },
   "data": {
