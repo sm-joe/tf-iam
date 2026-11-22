@@ -29,11 +29,14 @@ Determining The Permissions A Terraform Deployment Identity Needs Is Difficult W
 | Multi-Context Analysis | Explicit Provider Aliases, Accounts, Regions And Partitions |
 | Risk Assessment | Delegation, Privilege Combinations And Destructive Operations |
 | Policy Comparison | Existing Policy Documents Or Live IAM Role Grants |
+| Policy Size Management | Exact-Grant Consolidation, Managed Policy Partitioning And Inline Quotas |
 | Lifecycle Separation | Planner, Applier And Privileged Break-Glass Candidates |
 | AWS Validation | Packaged Authorization Metadata And Optional IAM Access Analyzer |
 | Runtime Auditing | Bounded, Role-Filtered CloudTrail Management-Event Analysis |
 | Automation | Machine-Readable JSON, Human-Readable Tables And Configurable Failure Gates |
 | Distribution | Standalone Linux x86_64 Executable And Python Source Installation |
+
+The Current Published Stable Release Is v1.0.0. The Default Branch Also Contains Upcoming v1.1.0 Features; `pack-policy` And `--scope-generated-names` Require A Build From The Newer Source Until Publication.
 
 ## Installation
 
@@ -161,6 +164,7 @@ The Version-Aware Catalog Is Selected From Existing Provider Lockfile Informatio
 | generate | Render Candidate IAM Policies Or Terraform JSON |
 | compare | Compare With Existing Grants From A Policy Or IAM Role |
 | split | Partition Planner, Applier And Break-Glass Candidates |
+| pack-policy | Optimize And Partition Generated Policies Within AWS Size Quotas (Upcoming v1.1.0) |
 | catalog-audit | Check Catalog Actions Against AWS Authorization Metadata |
 | validate-policy | Run AWS IAM Access Analyzer Policy Validation |
 | runtime-audit | Compare CloudTrail Observations With Scan Candidates |
@@ -205,6 +209,22 @@ tfiam generate ./infra \
 ~~~
 
 Generation Rejects Unmapped Resources And Unresolved Grants By Default. The Explicit `--allow-partial` Override Permits Candidate Output For Review, But Does Not Disable Configured Security Gates Or Definite Metadata Compatibility Failures. Do Not Treat Partial Output As Deployment-Ready.
+
+### Policy Size Management (Upcoming v1.1.0)
+
+Optimize A Generated Allow Policy Without Changing Its Action, Resource Or Condition Grants:
+
+```bash
+tfiam pack-policy policy.json --output-dir policy-bundle
+```
+
+The Output Directory Must Not Already Exist. The Manifest Reports Original And Optimized Sizes, Policy Count And Individual Policy Files. Managed Policies Are Limited To 6,144 Characters Each. The Default Budget Is 10 Attachments; Use `--max-policies` To Specify The Remaining Available Slots (Up To 20 Where The Account Quota Permits). Use `--max-chars` To Reserve Additional Headroom.
+
+For Inline Policies, Use `--policy-type inline-role`, `inline-user` Or `inline-group`. The Aggregate Identity Limit Is Enforced; Splitting Cannot Bypass It. Existing Inline Policy Usage Must Be Accounted For With A Reduced `--max-chars`.
+
+This Command Does Not Attach Policies Or Change AWS Resources. Review And Validate Each Generated Policy Document Independently.
+
+See [Mixed Infrastructure Lifecycle Acceptance](docs/mixed-lifecycle.md) For The Maintainer's Isolated Create, Update And Destroy Workflow.
 
 ### Separate Lifecycle Permissions
 
@@ -270,6 +290,8 @@ tfiam scan ./infra \
 ~~~
 
 The Output Is A Combined Candidate; Review And Partition Grants By Actual Deployment Identity. Credential And Assume-Role Contexts Are Not Guessed. For Supported Dynamic EC2 Dependencies, `--scope-resource-tags` Can Use A Known `tfiam:scope` Tag As An Authorization Anchor. The Condition Covers All Matching Resources, So Use Controlled Unique Tags And Restrict Tag Mutation.
+
+For Saved Plans, `--scope-generated-names` Opts Into Corroborated EC2 Name-Tag Scopes And Bounded Random S3 Bucket Patterns. These Patterns Can Match Other Resources; Review Namespace Ownership, Tag Mutation And Collision Risk. This Option Is Available In The Upcoming v1.1.0 Build.
 
 ## CI/CD Security Gates
 
@@ -362,6 +384,8 @@ The Suite Covers Create, Read, Update, Replacement In Both Orders, Destroy, Nega
 
 These Results Validate The Tested Configurations, Not Every Catalog Entry. Provider Review Includes Conditional And Unresolved Mappings, Including Legacy S3 And IAM Operations. VPC Default ACL, Route-Table And Security-Group Discovery May Leave Computed IDs Unavailable Without Additional Read Grants. The S3 Fixture Relies On Supported Provider Tagging Fallbacks.
 
+**Post-v1.0.0 Acceptance:** The Maintainer Reported Successful Create, Update And Destroy Of A Combined S3, SQS And DynamoDB Fixture With Empty Terraform State At Source Revision `5bbef87ec3bbbca209242a3c1d979034522e5588`. The EC2 Fixture Was Blocked By An Organization SCP. These Reported Results Are Not A Signed Release Evidence Bundle.
+
 ### Analysis Boundaries
 
 - AWS And Terraform Are Supported; Other Cloud Providers Are Not Analyzed.
@@ -410,19 +434,3 @@ Treat Terraform Plans, State And Analysis Reports As Confidential. The CLI Does 
 
 Released Under The [MIT License](LICENSE).
 
-
-## Policy Size Management
-
-Optimize A Generated Allow Policy Without Changing Its Action, Resource Or Condition Grants:
-
-```bash
-tfiam pack-policy policy.json --output-dir policy-bundle
-```
-
-The Output Directory Must Not Already Exist. The Manifest Reports Original And Optimized Sizes, Policy Count And Individual Policy Files. Managed Policies Are Limited To 6,144 Characters Each. The Default Budget Is 10 Attachments; Use `--max-policies` To Specify The Remaining Available Slots (Up To 20 Where The Account Quota Permits). Use `--max-chars` To Reserve Additional Headroom.
-
-For Inline Policies, Use `--policy-type inline-role`, `inline-user` Or `inline-group`. The Aggregate Identity Limit Is Enforced; Splitting Cannot Bypass It. Existing Inline Policy Usage Must Be Accounted For With A Reduced `--max-chars`.
-
-This Command Does Not Attach Policies Or Change AWS Resources. Review And Validate Each Generated Policy Document Independently.
-
-See [Mixed Infrastructure Lifecycle Acceptance](docs/mixed-lifecycle.md) For The Maintainer's Isolated Create, Update And Destroy Workflow.
