@@ -41,7 +41,7 @@ def config(version,region,scope,ordinal=0,updated=False,create_first=False):
 
 def grants(doc):
     result=set()
-    allowed={"ec2:DescribeVpcs","ec2:DescribeVpcAttribute","ec2:DescribeTags","ec2:DescribeSubnets",
+    allowed={"ec2:DescribeVpcs","ec2:DescribeVpcAttribute","ec2:DescribeTags","ec2:DescribeSubnets","ec2:DescribeNetworkInterfaces",
              "ec2:CreateVpc","ec2:CreateSubnet","ec2:ModifyVpcAttribute","ec2:ModifySubnetAttribute",
              "ec2:CreateTags","ec2:DeleteTags","ec2:DeleteVpc","ec2:DeleteSubnet"}
     for s in doc["Statement"]:
