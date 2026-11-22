@@ -23,6 +23,7 @@ def literal(v):
 
 def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None, scope_resource_tags=False, provider_version=None, authorization_metadata=None, provider_contexts=None, scope_generated_names=False):
     provider_contexts=validate_contexts(provider_contexts)
+    if scope_generated_names and plan is not None: scope_resource_tags=True
     default_context=provider_contexts.get("aws",(account,region,partition))
     if root is None and plan is None: raise ValueError('Provide a Terraform directory or saved plan JSON')
     has_root=root is not None
@@ -244,9 +245,11 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 unresolved(address,action)
                             if task and scope_resource_tags and has_root:
                                 from .plan_network import recover, anchor
-                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task,network_sources)}
+                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task,network_sources,allow_name=scope_generated_names)}
                                 if operation=='create' and typ in EC2_TYPES and not body.get('id'):
-                                    body['_tfiam_self_tags']=anchor(body)
+                                    body['_tfiam_self_tags']=anchor(body,scope_generated_names)
+                                    if scope_generated_names and 'ec2:ResourceTag/Name' in body['_tfiam_self_tags'].get('StringEquals',{}):
+                                        info(address+': opt-in EC2 Name tag scope; names are not unique and tag mutation must be controlled independently.')
                             if task and operation in ('create','update','read') and typ in ('aws_instance','aws_iam_instance_profile'):
                                 # Only current role identities from same account/partition.
                                 if typ=='aws_instance':
