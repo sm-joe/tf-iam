@@ -48,6 +48,7 @@ def plan_contexts(plan,default,overrides):
         if key is None:
             return default if not providers and not by_address else None
         if key in overrides: return overrides[key]
+        if key=="aws" and not providers: return default
         cfg=providers.get(key)
         if not isinstance(cfg,dict): return None
         if cfg.get("full_name","registry.terraform.io/hashicorp/aws")!="registry.terraform.io/hashicorp/aws": return None

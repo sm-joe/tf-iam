@@ -152,7 +152,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
             analysis_docs=[]
             for i,task in enumerate(plan_tasks):
                 key='plan:'+str(i); task_lookup[key]=task
-                entry=task['entry']; body=task['body']
+                entry=task['entry']; body={k:v for k,v in task['body'].items() if not k.startswith('_tfiam_')}
                 context=select_context(entry['address'])
                 account,region,partition=context or (None,None,None)
                 analysis_docs.append((key,{entry['mode']:{entry['type']:{'instance':body}}}))
@@ -214,6 +214,11 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 add('aws',[action],target,address,condition=condition)
                             def omit(action):
                                 unresolved(address,action)
+                            if task and scope_resource_tags and has_root:
+                                from .plan_network import recover, anchor
+                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task)}
+                                if operation=='create' and typ in EC2_TYPES and not body.get('id'):
+                                    body['_tfiam_self_tags']=anchor(body)
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
                                 network(typ,body,acts,account,region,partition,resolve,emit,omit,task,scope_resource_tags=scope_resource_tags)
                                 continue

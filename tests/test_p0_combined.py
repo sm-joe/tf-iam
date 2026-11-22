@@ -17,9 +17,10 @@ def test_provider_contexts(tmp_path):
     assert {x["scope"] for x in result["permissions"]}=={f"arn:aws:sqs:{R}:{A}:east","arn:aws:sqs:us-west-2:999999999999:west"}
 
 def test_tag_bound_parent(tmp_path):
-    write(tmp_path,{"resource":{"aws_vpc":{"v":{"cidr_block":"10.0.0.0/16","tags":{"Name":"tfiam-vpc"}}},"aws_subnet":{"s":{"vpc_id":"\u0024{aws_vpc.v.id}","cidr_block":"10.0.1.0/24","tags":{"Name":"tfiam-subnet"}}}}})
-    result=scan(tmp_path,account=A,region=R)
-    assert any(p["action"]=="ec2:CreateSubnet" and p["scope"]==f"arn:aws:ec2:{R}:{A}:vpc/*" and p.get("condition")=={"StringEquals":{"ec2:ResourceTag/Name":"tfiam-vpc"}} for p in result["permissions"])
+    write(tmp_path,{"resource":{"aws_vpc":{"v":{"cidr_block":"10.0.0.0/16","tags":{"tfiam:scope":"fixture-vpc"}}},"aws_subnet":{"s":{"vpc_id":"\u0024{aws_vpc.v.id}","cidr_block":"10.0.1.0/24","tags":{"tfiam:scope":"fixture-subnet"}}}}})
+    result=scan(tmp_path,account=A,region=R,scope_resource_tags=True)
+    assert not result["unresolved_permissions"], result["unresolved_permissions"]
+    assert any(p["action"]=="ec2:CreateSubnet" and p["scope"]==f"arn:aws:ec2:{R}:{A}:vpc/*" and p.get("condition")=={"StringEquals":{"ec2:ResourceTag/tfiam:scope":"fixture-vpc"}} for p in result["permissions"])
 
 def test_snapshot_and_named_groups(tmp_path):
     write(tmp_path,{"resource":{"aws_db_instance":{"d":{"identifier":"target","snapshot_identifier":"source","db_subnet_group_name":"my-subnet","parameter_group_name":"my-param"}}}})

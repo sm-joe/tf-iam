@@ -328,7 +328,7 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                                 parent_type=ref.split(".",1)[0]
                                 if not parent or parent_type not in EC2_TYPES or "count" in parent or "for_each" in parent or ctx.provider_context(parent)!=ctx.provider_context(body): continue
                                 tags=ctx.evaluate(parent.get("tags",{}))
-                                condition=tag_conditions({"tags":tags},"ec2:ResourceTag/")
+                                condition=tag_conditions({"tags":{"tfiam:scope":tags["tfiam:scope"]}},"ec2:ResourceTag/") if isinstance(tags,dict) and isinstance(tags.get("tfiam:scope"),str) and tags["tfiam:scope"] else {}
                                 if condition:
                                     dynamic[field]={"kind":EC2_TYPES[parent_type][0],"condition":condition}
                             evaluated["_tfiam_dynamic_ec2"]=dynamic
@@ -384,7 +384,8 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                                         if role is not UNKNOWN: evaluated["_tfiam_profile_role_arn"]=role
                             # Mark self only for explicitly tagged managed EC2 resources.
                             if category=="resource" and kind in EC2_TYPES:
-                                evaluated["_tfiam_self_tags"]=tag_conditions({"tags":evaluated.get("tags",{})},"ec2:ResourceTag/")
+                                tags=evaluated.get("tags",{})
+                                evaluated["_tfiam_self_tags"]=tag_conditions({"tags":{"tfiam:scope":tags["tfiam:scope"]}},"ec2:ResourceTag/") if isinstance(tags,dict) and isinstance(tags.get("tfiam:scope"),str) and tags["tfiam:scope"] else {}
                             mapped.setdefault(kind,{})[name]=sanitize(evaluated)
                 if mapped: transformed[category]=mapped
             result.append((src,ctx.path,transformed))

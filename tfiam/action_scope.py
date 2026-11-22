@@ -58,7 +58,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     def dep(field,kind,prefix):
         exact=ec(kind,ident(field,prefix))
         if exact: return exact
-        if task: return None
+        if not scope_resource_tags: return None
         dynamic=body.get("_tfiam_dynamic_ec2",{}).get(field,{})
         condition=dynamic.get("condition")
         if dynamic.get("kind")==kind and condition and ec(kind,"*"):
@@ -85,7 +85,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
         return True
     spec=EC2_TYPES.get(typ)
     own=dep("id",*spec) if spec else None
-    if not own and not task and spec and body.get("_tfiam_self_tags") and ec(spec[0],"*"):
+    if not own and scope_resource_tags and spec and body.get("_tfiam_self_tags") and ec(spec[0],"*"):
         own=(ec(spec[0],"*"),body["_tfiam_self_tags"])
     if typ=="aws_eip": own=dep("allocation_id","elastic-ip","eipalloc") or own
     if typ in ("aws_route","aws_route_table_association"): own=dep("route_table_id","route-table","rtb")
@@ -169,8 +169,8 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 if field in body and body[field]!=[]: optional.extend(many(field,kind,prefix) or [None])
             service=val("service_name")
             if vpc and endpoint and service and all(optional):
-                emit(action,endpoint,{"StringEquals":{"ec2:VpceServiceName":service}})
                 if not grant(action,[vpc]+optional): continue
+                emit(action,endpoint,{"StringEquals":{"ec2:VpceServiceName":service}})
                 creates.add(short)
             else: omit(action)
             continue
@@ -196,7 +196,15 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             if own and (op!="create") and not isinstance(own,tuple):
                 emit(action,own)
             elif isinstance(own,tuple) and op!="create":
-                omit(action)
+                # Creation tags are authorized independently. On existing objects,
+                # only known non-anchor tag keys may be changed, never the binding tag.
+                if short=="CreateTags" and creates and spec:
+                    for create in sorted(creates):
+                        emit(action,ec(spec[0],"*"),{"StringEquals":{"ec2:CreateAction":create}})
+                tags=body.get("tags",{})
+                keys=sorted(k for k in tags if k!="tfiam:scope") if isinstance(tags,dict) else []
+                if keys:
+                    emit(action,own[0],{**own[1],"ForAllValues:StringEquals":{"aws:TagKeys":keys}})
             elif short=="CreateTags" and creates and spec:
                 for create in sorted(creates):
                     emit(action,ec(spec[0],"*"),{"StringEquals":{"ec2:CreateAction":create}})
