@@ -157,6 +157,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                 key='resolved:'+str(i); module_paths[key]=(source,module_path); analysis_docs.append((key,doc))
         role_targets={}
         profile_targets={}
+        current_role_targets={}
         identity_targets={}
         if plan is not None:
             analysis_docs=[]
@@ -168,7 +169,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                 analysis_docs.append((key,{entry['mode']:{entry['type']:{'instance':body}}}))
                 if entry['type']=='aws_iam_role' and entry['mode'] in ('resource','data'):
                     role=resolve(body.get('name')); arn=role_arn(body)
-                    if role and arn and context: role_targets.setdefault((account,partition,role),set()).add(arn)
+                    if role and arn and context:
+                        role_targets.setdefault((account,partition,role),set()).add(arn)
+                        if task['operation'] in ('create','update','read'): current_role_targets.setdefault((account,partition,role),set()).add(arn)
                 if entry['type'] in ('aws_iam_user','aws_iam_group') and entry['mode'] in ('resource','data'):
                     kind=entry['type'].split('_')[-1]
                     identity_name=resolve(body.get('name') or body.get('user_name') or body.get('group_name'))
@@ -191,7 +194,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                 if context is None: continue
                 a,rg,p=context
                 name=literal(body.get('name')); role=literal(body.get('role'))
-                targets=role_targets.get((a,p,role),set())
+                targets=current_role_targets.get((a,p,role),set())
                 if name and len(targets)==1:
                     profile_targets.setdefault((a,p,name),set()).update(targets)
         for src,doc in analysis_docs:
@@ -249,7 +252,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 if typ=='aws_instance':
                                     targets=profile_targets.get((account,partition,resolve(body.get('iam_instance_profile'))),set())
                                 else:
-                                    targets=role_targets.get((account,partition,resolve(body.get('role'))),set())
+                                    targets=current_role_targets.get((account,partition,resolve(body.get('role'))),set())
                                 if len(targets)==1:
                                     body['_tfiam_profile_role_arn']=next(iter(targets))
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
