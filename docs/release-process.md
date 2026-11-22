@@ -120,7 +120,7 @@ gh secret delete TFIAM_RELEASE_EVIDENCE --repo sm-joe/tf-iam
 ```
 
 Review The Receipt's Tested Source Commit, Archive Digest, Workflow Run ID And
-Binary Digest. Publish Stable v1.0.0 Only After These Checks And Independent
+Binary Digest. Publish The New Stable Version Only After These Checks And Independent
 Review, Targeting The Exact Accepted Commit. This Workflow Does Not Publish
 Automatically. GitHub Attestation Availability Depends On Repository Plan.
 Binary Repeatability Is Measured Within One Build Environment; Unlocked

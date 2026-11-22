@@ -23,3 +23,9 @@ The Signed Build Is Recorded In [GitHub Actions](https://github.com/sm-joe/tf-ia
 The Four Isolated Fixtures Validate Only Their Tested Configurations. Catalog-Wide Provider Call Verification Remains Incomplete; Conditional Dependencies And Missing Candidates Require Review. The CloudTrail Report Is Session-Filtered And Does Not Cover Every Authorization Decision. VPC Default-Resource Discovery And S3 Tagging Fallback Limitations Are Documented In The [Provider Validation Guide](provider-validation.md) And [README](../README.md).
 
 For Future Releases, Follow The [Release Process](release-process.md), Collecting Fresh Evidence Against The Exact Source To Be Released. Unit Tests And Metadata Compatibility Do Not Substitute For Live Authorization Verification. Do Not Attach Production Policies Solely On The Basis Of These Reports.
+
+## v1.1.0 Preparation
+
+Maintainer-Reported Acceptance On The Merged Source Revision `5bbef87ec3bbbca209242a3c1d979034522e5588`: Combined S3, SQS And DynamoDB Create, Update And Destroy Passed; Empty Terraform State Verified. Cleanup Was Also Reported Complete. EC2 Launch Was Blocked By An Explicit Organization SCP Deny. These Are Reported Results, Not Independently Reconciled Evidence Or Coverage Of Every Mapped Resource.
+
+The Existing Signing Gate Remains Mandatory. The Combined Fixture Does Not Replace The Four Exact Restricted-Role Fixtures Or Their Evidence Requirements. Fresh Evidence Must Be Collected Against The Exact Release Source, Reviewed Privately, And Sealed Before Signing. No Prior Evidence May Be Relabeled With A New Commit.
