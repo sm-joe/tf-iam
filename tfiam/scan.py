@@ -239,6 +239,19 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if task and category=='resource':
                                 from .optimization import minimize
                                 acts=minimize(typ,acts,body,task)
+                            # Inline network rules are provider operations, not separate
+                            # Terraform resources. Retain their action candidates.
+                            if category=='resource' and resource_phase=='apply':
+                                extras=set()
+                                if typ=='aws_route_table' and (body.get('route') or unknown_field('route') or task and task.get('before',{}).get('route')):
+                                    if not task or operation=='create': extras.add('ec2:CreateRoute')
+                                    if not task or operation=='update' and (unknown_field('route') or body.get('route')!=task.get('before',{}).get('route')):
+                                        extras.update(('ec2:CreateRoute','ec2:ReplaceRoute','ec2:DeleteRoute'))
+                                if typ=='aws_security_group' and operation=='create':
+                                    extras.add('ec2:RevokeSecurityGroupEgress')
+                                    for field,action in (('ingress','ec2:AuthorizeSecurityGroupIngress'),('egress','ec2:AuthorizeSecurityGroupEgress')):
+                                        if body.get(field) or unknown_field(field): extras.add(action)
+                                acts=sorted(set(acts)|extras)
                             def emit(action,target,condition=None):
                                 add('aws',[action],target,address,condition=condition)
                             def omit(action):
