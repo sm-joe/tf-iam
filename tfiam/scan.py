@@ -4,7 +4,7 @@ from .catalog_loader import get_rule, actions_for, operation_actions, attribute_
 from .plan import parse_plan
 from .provider_context import validate as validate_contexts, plan_contexts
 from .plan_roles import recover_role_arn
-from .plan_buckets import recover_bucket, source_only_resources
+from .plan_buckets import recover_bucket, source_only_resources, recover_random_bucket_pattern
 from .risk import assess
 from .resolver import discover
 from .versioning import selected_version, evidence_status
@@ -21,7 +21,7 @@ def blocks(doc, key):
 def literal(v):
     return v if isinstance(v,str) and v and not any(c in v for c in ('${','%{','*','?')) else None
 
-def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None, scope_resource_tags=False, provider_version=None, authorization_metadata=None, provider_contexts=None):
+def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None, scope_resource_tags=False, provider_version=None, authorization_metadata=None, provider_contexts=None, scope_generated_names=False):
     provider_contexts=validate_contexts(provider_contexts)
     default_context=provider_contexts.get("aws",(account,region,partition))
     if root is None and plan is None: raise ValueError('Provide a Terraform directory or saved plan JSON')
@@ -313,6 +313,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                         else:
                                             for action in attr['actions']: unresolved(address,action)
                             scope='*'
+                            generated_bucket=False
                             if p=='aws' and typ.startswith('aws_s3_'):
                                 bucket=resolve(body.get('bucket'))
                                 if not bucket and task and operation in ('create','update') and has_root:
@@ -323,6 +324,13 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 if bucket and typ=='aws_s3_object':
                                     key=resolve(body.get('key')); scope=f'arn:{partition}:s3:::{bucket}/{key}' if key else '*'
                                 elif bucket: scope=f'arn:{partition}:s3:::{bucket}'
+                                elif scope_generated_names and task and has_root and operation=='create' and account:
+                                    pattern=recover_random_bucket_pattern(plan,address,definitions,select_context)
+                                    if pattern:
+                                        scope=f'arn:{partition}:s3:::{pattern}'
+                                        generated_bucket=True
+                                        info(address+': opt-in bounded bucket name pattern; matches other names of the same length and prefix. Review namespace ownership.')
+                                        report['resolved_dependencies'].append({'source':address,'action':'S3 generated bucket name','scope':scope,'method':'fixed-width random_id hex pattern from saved plan and source'})
                             if p=='aws' and typ=='aws_dynamodb_table' and account and region and literal(body.get('name')): scope=f'arn:{partition}:dynamodb:{region}:{account}:table/{body["name"]}'
                             if p=='aws' and typ=='aws_sqs_queue' and account and region and literal(body.get('name')): scope=f'arn:{partition}:sqs:{region}:{account}:{body["name"]}'
                             if typ=='aws_iam_role': scope=role_arn(body) or '*'
@@ -476,7 +484,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if scope=='*' and (typ.startswith('aws_s3_') or typ in ('aws_dynamodb_table','aws_sqs_queue')):
                                 for action in acts: unresolved(address,action)
                                 acts=[]
-                            add(p,acts,scope,address)
+                            if generated_bucket:
+                                for action in acts:
+                                    add(p,[action],scope,address,condition={'StringEquals':{'s3:ResourceAccount':account}} if action!='s3:CreateBucket' else None)
+                            else: add(p,acts,scope,address)
                             # Delegation and boundary approval appear in the risk inventory.
                             if typ=='aws_instance' and body.get('iam_instance_profile'): warn(address+': instance profile PassRole dependency unresolved; permission omitted')
                             if scope=='*': warn(address+': exact resource scope not inferred')
@@ -535,7 +546,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     else: report['authorization_metadata']={'status':'not-run','metadata_source':'not-packaged-in-source-checkout'}
 
     report['permissions'].sort(key=lambda p:(p['provider'],p['action'],p['scope'],p['source']))
-    report['scope_summary']={'global':sum(p['scope']=='*' for p in report['permissions']),'bounded_wildcard':sum(p['scope']!='*' and '*' in p['scope'] for p in report['permissions']),'exact':sum('*' not in p['scope'] and '?' not in p['scope'] for p in report['permissions']),'conditional':sum(bool(p.get('condition')) for p in report['permissions']),'unresolved':len(report['unresolved_permissions'])}
+    report['scope_summary']={'global':sum(p['scope']=='*' for p in report['permissions']),'bounded_wildcard':sum(p['scope']!='*' and ('*' in p['scope'] or '?' in p['scope']) for p in report['permissions']),'exact':sum('*' not in p['scope'] and '?' not in p['scope'] for p in report['permissions']),'conditional':sum(bool(p.get('condition')) for p in report['permissions']),'unresolved':len(report['unresolved_permissions'])}
     report['unresolved_permissions'].sort(key=lambda x:(x['source'],x['action']))
     report['risks'] = assess(report['permissions'])
     return report
