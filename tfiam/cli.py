@@ -81,7 +81,7 @@ def main(argv=None, *, maintainer=False):
         evidence.add_argument('--lifecycle',type=Path,required=True); evidence.add_argument('--source-report',type=Path,required=True); evidence.add_argument('--policy',type=Path,required=True); evidence.add_argument('--lockfile',type=Path,required=True); evidence.add_argument('--metadata-dir',type=Path,required=True); evidence.add_argument('--events',type=Path); evidence.add_argument('--aws-profile'); evidence.add_argument('--max-pages',type=int,default=100); evidence.add_argument('--max-seconds',type=int,default=120); evidence.add_argument('--format',choices=['json','table'],default='table'); evidence.add_argument('--output',type=Path); evidence.add_argument('--show-table',action='store_true'); evidence.add_argument('--strict',action='store_true')
     args=parser.parse_args(argv)
     def write_result(result,output=None):
-        if args.format=='table': output=render(args.command,result)
+        if args.format=='table': output=render(args.command,result,compact=args.command=='compare' and not args.show_table)
         elif output is None: output=json.dumps(result,indent=2)
         if args.output:
             args.output.write_text(output+'\n',encoding='utf-8')
