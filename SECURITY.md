@@ -1,63 +1,63 @@
-# Security policy
+# Security Policy
 
-## Supported versions
+## Supported Versions
 
-| Version | Security maintenance |
+| Version | Security Maintenance |
 | --- | --- |
-| 1.0.0 | Supported stable release |
-| Unreleased development revisions | Best effort; use the latest stable release |
+| 1.0.0 | Supported Stable Release |
+| Unreleased Development Revisions | Best Effort; Use The Latest Stable Release |
 
-Security fixes are developed on the default branch and distributed through reviewed releases. This is a community-maintained project; no contractual response-time or support SLA is provided.
+Security Fixes Are Developed On The Default Branch And Distributed Through Reviewed Releases. This Is A Community-Maintained Project; No Contractual Response-Time Or Support SLA Is Provided.
 
-## Reporting a vulnerability
+## Reporting A Vulnerability
 
-Report suspected vulnerabilities privately using [GitHub private vulnerability reporting](https://github.com/sm-joe/tf-iam/security/advisories/new). If private reporting is unavailable, contact the repository maintainer privately before disclosing technical details.
+Report Suspected Vulnerabilities Privately Using [GitHub Private Vulnerability Reporting](https://github.com/sm-joe/tf-iam/security/advisories/new). If Private Reporting Is Unavailable, Contact The Repository Maintainer Privately Before Disclosing Technical Details.
 
-Please include:
+Please Include:
 
-- Affected release, commit and AWS provider version.
-- Environment and the relevant CLI command.
-- A minimal, sanitized Terraform configuration or policy that reproduces the issue.
-- Expected behavior, actual behavior, and potential confidentiality, integrity, availability or privilege impact.
-- Any suggested mitigation, if known.
+- Affected Release, Commit And AWS Provider Version.
+- Environment And The Relevant CLI Command.
+- A Minimal, Sanitized Terraform Configuration Or Policy That Reproduces The Issue.
+- Expected Behavior, Actual Behavior, And Potential Confidentiality, Integrity, Availability Or Privilege Impact.
+- Any Suggested Mitigation, If Known.
 
-Do not send AWS credentials, session tokens, real Terraform state, unredacted saved plans or proprietary infrastructure information. Public issues are appropriate for non-sensitive defects and feature requests.
+Do Not Send AWS Credentials, Session Tokens, Real Terraform State, Unredacted Saved Plans Or Proprietary Infrastructure Information. Public Issues Are Appropriate For Non-Sensitive Defects And Feature Requests.
 
-Reports are reviewed for reproducibility, impact and affected versions. We aim to coordinate disclosure and publish remediation guidance when appropriate. Do not publicly disclose actionable exploit details before a fix or coordinated disclosure.
+Reports Are Reviewed For Reproducibility, Impact And Affected Versions. We Aim To Coordinate Disclosure And Publish Remediation Guidance When Appropriate. Do Not Publicly Disclose Actionable Exploit Details Before A Fix Or Coordinated Disclosure.
 
 ## Scope
 
-Security-relevant reports include incorrect authorization or resource scoping, unsafe policy generation, bypass of configured risk gates, disclosure of sensitive inputs, command execution, dependency or distribution compromise, and unexpected AWS mutations.
+Security-Relevant Reports Include Incorrect Authorization Or Resource Scoping, Unsafe Policy Generation, Bypass Of Configured Risk Gates, Disclosure Of Sensitive Inputs, Command Execution, Dependency Or Distribution Compromise, And Unexpected AWS Mutations.
 
-A recognized resource mapping, partial coverage or an explicitly documented unsupported configuration is not by itself a vulnerability. Reports describing false confidence, missing mandatory permissions or excessive privilege should include the applicable configuration and provider behavior.
+A Recognized Resource Mapping, Partial Coverage Or An Explicitly Documented Unsupported Configuration Is Not By Itself A Vulnerability. Reports Describing False Confidence, Missing Mandatory Permissions Or Excessive Privilege Should Include The Applicable Configuration And Provider Behavior.
 
-Only test systems and AWS accounts that you own or are explicitly authorized to assess. Avoid destructive tests, service disruption and access to third-party data.
+Only Test Systems And AWS Accounts That You Own Or Are Explicitly Authorized To Assess. Avoid Destructive Tests, Service Disruption And Access To Third-Party Data.
 
-## Security model
+## Security Model
 
-tf-iam is an analysis tool. Local scanning and policy generation do not execute Terraform, download providers, attach IAM policies or modify AWS infrastructure. Optional live integrations use AWS read and validation APIs with the caller's credentials.
+tf-iam Is An Analysis Tool. Local Scanning And Policy Generation Do Not Execute Terraform, Download Providers, Attach IAM Policies Or Modify AWS Infrastructure. Optional Live Integrations Use AWS Read And Validation APIs With The Caller's Credentials.
 
-Generated policies are candidates for independent review, not guarantees of least privilege or effective authorization. IAM permissions boundaries, service control policies, session policies, resource policies, conditional grants and provider behavior may alter the final authorization decision.
+Generated Policies Are Candidates For Independent Review, Not Guarantees Of Least Privilege Or Effective Authorization. IAM Permissions Boundaries, Service Control Policies, Session Policies, Resource Policies, Conditional Grants And Provider Behavior May Alter The Final Authorization Decision.
 
-Use a dedicated audit identity for live integrations, separate policy approval from deployment, and never attach break-glass policies automatically. Do not suppress unresolved or risk findings solely to make a pipeline pass. Treat runtime observations as supporting evidence, not proof that unobserved permissions are unnecessary.
+Use A Dedicated Audit Identity For Live Integrations, Separate Policy Approval From Deployment, And Never Attach Break-Glass Policies Automatically. Do Not Suppress Unresolved Or Risk Findings Solely To Make A Pipeline Pass. Treat Runtime Observations As Supporting Evidence, Not Proof That Unobserved Permissions Are Unnecessary.
 
-## Protecting sensitive data
+## Protecting Sensitive Data
 
-Terraform state, saved plan JSON, reports and candidate policies may expose credentials, account identifiers, resource names or confidential architecture. Sensitive and unknown fields are withheld from inference where supported, but unmarked data may still appear in output.
+Terraform State, Saved Plan JSON, Reports And Candidate Policies May Expose Credentials, Account Identifiers, Resource Names Or Confidential Architecture. Sensitive And Unknown Fields Are Withheld From Inference Where Supported, But Unmarked Data May Still Appear In Output.
 
-- Restrict input and output directories to authorized users; use a restrictive umask.
-- Do not commit real state, plans, credentials or private acceptance evidence.
-- Avoid passing secrets through CLI values or shell history.
-- Redact artifacts before sharing and enforce retention controls in CI.
-- Use isolated AWS accounts for live lifecycle acceptance and review any cleanup operation before execution.
+- Restrict Input And Output Directories To Authorized Users; Use A Restrictive Umask.
+- Do Not Commit Real State, Plans, Credentials Or Private Acceptance Evidence.
+- Avoid Passing Secrets Through CLI Values Or Shell History.
+- Redact Artifacts Before Sharing And Enforce Retention Controls In CI.
+- Use Isolated AWS Accounts For Live Lifecycle Acceptance And Review Any Cleanup Operation Before Execution.
 
-The project does not require AWS credentials for offline analysis. Optional cloud integrations should be enabled only when required.
+The Project Does Not Require AWS Credentials For Offline Analysis. Optional Cloud Integrations Should Be Enabled Only When Required.
 
-## Release integrity
+## Release Integrity
 
-Download stable assets from [official GitHub releases](https://github.com/sm-joe/tf-iam/releases). Ordinary CI build artifacts are not signed stable releases.
+Download Stable Assets From [Official GitHub Releases](https://github.com/sm-joe/tf-iam/releases). Ordinary CI Build Artifacts Are Not Signed Stable Releases.
 
-Verify the executable and the signed source receipt before installation:
+Verify The Executable And The Signed Source Receipt Before Installation:
 
 ~~~bash
 sha256sum -c SHA256SUMS
@@ -65,12 +65,12 @@ gh attestation verify tfiam --repo sm-joe/tf-iam
 gh attestation verify release-source.json --repo sm-joe/tf-iam
 ~~~
 
-Review the receipt's tested source commit against the release tag. Do not install artifacts that fail checksum or attestation verification. The release workflow rebuilds the exact accepted source, checks binary repeatability in its build environment and publishes GitHub build provenance. See [release process](docs/release-process.md) for maintainer procedures.
+Review The Receipt's Tested Source Commit Against The Release Tag. Do Not Install Artifacts That Fail Checksum Or Attestation Verification. The Release Workflow Rebuilds The Exact Accepted Source, Checks Binary Repeatability In Its Build Environment And Publishes GitHub Build Provenance. See [Release Process](docs/release-process.md) For Maintainer Procedures.
 
-## Validation boundaries
+## Validation Boundaries
 
-The v1.0.0 release includes live restricted-role acceptance for four representative AWS fixtures. It does not certify every AWS service, Terraform configuration or effective IAM policy. Review the [provider validation guide](docs/provider-validation.md) for evidence scope and known limitations.
+The v1.0.0 Release Includes Live Restricted-Role Acceptance For Four Representative AWS Fixtures. It Does Not Certify Every AWS Service, Terraform Configuration Or Effective IAM Policy. Review The [Provider Validation Guide](docs/provider-validation.md) For Evidence Scope And Known Limitations.
 
 ## License
 
-tf-iam is distributed under the [MIT License](LICENSE).
+tf-iam Is Distributed Under The [MIT License](LICENSE).
