@@ -21,7 +21,7 @@ def test_policy_size_equivalence():
     assert partition(original)==partition(original)
 
 def test_large_policy_partition_and_budget():
-    original=doc([row("s3:GetBucketTagging",f"arn:aws:s3:::fixture-{i:04d}-"+"a"*40,{"StringEquals":{"s3:ResourceAccount":"123456789012"}}) for i in range(180)])
+    original=doc([row("s3:GetBucketTagging",f"arn:aws:s3:::fixture-{i:04d}-"+"a"*40,{"StringEquals":{"s3:ResourceAccount":"123456789012"}}) for i in range(230)])
     result=partition(original)
     assert result["policy_count"]>1
     assert all(p["characters"]<=6144 for p in result["policies"])
