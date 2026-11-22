@@ -71,6 +71,8 @@ def gate(report,threshold=None,unresolved=False,unmapped=False,metadata=False,li
     if threshold:
         findings=[f for f in report["risks"] if LEVELS[f["severity"]]>=LEVELS[threshold]]
         if findings: failures.append({"kind":"risk-threshold","count":len(findings),"threshold":threshold})
+    if unresolved and report.get('input_blockers'):
+        failures.append({'kind':'incomplete-input','count':len(report['input_blockers'])})
     if unresolved and report.get("unresolved_permissions"):
         failures.append({"kind":"unresolved","count":len(report["unresolved_permissions"])})
     if unmapped and report["mapping_coverage"]["unmapped_resources"]:
