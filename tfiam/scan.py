@@ -28,7 +28,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     has_root=root is not None
     root=Path(root or '.').resolve()
     if not root.is_dir(): raise ValueError('Terraform directory does not exist')
-    report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'information':[], 'resolved_dependencies':[], 'backends':[], 'unresolved_permissions':[]}
+    report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'information':[], 'resolved_dependencies':[], 'backends':[], 'unresolved_permissions':[], 'input_blockers':[]}
     report['catalog']={'schema_version':CATALOG['schema_version'],'provider':CATALOG['provider'],'provider_version':None}
     provider_selection=selected_version(root if has_root else None,provider_version)
     version=provider_selection['version']
@@ -53,6 +53,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
         entries,plan_tasks,plan_warnings,meta=parse_plan(plan,phase)
         report['input']='terraform-plan-json'; report['plan']=meta; report['resources']=entries
         for message in plan_warnings: warn(message)
+        if meta.get('complete') is False or meta.get('deferred'): report['input_blockers'].append('Incomplete or deferred saved plan')
         unknown=sum(e['unknown_values'] for e in entries)
         sensitive=sum(e['sensitive_values'] for e in entries)
         if unknown: info(f'{unknown} planned resources contain computed or unknown values; masked values are not used for permission inference.')
@@ -82,6 +83,8 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     resolved_docs=[]
     if plan is None:
         resolved_docs,report['modules'],report['dependencies']=discover(root,account,region,partition,var_files,variables,warn,provider_contexts=provider_contexts)
+        for module in report['modules']:
+            if module.get('status')=='UNRESOLVED': report['input_blockers'].append('Unresolved static module')
     elif var_files or variables: raise ValueError('Variable overrides cannot be used with an already evaluated saved plan')
     def visit(folder,is_root=False):
         account,region,partition=default_context
@@ -94,14 +97,16 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
         docs=[]
         for f in files:
             src=str(f.relative_to(root)) if f.is_relative_to(root) else str(f)
+            if not f.resolve().is_relative_to(root):
+                warn(src+': source outside scan root'); report['input_blockers'].append('Source outside scan root'); continue
             try:
                 if f.name.endswith('.json'): doc=json.loads(f.read_text())
                 else:
                     import hcl2
                     with f.open() as handle: doc=hcl2.load(handle)
             except Exception as e:
-                warn(src+': parse failed ('+type(e).__name__+'); file not analyzed'); continue
-            if not isinstance(doc,dict): warn(src+': invalid document'); continue
+                warn(src+': parse failed ('+type(e).__name__+'); file not analyzed'); report['input_blockers'].append('Source parse failure'); continue
+            if not isinstance(doc,dict): warn(src+': invalid document'); report['input_blockers'].append('Invalid source document'); continue
             docs.append((src,doc))
         definitions={}
         for _,doc in docs:
