@@ -117,7 +117,10 @@ def prepare(args):
 def run(args):
     import boto3
     from botocore.exceptions import ClientError
+    from botocore.config import Config
+    client_config=Config(ignore_configured_endpoint_urls=True)
     root=args.directory.resolve()
+    if root.stat().st_mode & 0o077: raise ValueError("Fixture directory must be private (0700)")
     if any(x.is_symlink() for x in root.iterdir()): raise ValueError("Fixture files must not be symlinks")
     info=json.loads((root/"prepare.json").read_bytes())
     candidate=json.loads((root/"candidate-policy.json").read_bytes())
@@ -134,13 +137,17 @@ def run(args):
     if json.loads((root/"main.tf.json").read_bytes())!=config(info["version"],info["region"],info["scope"]): raise ValueError("Fixture configuration changed since preparation")
     region=info["region"]; version=info["version"]
     test=boto3.Session(profile_name=args.test_profile,region_name=region)
-    frozen=test.get_credentials().get_frozen_credentials()
-    if not frozen.token: raise ValueError("Test identity must use temporary assumed-role credentials")
+    credentials=test.get_credentials()
+    if credentials is None: raise ValueError("Test profile has no AWS credentials")
+    frozen=credentials.get_frozen_credentials()
+    if not frozen or not frozen.token: raise ValueError("Test identity must use temporary assumed-role credentials")
     fixed=boto3.Session(aws_access_key_id=frozen.access_key,aws_secret_access_key=frozen.secret_key,aws_session_token=frozen.token,region_name=region)
-    identity=fixed.client("sts").get_caller_identity()
+    identity=fixed.client("sts",config=client_config).get_caller_identity()
     if identity["Account"]!=info["account"] or not re.fullmatch(r"arn:aws:sts::"+info["account"]+r":assumed-role/"+re.escape(args.role_name)+r"/[^/]+",identity["Arn"]): raise ValueError("Unexpected test identity")
     auditor=boto3.Session(profile_name=args.audit_profile,region_name=region)
-    iam=auditor.client("iam")
+    audit_identity=auditor.client("sts",config=client_config).get_caller_identity()
+    if audit_identity["Account"]!=info["account"] or audit_identity["UserId"].split(":")[0]==identity["UserId"].split(":")[0]: raise ValueError("Audit profile must be a separate identity in the fixture account")
+    iam=auditor.client("iam",config=client_config)
     def check_role():
         role=iam.get_role(RoleName=args.role_name)["Role"]
         if identity["UserId"].split(":")[0]!=role["RoleId"]: raise ValueError("Role identity mismatch")
@@ -158,7 +165,7 @@ def run(args):
     out=root/"lifecycle-evidence.json"
     write(out,evidence)
     def command(label,*arguments,allowed=(0,)):
-        result=subprocess.run(["terraform",*arguments],cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        result=subprocess.run(["terraform",*arguments],cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=1800)
         (root/(label+".log")).write_bytes(result.stdout+b"\n"+result.stderr)
         if result.returncode not in allowed: raise ValueError(label+" failed; inspect private local log")
         return result.stdout
@@ -186,12 +193,16 @@ def run(args):
         write(root/"main.tf.json",config(version,region,info["scope"],ordinal=2,updated=True,create_first=True))
         stage("replace-create-first",["create","delete"])
         stage("destroy",["delete"],("-destroy",))
+        state=command("verify-empty-state","state","list")
+        if state.strip(): raise ValueError("Fixture state is not empty after destroy")
+        evidence["empty_state_verified"]=True
         try:
-            fixed.client("ec2").create_internet_gateway(DryRun=True)
+            fixed.client("ec2",config=client_config).create_internet_gateway(DryRun=True)
         except ClientError as exc:
             if exc.response.get("Error",{}).get("Code") not in ("UnauthorizedOperation","AccessDenied","AccessDeniedException"): raise
         else: raise ValueError("Negative authorization failed: CreateInternetGateway was allowed")
         evidence["negative_authorization"]="passed"
+        evidence["negative_action"]="ec2:CreateInternetGateway"
         check_role()
         evidence["identity_grants_rechecked"]=True
         evidence["status"]="fixture-passed"
