@@ -82,7 +82,7 @@ def recover_random_bucket_pattern(plan,address,definitions,select):
         declared=definitions.get("var."+name,{})
         config=cfg.get("variables",{}).get(name,{})
         value=plan.get("variables",{}).get(name,{}).get("value")
-        if declared.get("sensitive") or declared.get("ephemeral") or config.get("sensitive") or config.get("ephemeral") or not isinstance(value,str):
+        if "var."+name not in definitions or declared.get("sensitive") or declared.get("ephemeral") or config.get("sensitive") or config.get("ephemeral") or not isinstance(value,str):
             return "\x00"
         return value
     prefix=re.sub(r"\$\{var\.([A-Za-z0-9_-]+)\}",var,prefix)
@@ -90,10 +90,10 @@ def recover_random_bucket_pattern(plan,address,definitions,select):
     if not isinstance(actual,list) or not all(isinstance(x,str) for x in actual) or not refs.issubset(actual) or set(actual)-refs-{random}: return None
     rr=one(changes,random); rc=rr.get("change",{})
     if rr.get("provider_name")!="registry.terraform.io/hashicorp/random" or rr.get("type")!="random_id" or rr.get("mode")!="managed" or rc.get("actions") not in (["create"],["delete","create"],["create","delete"]): return None
-    if not isinstance(rc.get("after_unknown"),dict) or rc["after_unknown"].get("hex") is not True: return None
+    if not isinstance(rc.get("after_unknown"),dict) or rc["after_unknown"].get("hex") is not True or rc["after_unknown"].get("prefix"): return None
     values=masked(rc.get("after") or {},rc.get("after_sensitive"),rc.get("after_unknown"))
     if not isinstance(values,dict) or values.get("prefix") not in (None,""): return None
     size=values.get("byte_length")
     if type(size) is not int or not 2<=size<=16 or not re.fullmatch(r"[a-z0-9][a-z0-9-]{4,}-",prefix) or len(prefix)+2*size>63: return None
-    if rc.get("after_sensitive") is True or (isinstance(rc.get("after_sensitive"),dict) and rc["after_sensitive"].get("hex")): return None
+    if rc.get("after_sensitive") is True or (isinstance(rc.get("after_sensitive"),dict) and (rc["after_sensitive"].get("hex") or rc["after_sensitive"].get("prefix"))): return None
     return prefix+"?"*(2*size)
