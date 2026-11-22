@@ -26,7 +26,7 @@ def catalog_actions(version=None):
             rule=get_rule("resource" if category=="resources" else "data",kind,version)
             for field in ("read","write","delete"): out.update(rule[field])
             for attr in rule["attributes"]: out.update(attr["actions"])
-    out.update({"iam:CreateServiceLinkedRole","eks:CreateAccessEntry","iam:PutRolePermissionsBoundary","iam:DeleteRolePermissionsBoundary","eks:AssociateEncryptionConfig"})
+    out.update({"iam:CreateServiceLinkedRole","eks:CreateAccessEntry","iam:PutRolePermissionsBoundary","iam:DeleteRolePermissionsBoundary","eks:AssociateEncryptionConfig","iam:PassRole"})
     return out
 
 def download_snapshot(folder,services):

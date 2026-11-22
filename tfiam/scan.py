@@ -9,6 +9,7 @@ from .resolver import discover
 from .versioning import selected_version, evidence_status
 from .authorization import audit
 from .expanded_scope import expand
+from .service_scope import TYPES as SERVICE_TYPES, scoped
 from .action_scope import network, elb, EC2_TYPES, ELB_TYPES, EC2_GLOBAL
 
 def blocks(doc, key):
@@ -199,9 +200,20 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if typ in ELB_TYPES:
                                 elb(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
+                            if typ in SERVICE_TYPES and category=='resource':
+                                scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
+                                continue
                             if rule.get('scope_strategy'):
                                 expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task,unresolved=omit)
                                 continue
+                            if typ=='aws_dynamodb_table' and task:
+                                # Provider only invokes these optional APIs when requested or changed.
+                                for action,field in (('dynamodb:UpdateTimeToLive','ttl'),('dynamodb:UpdateContinuousBackups','point_in_time_recovery')):
+                                    if action in acts and not unknown_field(field):
+                                        previous=task.get('before',{}).get(field)
+                                        current=body.get(field)
+                                        if (operation=='create' and not current) or (operation=='update' and previous==current):
+                                            acts=[a for a in acts if a!=action]
                             # v6.73.0 role description uses a separate SDK API.
                             # A saved plan can omit it when the description is unchanged.
                             if typ=='aws_iam_role' and task and operation=='update' and 'iam:UpdateRoleDescription' in acts:

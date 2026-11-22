@@ -42,7 +42,7 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
         role=value(field)
         if role and ROLE.fullmatch(role):
             emit("iam:PassRole",role,{"StringEquals":{"iam:PassedToService":service}})
-        else: warn(source+": unresolved "+field+" role; iam:PassRole omitted")
+        else: omit("iam:PassRole")
     known=value("arn") if task else None
     target=None
     expected=None
@@ -188,8 +188,8 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
         emit(action,target)
     if strategy=="lambda" and "lambda:CreateFunction" in actions:
         role_from_field("role","lambda.amazonaws.com")
-    elif strategy=="lambda" and "lambda:UpdateFunctionConfiguration" in actions and body.get("role"):
-        role_from_field("role","lambda.amazonaws.com")
+    elif strategy=="lambda" and "lambda:UpdateFunctionConfiguration" in actions and (body.get("role") or "role" in (task.get("unknown_fields",[]) if task else body.get("_tfiam_unknown_fields",[]))):
+        if not task or task.get("before",{}).get("role")!=body.get("role") or "role" in task.get("unknown_fields",[]): role_from_field("role","lambda.amazonaws.com")
     if strategy=="ecs-task" and "ecs:RegisterTaskDefinition" in actions:
         for field in ("execution_role_arn","task_role_arn"):
             if field in body: role_from_field(field,"ecs-tasks.amazonaws.com")
