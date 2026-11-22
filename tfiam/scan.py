@@ -216,7 +216,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 unresolved(address,action)
                             if task and scope_resource_tags and has_root:
                                 from .plan_network import recover, anchor
-                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task)}
+                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task,root)}
                                 if operation=='create' and typ in EC2_TYPES and not body.get('id'):
                                     body['_tfiam_self_tags']=anchor(body)
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
@@ -229,10 +229,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
                             if category=='resource':
-                                if typ in ('aws_db_instance','aws_rds_cluster') and resource_phase=='apply' and (not task or operation=='create') and (body.get('snapshot_identifier') or unknown_field('snapshot_identifier')):
-                                    create='rds:CreateDBCluster' if typ=='aws_rds_cluster' else 'rds:CreateDBInstance'
-                                    restore='rds:RestoreDBClusterFromSnapshot' if typ=='aws_rds_cluster' else 'rds:RestoreDBInstanceFromDBSnapshot'
-                                    if create in acts: acts=sorted(set([a for a in acts if a!=create]+[restore]))
+                                if typ in ('aws_db_instance','aws_rds_cluster') and resource_phase=='apply' and (not task or operation=='create'):
+                                    from .dependencies import rds_creation
+                                    acts=rds_creation(typ,body,acts,unknown_field,omit)
                                 dependencies(typ,body,acts,account,region,partition,resolve,emit,omit,task,resource_phase)
                             if rule.get('scope_strategy'):
                                 expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task,unresolved=omit)
