@@ -24,11 +24,33 @@ def dependencies(typ,body,actions,account,region,partition,resolve,emit,omit,tas
         if "s3:PutReplicationConfiguration" in actions:
             role("role","s3.amazonaws.com")
     if typ in ("aws_db_instance","aws_rds_cluster","aws_rds_cluster_instance"):
-        if any(a in actions for a in ("rds:CreateDBInstance","rds:CreateDBCluster","rds:ModifyDBInstance","rds:ModifyDBCluster")):
+        if any(a in actions for a in ("rds:CreateDBInstance","rds:CreateDBCluster","rds:ModifyDBInstance","rds:ModifyDBCluster","rds:RestoreDBInstanceFromDBSnapshot","rds:RestoreDBClusterFromSnapshot")):
             if present("monitoring_role_arn") and changed("monitoring_role_arn"): role("monitoring_role_arn","monitoring.rds.amazonaws.com")
             if present("kms_key_id") and changed("kms_key_id"): key("kms_key_id",["kms:DescribeKey","kms:CreateGrant"])
+            # Documented RDS multi-resource authorization for configured groups.
+            for action in actions:
+                if action not in ("rds:CreateDBInstance","rds:ModifyDBInstance","rds:CreateDBCluster","rds:ModifyDBCluster","rds:RestoreDBInstanceFromDBSnapshot","rds:RestoreDBClusterFromSnapshot"): continue
+                fields=[("db_subnet_group_name","subgrp")]
+                if typ=="aws_rds_cluster": fields.append(("db_cluster_parameter_group_name","cluster-pg"))
+                else: fields.extend([("parameter_group_name","pg"),("db_parameter_group_name","pg"),("option_group_name","og")])
+                for field,kind in fields:
+                    if not present(field): continue
+                    value=resolve(body.get(field))
+                    if account and region and value and re.fullmatch(r"[A-Za-z][A-Za-z0-9-]*",value):
+                        emit(action,f"arn:{partition}:rds:{region}:{account}:{kind}:{value.lower()}")
+                    else: omit(action)
+            snapshot=resolve(body.get("snapshot_identifier"))
+            if present("snapshot_identifier") and changed("snapshot_identifier"):
+                action="rds:RestoreDBClusterFromSnapshot" if typ=="aws_rds_cluster" else "rds:RestoreDBInstanceFromDBSnapshot"
+                kind="cluster-snapshot" if typ=="aws_rds_cluster" else "snapshot"
+                prefix=f"arn:{partition}:rds:{region}:{account}:{kind}:"
+                if account and region and snapshot and re.fullmatch(r"[A-Za-z][A-Za-z0-9-]*",snapshot):
+                    emit(action,prefix+snapshot.lower())
+                elif account and region and snapshot and re.fullmatch(rf"arn:{partition}:rds:{region}:[0-9]{{12}}:{kind}:[A-Za-z0-9-]+",snapshot):
+                    emit(action,snapshot)
+                else: omit(action)
             # Explicitly block unsupported operations rather than claim a complete policy.
-            for field,action in (("snapshot_identifier","rds:RestoreDBInstanceFromDBSnapshot" if typ=="aws_db_instance" else "rds:RestoreDBClusterFromSnapshot"),("replicate_source_db","rds:CreateDBInstanceReadReplica"),("restore_to_point_in_time","rds:RestoreDBInstanceToPointInTime" if typ=="aws_db_instance" else "rds:RestoreDBClusterToPointInTime"),("s3_import","rds:RestoreDBInstanceFromS3" if typ=="aws_db_instance" else "rds:RestoreDBClusterFromS3"),("manage_master_user_password","secretsmanager:CreateSecret")):
+            for field,action in (("replicate_source_db","rds:CreateDBInstanceReadReplica"),("restore_to_point_in_time","rds:RestoreDBInstanceToPointInTime" if typ=="aws_db_instance" else "rds:RestoreDBClusterToPointInTime"),("s3_import","rds:RestoreDBInstanceFromS3" if typ=="aws_db_instance" else "rds:RestoreDBClusterFromS3"),("manage_master_user_password","secretsmanager:CreateSecret")):
                 if present(field) and changed(field): omit(action)
     if typ=="aws_ecs_service":
         if any(a in actions for a in ("ecs:CreateService","ecs:UpdateService")):
