@@ -197,3 +197,29 @@ def recover(plan,address,definitions,select,body,task,sources=None,allow_name=Fa
                 resolved.append(ref)
             if len(resolved)==len(raw) and all(isinstance(r,str) and r in allowed for r in refs): out[field]=resolved
     return out
+
+
+def omitted_instance_key(plan,address,sources,version):
+    """AWS v6.73.0 sends KeyName only when configured (GetOk).
+    A computed result is not a configured key on a fresh, direct launch.
+    Require independent source and plan configuration evidence.
+    """
+    if version!="6.73.0" or not sources: return False
+    parsed=split_address(address)
+    if not parsed: return False
+    prefix,base,index=parsed
+    row=sources.get(clean(prefix))
+    if not row or not base.startswith("aws_instance."): return False
+    raw=row[0].get(base)
+    cfg=one(row[4].get("resources",[]),base)
+    entry=one([r for r in plan.get("resource_changes",[]) if not r.get("deposed")],address)
+    change=entry.get("change",{})
+    if not isinstance(raw,dict) or not cfg or entry.get("provider_name")!=AWS or entry.get("mode")!="managed" or change.get("actions")!=["create"]: return False
+    expr=cfg.get("expressions")
+    if not isinstance(expr,dict): return False
+    if any(k in raw or k in expr for k in ("key_name","launch_template","network_interface","primary_network_interface")): return False
+    if not isinstance(change.get("after_unknown"),dict) or change["after_unknown"].get("key_name") is not True: return False
+    sensitive=change.get("after_sensitive")
+    if sensitive is True or isinstance(sensitive,dict) and marked(sensitive.get("key_name")): return False
+    if not isinstance(change.get("after"),dict) or change["after"].get("key_name") not in (None,""): return False
+    return True
