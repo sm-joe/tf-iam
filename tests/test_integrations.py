@@ -84,12 +84,18 @@ def test_cloudtrail_exhausted():
     list(cloud.lookup_events(Trail(),"arn:aws:iam::123456789012:role/example",cloud.parse_time("2026-01-01T00:00:00Z"),cloud.parse_time("2026-01-02T00:00:00Z"),stats=stats))
     assert stats["complete"] and stats["stop_reason"]=="exhausted"
 
-def test_all_catalog_destroy_actions_are_risky():
+def test_catalog_destroy_actions_exclude_explicit_read_only_dependencies():
     from tfiam.catalog_loader import CATALOG
     actions={a for rule in CATALOG["resources"].values() for a in rule["delete"]}
+    read_only={"ec2:DescribeNetworkInterfaces","iam:ListInstanceProfilesForRole"} & actions
+    assert "ec2:DescribeNetworkInterfaces" in read_only
     result=split_policies({"phase":"apply","coverage":"PARTIAL","permissions":[row(a) for a in actions]},policy)
-    assert result["counts"]["break_glass"]==len(actions)
+    assert result["counts"]["break_glass"]==len(actions-read_only)
+    assert result["counts"]["planner"]==len(read_only)
     assert result["counts"]["applier"]==0
+    for action in read_only:
+        assert any(action in stmt["Action"] for stmt in result["policies"]["planner"]["Statement"])
+        assert not any(action in stmt["Action"] for stmt in result["policies"]["break_glass"]["Statement"])
 
 def test_comparison_dedup_conditions_and_service_summary():
     from tfiam.cli import compare
