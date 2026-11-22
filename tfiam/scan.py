@@ -197,6 +197,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             resource_phase=('plan' if operation=='read' else 'destroy' if operation=='delete' else 'apply') if task else phase
                             if typ=='terraform_remote_state' and category=='data':
                                 backend(body.get('backend','unknown'),body.get('config',{}),address,True); continue
+                            if not task and typ=='random_id' and category=='resource' and body.get('_tfiam_local_random_id') is True:
+                                report['resources'].append({'address':address,'type':typ,'mode':category,'status':'SKIPPED','file':source,'skip_reason':'Local random identifier; no AWS IAM permissions'})
+                                continue
                             rule=get_rule(category,typ,version)
                             entry=task['entry'] if task else {'address':address,'type':typ,'mode':category,'status':'PARTIAL' if rule else 'UNSUPPORTED'}
                             if not task: entry['file']=source; report['resources'].append(entry)
