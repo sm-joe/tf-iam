@@ -35,7 +35,7 @@ DESTROY_ACTIONS = {a.lower() for rule in CATALOG["resources"].values()
 def destructive(row):
     action=row["action"].lower()
     # Provider role deletion performs a read-only dependency inventory first.
-    if action=="iam:listinstanceprofilesforrole": return False
+    if action in {"iam:listinstanceprofilesforrole","ec2:describenetworkinterfaces"}: return False
     return action in DESTROY_ACTIONS or action in {a.lower() for a in DESTRUCTIVE}
 
 def assess(rows):
