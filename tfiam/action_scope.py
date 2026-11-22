@@ -47,7 +47,7 @@ def tag_conditions(body,prefix):
         return {}
     return {"StringEquals":{prefix+k:v for k,v in sorted(tags.items())}}
 
-def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,scope_resource_tags=False):
+def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,scope_resource_tags=False,diagnose=lambda message: None):
     def val(field): return resolve(body.get(field))
     def ec(kind,ident,owner=None):
         if not region or not account or not ident: return None
@@ -156,12 +156,14 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             # Unsupported launch-template / pre-existing ENI / key-pair combinations
             # cannot safely be approximated with global grants.
             if body.get("launch_template") or body.get("network_interface"):
+                diagnose('RunInstances: launch template or pre-existing network interface requires separate authorization evidence')
                 omit(action); continue
             key=val("key_name")
             targets=[image,subnet,ec("instance","*"),ec("volume","*"),ec("network-interface","*")]+(groups or [None])
             if "key_name" in body and body.get("key_name") not in ("",None):
                 targets.append(ec("key-pair",key) if key and re.fullmatch(r"[A-Za-z0-9_.@+=,-]{1,255}",key) else None)
-            elif "key_name" in body.get("_tfiam_unknown_fields",[]) or (task and "key_name" in task.get("unknown_fields",[])):
+            elif not body.get("_tfiam_omitted_key_name") and ("key_name" in body.get("_tfiam_unknown_fields",[]) or (task and "key_name" in task.get("unknown_fields",[]))):
+                diagnose("RunInstances: configured or computed key_name unresolved")
                 targets.append(None)
             if not any(t is None for t in targets):
                 # A known launch tag restricts the newly allocated instance, not the AMI,
@@ -170,7 +172,10 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 if scope_resource_tags and request_tags():
                     targets=[(t,request_tags()) if t==instance else t for t in targets]
                 if grant(action,targets): creates.add(short)
-            else: omit(action)
+            else:
+                for label,value in (("AMI",image),("subnet",subnet),("security groups",groups),("account/region",ec("instance","*"))):
+                    if not value: diagnose("RunInstances: "+label+" authorization scope unresolved")
+                omit(action)
             continue
         if short in ("AttachVolume","DetachVolume"):
             grant(action,[dep("instance_id","instance","i"),dep("volume_id","volume","vol")]); continue
