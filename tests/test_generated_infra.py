@@ -93,3 +93,34 @@ def test_generated_name_safety(tmp_path):
         report=scan(tmp_path,account=ACCOUNT,region=REGION,plan=bad,scope_generated_names=True)
         assert any(p["source"]=="aws_s3_bucket.storage" for p in report["unresolved_permissions"])
         assert not any(p["action"].startswith("s3:") and ("?" in p["scope"] or p["scope"]=="*") for p in report["permissions"])
+
+
+def test_optional_computed_key_name_without_configured_key(tmp_path):
+    plan=fixture(tmp_path)
+    instance=next(r for r in plan["resource_changes"] if r["address"]=="aws_instance.worker")
+    instance["change"]["after_unknown"]["key_name"]=True
+    report=scan(tmp_path,account=ACCOUNT,region=REGION,plan=plan,scope_generated_names=True,provider_version="6.73.0")
+    assert not report["unresolved_permissions"],report["unresolved_permissions"]
+    launch=[p for p in report["permissions"] if p["source"]=="aws_instance.worker" and p["action"]=="ec2:RunInstances"]
+    assert launch
+    assert not any(":key-pair/" in p["scope"] for p in launch)
+    assert any(p["source"]=="aws_instance.worker" and p["action"]=="ec2:CreateTags" for p in report["permissions"])
+    # Explicit unknown input and sensitive values may not be mistaken for defaults.
+    cfg=next(r for r in plan["configuration"]["root_module"]["resources"] if r["address"]=="aws_instance.worker")
+    old=copy.deepcopy(cfg["expressions"])
+    cfg["expressions"]["key_name"]={"references":["var.key"]}
+    blocked=scan(tmp_path,account=ACCOUNT,region=REGION,plan=plan,scope_generated_names=True,provider_version="6.73.0")
+    assert any(p["source"]=="aws_instance.worker" and p["action"]=="ec2:RunInstances" for p in blocked["unresolved_permissions"])
+    cfg["expressions"]=old
+    instance["change"]["after_sensitive"]["key_name"]=True
+    blocked=scan(tmp_path,account=ACCOUNT,region=REGION,plan=plan,scope_generated_names=True,provider_version="6.73.0")
+    assert any(p["source"]=="aws_instance.worker" and p["action"]=="ec2:RunInstances" for p in blocked["unresolved_permissions"])
+    instance["change"]["after_sensitive"]={}
+    blocked=scan(tmp_path,account=ACCOUNT,region=REGION,plan=plan,scope_generated_names=True,provider_version="6.72.0")
+    assert any(p["source"]=="aws_instance.worker" and p["action"]=="ec2:RunInstances" for p in blocked["unresolved_permissions"])
+    source=tmp_path/"main.tf.json"
+    config=json.loads(source.read_text())
+    config["resource"]["aws_instance"]["worker"]["key_name"]="${var.key}"
+    source.write_text(json.dumps(config))
+    blocked=scan(tmp_path,account=ACCOUNT,region=REGION,plan=plan,scope_generated_names=True,provider_version="6.73.0")
+    assert any(p["source"]=="aws_instance.worker" and p["action"]=="ec2:RunInstances" for p in blocked["unresolved_permissions"])
