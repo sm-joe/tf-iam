@@ -9,6 +9,7 @@ from .resolver import discover
 from .versioning import selected_version, evidence_status
 from .authorization import audit
 from .expanded_scope import expand
+from .dependencies import dependencies, object_dependencies
 from .service_scope import TYPES as SERVICE_TYPES, scoped
 from .action_scope import network, elb, EC2_TYPES, ELB_TYPES, EC2_GLOBAL
 
@@ -203,6 +204,8 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if typ in SERVICE_TYPES and category=='resource':
                                 scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
+                            if category=='resource':
+                                dependencies(typ,body,acts,account,region,partition,resolve,emit,omit,task,resource_phase)
                             if rule.get('scope_strategy'):
                                 expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task,unresolved=omit)
                                 continue
@@ -350,9 +353,21 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                             else: unresolved(address,'eks:CreateAccessEntry')
                                         elif unknown_field('access_config') or any(v is None or isinstance(v,str) and v.startswith('${') for v in access):
                                             unresolved(address,'eks:CreateAccessEntry')
-                                    if kind in ('addon','podidentityassociation') and (body.get('pod_identity_association') or body.get('target_role_arn') or unknown_field('pod_identity_association') or unknown_field('target_role_arn')):
-                                        unresolved(address,'iam:PassRole (additional pod identity role)')
-                                        if kind=='addon': unresolved(address,'eks:CreatePodIdentityAssociation')
+                                    if kind=='addon' and (body.get('pod_identity_association') or unknown_field('pod_identity_association')):
+                                        roles=attribute_values(body,'pod_identity_association.role_arn')
+                                        if roles and all(isinstance(v,str) and account and re.fullmatch(rf'arn:{partition}:iam::{account}:role/[^\s*?]+',v) for v in roles) and cluster_arn!='*':
+                                            for v in roles: add(p,['iam:PassRole'],v,address,condition={'StringEquals':{'iam:PassedToService':'pods.eks.amazonaws.com'}})
+                                            if not task or operation=='create' or body.get('pod_identity_association')!=task.get('before',{}).get('pod_identity_association'):
+                                                add(p,['eks:CreatePodIdentityAssociation'],cluster_arn,address)
+                                                if not task or operation=='update':
+                                                    add(p,['eks:DeletePodIdentityAssociation','eks:UpdatePodIdentityAssociation'],prefix+'podidentityassociation/'+cluster+'/*',address)
+                                        else:
+                                            unresolved(address,'iam:PassRole')
+                                            unresolved(address,'eks:CreatePodIdentityAssociation')
+                                    if kind=='podidentityassociation' and (body.get('target_role_arn') or unknown_field('target_role_arn')):
+                                        target_role=resolve(body.get('target_role_arn'))
+                                        if not target_role or not re.fullmatch(rf'arn:{partition}:iam::[0-9]{{12}}:role/[^\s*?]+',target_role):
+                                            unresolved(address,'eks:CreatePodIdentityAssociation')
                                     field,service={'cluster':('role_arn','eks.amazonaws.com'),'nodegroup':('node_role_arn','eks.amazonaws.com'),'addon':('service_account_role_arn','eks.amazonaws.com'),'podidentityassociation':('role_arn','pods.eks.amazonaws.com')}[kind]
                                     recovered=None
                                     if task and has_root and not body.get(field):
@@ -365,7 +380,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                         if arn and re.fullmatch(r'arn:[a-z0-9-]+:iam::[0-9]{12}:role/[^\s*?]+',arn): add(p,['iam:PassRole'],arn,address,condition={'StringEquals':{'iam:PassedToService':service}})
                                         else: unresolved(address,'iam:PassRole')
                                     if kind=='cluster' and (unknown_field('compute_config') or any(v is True or v is None for v in attribute_values(body,'compute_config.enabled'))):
-                                        unresolved(address,'iam:PassRole (EKS Auto Mode compute role)')
+                                        roles=attribute_values(body,'compute_config.node_role_arn')
+                                        if roles and all(isinstance(v,str) and account and re.fullmatch(rf'arn:{partition}:iam::{account}:role/[^\s*?]+',v) for v in roles):
+                                            for v in roles: add(p,['iam:PassRole'],v,address,condition={'StringEquals':{'iam:PassedToService':'eks.amazonaws.com'}})
+                                        else: unresolved(address,'iam:PassRole')
                                 if scope=='*': warn(address+': provide account, region and resolvable resource names')
                                 continue
                             if typ=='aws_iam_role' and scope!='*' and category=='resource' and resource_phase=='apply' and operation not in ('read','no-op'):
@@ -386,6 +404,8 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                         add(p,['iam:PutRolePermissionsBoundary'],scope,address,condition={'ArnEquals':{'iam:PermissionsBoundary':boundary}})
                                 elif task and operation=='update' and old_boundary and 'permissions_boundary' in body and body['permissions_boundary'] in ('',None):
                                     add(p,['iam:DeleteRolePermissionsBoundary'],scope,address)
+                            if typ=='aws_s3_object' and category=='resource':
+                                object_dependencies(body,acts,scope,account,region,partition,resolve,emit,omit,task)
                             if typ=='aws_iam_role' and scope=='*':
                                 for action in acts: unresolved(address,action)
                                 acts=[]

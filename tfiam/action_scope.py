@@ -80,7 +80,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     for action in sorted(actions,key=lambda a:(a in ("ec2:CreateTags","ec2:DeleteTags"),a)):
         short=action.split(":")[1]
         if action in EC2_GLOBAL:
-            emit(action,"*"); continue
+            emit(action,"*",{"StringEquals":{"aws:RequestedRegion":region}} if region else None); continue
         if short in CREATE and spec and spec[0]==CREATE[short][0]:
             kind,fields=CREATE[short]
             deps=[dep(*f) for f in fields]
@@ -93,15 +93,37 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 creates.add(short)
             else: omit(action)
             continue
+        if short=="CreateNatGateway" and typ=="aws_nat_gateway":
+            # Zonal NAT only; regional NAT uses different request dependencies.
+            subnet=dep("subnet_id","subnet","subnet")
+            allocation=dep("allocation_id","elastic-ip","eipalloc")
+            connectivity=val("connectivity_type") or "public"
+            if body.get("availability_mode")=="regional" or body.get("secondary_allocation_ids") or body.get("secondary_private_ip_addresses"):
+                omit(action); continue
+            if connectivity not in ("public","private") or (connectivity=="public" and not allocation):
+                omit(action); continue
+            targets=[subnet]+([allocation] if connectivity=="public" else [])
+            target=ec("natgateway","*")
+            if target and all(targets):
+                for d in targets: emit(action,d)
+                emit(action,target,tag_conditions(body,"aws:RequestTag/") or None)
+                creates.add(short)
+            else: omit(action)
+            continue
         if short=="RunInstances" and typ=="aws_instance":
             image=ec("image",ident("ami","ami"),"")
             subnet=dep("subnet_id","subnet","subnet")
             groups=many("vpc_security_group_ids","security-group","sg")
             # Unsupported launch-template / pre-existing ENI / key-pair combinations
             # cannot safely be approximated with global grants.
-            if body.get("launch_template") or body.get("network_interface") or body.get("key_name"):
+            if body.get("launch_template") or body.get("network_interface"):
                 omit(action); continue
+            key=val("key_name")
             targets=[image,subnet,ec("instance","*"),ec("volume","*"),ec("network-interface","*")]+(groups or [None])
+            if "key_name" in body and body.get("key_name") not in ("",None):
+                targets.append(ec("key-pair",key) if key and re.fullmatch(r"[A-Za-z0-9_.@+=,-]{1,255}",key) else None)
+            elif "key_name" in body.get("_tfiam_unknown_fields",[]) or (task and "key_name" in task.get("unknown_fields",[])):
+                targets.append(None)
             if grant(action,targets): creates.add(short)
             continue
         if short in ("AttachVolume","DetachVolume"):
@@ -110,9 +132,13 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             grant(action,[own,dep("vpc_id","vpc","vpc")]); continue
         if short in ("CreateRoute","ReplaceRoute","DeleteRoute"):
             grant(action,[own]); continue
-        if short=="AssociateRouteTable":
+        if short in ("AssociateRouteTable","ReplaceRouteTableAssociation","DisassociateRouteTable") and typ=="aws_route_table_association":
             parent=dep("subnet_id","subnet","subnet") or dep("gateway_id","internet-gateway","igw")
-            grant(action,[own,parent]); continue
+            targets=[own,parent]
+            if short=="ReplaceRouteTableAssociation" and task and task.get("operation")=="update":
+                old=resolve(task.get("before",{}).get("route_table_id"))
+                targets.append(ec("route-table",old) if old and re.fullmatch(r"rtb-[0-9a-f]+",old) else None)
+            grant(action,targets); continue
         if short in ("AuthorizeSecurityGroupIngress","AuthorizeSecurityGroupEgress","RevokeSecurityGroupIngress","RevokeSecurityGroupEgress","ModifySecurityGroupRules"):
             target=dep("security_group_id","security-group","sg") if "rule" in typ else own
             grant(action,[target]); continue
@@ -161,9 +187,10 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             continue
         omit(action)
     # An instance profile association is not evidence of the role path.
-    if typ=="aws_instance" and "ec2:RunInstances" in actions and body.get("iam_instance_profile"):
-        role=val("_tfiam_profile_role_arn") if not task else None
-        if role and re.fullmatch(r"arn:[a-z0-9-]+:iam::[0-9]{12}:role/[^\s*?]+",role):
+    profile_unknown="iam_instance_profile" in (task.get("unknown_fields",[]) if task else body.get("_tfiam_unknown_fields",[]))
+    if typ=="aws_instance" and "ec2:RunInstances" in actions and (body.get("iam_instance_profile") or profile_unknown):
+        role=val("_tfiam_profile_role_arn")
+        if role and account and re.fullmatch(rf"arn:{partition}:iam::{account}:role/[^\s*?]+",role):
             emit("iam:PassRole",role,{"StringEquals":{"iam:PassedToService":"ec2.amazonaws.com"}})
         else: omit("iam:PassRole")
 

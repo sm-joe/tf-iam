@@ -330,6 +330,17 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                                 if match and match.group(1).startswith("aws_iam_"+field+".") and match.group(1).endswith(".name"):
                                     resolved=ctx.reference(match.group(1)[:-5]+".arn",())
                                     if resolved is not UNKNOWN: evaluated[marker]=resolved
+                            if kind=="aws_instance":
+                                evaluated.pop("_tfiam_profile_role_arn",None)
+                                raw_profile=body.get("iam_instance_profile")
+                                profile_ref=EXPR.fullmatch(raw_profile) if isinstance(raw_profile,str) else None
+                                if profile_ref and profile_ref.group(1).startswith("aws_iam_instance_profile.") and profile_ref.group(1).endswith(".name"):
+                                    profile=ctx.resources.get(profile_ref.group(1)[:-5],{})
+                                    raw_role=profile.get("role")
+                                    role_ref=EXPR.fullmatch(raw_role) if isinstance(raw_role,str) else None
+                                    if role_ref and role_ref.group(1).startswith("aws_iam_role.") and role_ref.group(1).endswith(".name"):
+                                        role=ctx.reference(role_ref.group(1)[:-5]+".arn",())
+                                        if role is not UNKNOWN: evaluated["_tfiam_profile_role_arn"]=role
                             mapped.setdefault(kind,{})[name]=sanitize(evaluated)
                 if mapped: transformed[category]=mapped
             result.append((src,ctx.path,transformed))
