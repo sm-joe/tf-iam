@@ -144,6 +144,22 @@ def test_vpc_fixture_candidate_is_conditioned(tmp_path):
     grants=mod.grants(candidate)
     assert any(a=="ec2:CreateVpc" and "aws:RequestTag/tfiam:scope" in c for a,s,c in grants)
     assert all(a.startswith("ec2:Describe") for a,s,c in grants if s=="*")
+    assert ("ec2:DescribeNetworkInterfaces","*",json.dumps({"StringEquals":{"aws:RequestedRegion":R}},sort_keys=True,separators=(",",":"))) in grants
     changed=copy.deepcopy(candidate)
     changed["Statement"].append({"Effect":"Allow","Action":"ec2:DeleteVpc","Resource":"*"})
     with pytest.raises(ValueError): mod.grants(changed)
+
+def test_subnet_delete_discovers_enis_only_in_destroy_lifecycle(tmp_path):
+    body={"id":"subnet-123abc","vpc_id":"vpc-123abc","tags":{"tfiam:scope":"subnet"}}
+    cfg={"resources":[config_resource("aws_subnet.s","aws_subnet")]}
+    row=resource("aws_subnet.s","aws_subnet",body)
+    expected={("*",json.dumps({"StringEquals":{"aws:RequestedRegion":R}},sort_keys=True))}
+    for ops in (["delete"],["delete","create"],["create","delete"]):
+        row["change"]={"actions":ops,"before":body,"after":None if ops==["delete"] else body,"after_unknown":{},"after_sensitive":{}}
+        report=scan(tmp_path,plan=plan(cfg,[row]),account=A,region=R)
+        assert scopes(report,"ec2:DescribeNetworkInterfaces")==expected
+        assert not scopes(report,"ec2:DeleteNetworkInterface")
+        assert not any("ec2:DescribeNetworkInterfaces" in f["actions"] for f in report["risks"] if f["kind"]=="destructive")
+    row=resource("aws_subnet.s","aws_subnet",body)
+    report=scan(tmp_path,plan=plan(cfg,[row]),account=A,region=R)
+    assert not scopes(report,"ec2:DescribeNetworkInterfaces")

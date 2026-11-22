@@ -298,6 +298,7 @@
         "ec2:DeleteTags"
       ],
       "delete": [
+        "ec2:DescribeNetworkInterfaces",
         "ec2:DeleteSubnet"
       ],
       "attributes": [],
