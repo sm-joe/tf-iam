@@ -47,7 +47,7 @@ def tag_conditions(body,prefix):
         return {}
     return {"StringEquals":{prefix+k:v for k,v in sorted(tags.items())}}
 
-def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,scope_resource_tags=False):
+def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,scope_resource_tags=False,diagnose=lambda message: None):
     def val(field): return resolve(body.get(field))
     def ec(kind,ident,owner=None):
         if not region or not account or not ident: return None
@@ -89,7 +89,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 condition={"StringEquals":{"aws:RequestTag/tfiam:scope":anchor}}
         return condition
     # Only documented EC2 resource-tag authorization paths are eligible.
-    dynamic_actions={"CreateSubnet","CreateRouteTable","CreateSecurityGroup","CreateNetworkAcl","CreateNatGateway","CreateVpcEndpoint","AttachInternetGateway","DetachInternetGateway","AssociateRouteTable","ReplaceRouteTableAssociation","DisassociateRouteTable","CreateRoute","ReplaceRoute","DeleteRoute","AuthorizeSecurityGroupIngress","AuthorizeSecurityGroupEgress","RevokeSecurityGroupIngress","RevokeSecurityGroupEgress","ModifyVpcAttribute","DeleteVpc","ModifySubnetAttribute","DeleteSubnet","DeleteRouteTable","DeleteSecurityGroup","DeleteNetworkAcl","DeleteNatGateway","DeleteInternetGateway"}
+    dynamic_actions={"CreateSubnet","CreateRouteTable","CreateSecurityGroup","CreateNetworkAcl","CreateNatGateway","CreateVpcEndpoint","AttachInternetGateway","DetachInternetGateway","AssociateRouteTable","ReplaceRouteTableAssociation","DisassociateRouteTable","CreateRoute","ReplaceRoute","DeleteRoute","AuthorizeSecurityGroupIngress","AuthorizeSecurityGroupEgress","RevokeSecurityGroupIngress","RevokeSecurityGroupEgress","ModifyVpcAttribute","DeleteVpc","ModifySubnetAttribute","DeleteSubnet","DeleteRouteTable","DeleteSecurityGroup","DeleteNetworkAcl","DeleteNatGateway","DeleteInternetGateway","RunInstances","ModifyInstanceAttribute","DescribeInstanceAttribute","DescribeVpcAttribute"}
     def grant(action,targets,condition=None):
         if not targets or any(t is None for t in targets):
             omit(action); return False
@@ -114,6 +114,11 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     for action in sorted(actions,key=lambda a:(a in ("ec2:CreateTags","ec2:DeleteTags"),a)):
         short=action.split(":")[1]
         if action in EC2_GLOBAL:
+            # Preserve the lifecycle-tested region-scoped read policy for the
+            # original explicit tfiam:scope workflow. The new generated-name
+            # workflow can scope attribute reads to its opt-in Name anchor.
+            if isinstance(own,tuple) and "ec2:ResourceTag/Name" in own[1].get("StringEquals",{}) and short in ("DescribeInstanceAttribute","DescribeVpcAttribute"):
+                grant(action,[own]); continue
             emit(action,"*",{"StringEquals":{"aws:RequestedRegion":region}} if region else None); continue
         if short in CREATE and spec and spec[0]==CREATE[short][0]:
             kind,fields=CREATE[short]
@@ -151,14 +156,26 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             # Unsupported launch-template / pre-existing ENI / key-pair combinations
             # cannot safely be approximated with global grants.
             if body.get("launch_template") or body.get("network_interface"):
+                diagnose('RunInstances: launch template or pre-existing network interface requires separate authorization evidence')
                 omit(action); continue
             key=val("key_name")
             targets=[image,subnet,ec("instance","*"),ec("volume","*"),ec("network-interface","*")]+(groups or [None])
             if "key_name" in body and body.get("key_name") not in ("",None):
                 targets.append(ec("key-pair",key) if key and re.fullmatch(r"[A-Za-z0-9_.@+=,-]{1,255}",key) else None)
-            elif "key_name" in body.get("_tfiam_unknown_fields",[]) or (task and "key_name" in task.get("unknown_fields",[])):
+            elif not body.get("_tfiam_omitted_key_name") and ("key_name" in body.get("_tfiam_unknown_fields",[]) or (task and "key_name" in task.get("unknown_fields",[]))):
+                diagnose("RunInstances: configured or computed key_name unresolved")
                 targets.append(None)
-            if grant(action,targets): creates.add(short)
+            if not any(t is None for t in targets):
+                # A known launch tag restricts the newly allocated instance, not the AMI,
+                # subnet, security group, volume or ENI authorization checks.
+                instance=ec("instance","*")
+                if scope_resource_tags and request_tags():
+                    targets=[(t,request_tags()) if t==instance else t for t in targets]
+                if grant(action,targets): creates.add(short)
+            else:
+                for label,value in (("AMI",image),("subnet",subnet),("security groups",groups),("account/region",ec("instance","*"))):
+                    if not value: diagnose("RunInstances: "+label+" authorization scope unresolved")
+                omit(action)
             continue
         if short in ("AttachVolume","DetachVolume"):
             grant(action,[dep("instance_id","instance","i"),dep("volume_id","volume","vol")]); continue
@@ -219,7 +236,8 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                     for create in sorted(creates):
                         emit(action,ec(spec[0],"*"),{"StringEquals":{"ec2:CreateAction":create}})
                 tags=body.get("tags",{})
-                keys=sorted(k for k in tags if k!="tfiam:scope") if isinstance(tags,dict) else []
+                anchor_keys={k.split("/",1)[1] for k in own[1].get("StringEquals",{}) if k.startswith("ec2:ResourceTag/")}
+                keys=sorted(k for k in tags if k not in anchor_keys) if isinstance(tags,dict) else []
                 if keys:
                     emit(action,own[0],{**own[1],"ForAllValues:StringEquals":{"aws:TagKeys":keys}})
             elif short=="CreateTags" and creates and spec:

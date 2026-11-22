@@ -18,6 +18,9 @@ MAX_BYTES=32*1024*1024
 # Only fill an absent Resources field; never override a conflicting snapshot.
 DOCUMENTED_GLOBAL={"eks:createcluster","eks:describeaddonversions","ecs:describetaskdefinition","ecs:deregistertaskdefinition","ec2:describekeypairs"}
 EKS_REFERENCE="https://docs.aws.amazon.com/service-authorization/latest/reference/list_eks.html"
+EC2_REFERENCE="https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html"
+EC2_DOCUMENTED_GLOBAL={"ec2:"+x.lower() for x in "DescribeSubnets DescribeImages DescribeInstanceStatus DescribeInstances DescribeInternetGateways DescribeNetworkInterfaces DescribeRouteTables DescribeSecurityGroupRules DescribeSecurityGroups DescribeTags DescribeVolumes DescribeVpcs DescribeVpcEndpoints DescribeVpcPeeringConnections DescribeNatGateways DescribeNetworkAcls DescribeLaunchTemplates DescribeLaunchTemplateVersions".split()}
+DOCUMENTED_GLOBAL.update(EC2_DOCUMENTED_GLOBAL)
 
 def catalog_actions(version=None):
     out=set()
@@ -147,7 +150,7 @@ def audit(actions,permissions,folder):
     findings.sort(key=lambda f:(f["action"],f.get("source",""),f["code"],f.get("condition_key","")))
     return {"status":"issues" if any(f["severity"]=="error" for f in findings) else "review" if findings else "compatible",
             "actions_total":len(actions),"actions_recognized":valid,"permission_observations_checked":checked,
-            "reference_fallbacks":[{"action":a,"resource_scope":"global","reference":EKS_REFERENCE} for a in sorted(reference_fallbacks)],"missing_services":missing,"metadata_directory":str(Path(folder).resolve()),"evidence":evidence,"findings":findings,
+            "reference_fallbacks":[{"action":a,"resource_scope":"global","reference":EC2_REFERENCE if a.lower().startswith("ec2:") else "https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonelasticcontainerservice.html" if a.lower().startswith("ecs:") else EKS_REFERENCE} for a in sorted(reference_fallbacks)],"missing_services":missing,"metadata_directory":str(Path(folder).resolve()),"evidence":evidence,"findings":findings,
             "diagnostics":(["Missing service snapshots; use an updated official distribution or a complete offline snapshot."] if missing else []),
             "limitation":"Metadata compatibility only; required multi-resource groups, condition values, provider API calls and effective IAM authorization are not established."}
 

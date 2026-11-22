@@ -13,11 +13,14 @@ RESOURCE=re.compile(r'(aws_[a-z0-9_]+\.'+NAME+r')('+KEY+r')?')
 MODULE=re.compile(r'module\.('+NAME+r')('+KEY+r')?\.')
 DIRECT=re.compile(r'\x24\{(.+)\}')
 
-def anchor(body):
+def anchor(body,allow_name=False):
     tags=body.get("tags",{})
     value=tags.get("tfiam:scope") if isinstance(tags,dict) else None
-    if not isinstance(value,str) or not value: return {}
-    return tag_conditions({"tags":{"tfiam:scope":value}},"ec2:ResourceTag/")
+    if isinstance(value,str) and value: return tag_conditions({"tags":{"tfiam:scope":value}},"ec2:ResourceTag/")
+    name=tags.get("Name") if isinstance(tags,dict) else None
+    if allow_name and isinstance(name,str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{7,127}",name):
+        return tag_conditions({"tags":{"Name":name}},"ec2:ResourceTag/")
+    return {}
 
 def clean(address):
     return INDEX.sub("",address)
@@ -89,7 +92,8 @@ def allowed_refs(meta,raw,concrete,base):
     if not tokens.issubset(refs): return False
     # A literal selector must itself be present in the configuration reference;
     # a reference to the unindexed collection cannot verify its chosen element.
-    required={concrete} if concrete!=base and not tokens else {concrete,base}
+    required={concrete,concrete.rsplit(".",1)[0]} if concrete!=base and not tokens else {concrete,base}
+    if tokens: required.add(base.rsplit(".",1)[0])
     return bool(set(refs)&required) and set(refs)<=allowed
 
 def resolve_source(raw,meta,prefix,index,sources,depth=0):
@@ -137,7 +141,7 @@ def resolve_source(raw,meta,prefix,index,sources,depth=0):
         return resolve_source(call.get(name),call_cfg.get("expressions",{}).get(name,{}),parent_prefix,last.group(2),sources,depth+1)
     return None
 
-def recover(plan,address,definitions,select,body,task,sources=None):
+def recover(plan,address,definitions,select,body,task,sources=None,allow_name=False):
     out={}
     parsed=split_address(address)
     if not parsed or task.get("operation")!="create" or task.get("all_fields_masked"): return out
@@ -161,7 +165,7 @@ def recover(plan,address,definitions,select,body,task,sources=None):
         pc=parent.get("change",{})
         if pc.get("actions") not in (["create"],["delete","create"],["create","delete"]): return None
         parent_body=masked(pc.get("after") or {},pc.get("after_sensitive"),pc.get("after_unknown"))
-        condition=anchor(parent_body) if isinstance(parent_body,dict) else {}
+        condition=anchor(parent_body,allow_name) if isinstance(parent_body,dict) else {}
         if condition: return {"kind":EC2_TYPES[kind][0],"condition":condition}
         return None
     for field,raw in row[0].get(base,{}).items():
@@ -175,7 +179,7 @@ def recover(plan,address,definitions,select,body,task,sources=None):
         elif isinstance(raw,list) and raw:
             flags=unknown.get(field)
             fully_unknown=flags is True and body.get(field) is None
-            element_unknown=isinstance(flags,list) and len(flags)==len(raw) and all(x is True for x in flags) and isinstance(body.get(field),list) and len(raw)==len(body[field]) and all(x is None for x in body[field])
+            element_unknown=isinstance(flags,list) and len(flags)==len(raw) and all(x is True for x in flags) and (body.get(field) is None or isinstance(body.get(field),list) and len(raw)==len(body[field]) and all(x is None for x in body[field]))
             if not (fully_unknown or element_unknown): continue
             refs=meta.get("references",[])
             if not isinstance(refs,list): continue
@@ -193,3 +197,29 @@ def recover(plan,address,definitions,select,body,task,sources=None):
                 resolved.append(ref)
             if len(resolved)==len(raw) and all(isinstance(r,str) and r in allowed for r in refs): out[field]=resolved
     return out
+
+
+def omitted_instance_key(plan,address,sources,version):
+    """AWS v6.73.0 sends KeyName only when configured (GetOk).
+    A computed result is not a configured key on a fresh, direct launch.
+    Require independent source and plan configuration evidence.
+    """
+    if version!="6.73.0" or not sources: return False
+    parsed=split_address(address)
+    if not parsed: return False
+    prefix,base,index=parsed
+    row=sources.get(clean(prefix))
+    if not row or not base.startswith("aws_instance."): return False
+    raw=row[0].get(base)
+    cfg=one(row[4].get("resources",[]),base)
+    entry=one([r for r in plan.get("resource_changes",[]) if not r.get("deposed")],address)
+    change=entry.get("change",{})
+    if not isinstance(raw,dict) or not cfg or entry.get("provider_name")!=AWS or entry.get("mode")!="managed" or change.get("actions")!=["create"]: return False
+    expr=cfg.get("expressions")
+    if not isinstance(expr,dict): return False
+    if any(k in raw or k in expr for k in ("key_name","launch_template","network_interface","primary_network_interface")): return False
+    if not isinstance(change.get("after_unknown"),dict) or change["after_unknown"].get("key_name") is not True: return False
+    sensitive=change.get("after_sensitive")
+    if sensitive is True or isinstance(sensitive,dict) and marked(sensitive.get("key_name")): return False
+    if not isinstance(change.get("after"),dict) or change["after"].get("key_name") not in (None,""): return False
+    return True

@@ -95,6 +95,11 @@ def parse_plan(doc, phase):
             continue
         if phase == "destroy" and mode == "managed" and any(a in actions for a in ("create","update")):
             raise ValueError("Destroy phase requires a destroy-only saved plan")
+        # HashiCorp random_id creates local state, not AWS API calls.
+        if kind == "random_id" and mode == "managed" and row.get("provider_name") == "registry.terraform.io/hashicorp/random":
+            entry["status"] = "SKIPPED"
+            entry["skip_reason"] = "Local random identifier; no AWS IAM permissions"
+            continue
         if row.get("provider_name") != AWS and not (kind=="terraform_remote_state" and mode=="data" and row.get("provider_name")==BUILTIN):
             entry["status"]="UNSUPPORTED"
             warnings.append(source+": non-AWS or unidentified provider; no grants inferred")

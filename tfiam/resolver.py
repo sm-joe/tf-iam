@@ -90,6 +90,13 @@ class Context:
         self.children={}
         self.declarations={}
         self.provider_bindings={"aws":(account,region,partition)}
+        self.random_source="registry.terraform.io/hashicorp/random"
+        for _,doc in docs:
+            for terraform in groups(doc,"terraform"):
+                for required in groups(terraform,"required_providers"):
+                    if "random" in required:
+                        spec=required["random"]
+                        self.random_source=spec.get("source","hashicorp/random") if isinstance(spec,dict) else "hashicorp/random"
         for _,doc in docs:
             for group in groups(doc,"variable"):
                 self.declarations.update(group)
@@ -317,6 +324,11 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                             edges.extend({"source":addr,"reference":r} for r in sorted(refs))
                             evaluated=ctx.evaluate(body)
                             evaluated["_tfiam_context"]=ctx.provider_context(body)
+                            evaluated.pop("_tfiam_local_random_id",None)
+                            if category=="resource" and kind=="random_id" and ctx.random_source in ("hashicorp/random","registry.terraform.io/hashicorp/random"):
+                                provider=body.get("provider","random")
+                                if provider in ("random","${random}"):
+                                    evaluated["_tfiam_local_random_id"]=True
                             # A generated ID is never fabricated. Only direct references to
                             # same-context, explicitly tagged managed EC2 parents qualify.
                             dynamic={}

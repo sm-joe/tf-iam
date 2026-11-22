@@ -138,3 +138,27 @@ def test_external_group_attachment_unknown_policy_is_blocked(tmp_path):
     result=scan(tmp_path,account="123456789012")
     assert {p["action"] for p in result["permissions"]}=={"iam:ListAttachedGroupPolicies"}
     assert {p["action"] for p in result["unresolved_permissions"]}=={"iam:AttachGroupPolicy","iam:DetachGroupPolicy"}
+
+
+def test_local_random_id_does_not_block_aws_generation(tmp_path):
+    put(tmp_path,"main.tf.json",{"terraform":{"required_providers":{"random":{"source":"hashicorp/random"}}},"resource":{"random_id":{"suffix":{"byte_length":4}},"aws_s3_bucket":{"b":{"bucket":"known-fixture-bucket"}}}})
+    report=scan(tmp_path,account="123456789012",region="us-east-1")
+    entry=next(x for x in report["resources"] if x["type"]=="random_id")
+    assert entry["mapping_status"]=="SKIPPED"
+    assert report["mapping_coverage"]["unmapped_resources"]==0
+    assert not any(x["source"]=="random_id.suffix" for x in report["permissions"])
+    dest=tmp_path/"policy.json"
+    assert main(["generate",str(tmp_path),"--aws-account","123456789012","--aws-region","us-east-1","--output",str(dest)])==0
+    assert dest.exists()
+
+
+def test_random_id_unknown_bucket_and_custom_provider_still_block(tmp_path):
+    config={"resource":{"random_id":{"suffix":{"byte_length":4}},"aws_s3_bucket":{"b":{"bucket":"fixture-${random_id.suffix.hex}"}}}}
+    put(tmp_path,"main.tf.json",config)
+    report=scan(tmp_path,account="123456789012",region="us-east-1")
+    assert report["unresolved_permissions"]
+    assert not any(x["scope"]=="*" for x in report["permissions"] if x["action"].startswith("s3:"))
+    config["terraform"]={"required_providers":{"random":{"source":"example/custom"}}}
+    put(tmp_path,"main.tf.json",config)
+    report=scan(tmp_path,account="123456789012",region="us-east-1")
+    assert report["mapping_coverage"]["unmapped_resources"]==1

@@ -4,7 +4,7 @@ from .catalog_loader import get_rule, actions_for, operation_actions, attribute_
 from .plan import parse_plan
 from .provider_context import validate as validate_contexts, plan_contexts
 from .plan_roles import recover_role_arn
-from .plan_buckets import recover_bucket, source_only_resources
+from .plan_buckets import recover_bucket, source_only_resources, recover_random_bucket_pattern
 from .risk import assess
 from .resolver import discover
 from .versioning import selected_version, evidence_status
@@ -21,8 +21,9 @@ def blocks(doc, key):
 def literal(v):
     return v if isinstance(v,str) and v and not any(c in v for c in ('${','%{','*','?')) else None
 
-def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None, scope_resource_tags=False, provider_version=None, authorization_metadata=None, provider_contexts=None):
+def scan(root=None, phase='apply', account=None, region=None, partition='aws', backend_config=None, plan=None, var_files=None, variables=None, scope_resource_tags=False, provider_version=None, authorization_metadata=None, provider_contexts=None, scope_generated_names=False):
     provider_contexts=validate_contexts(provider_contexts)
+    if scope_generated_names and plan is not None: scope_resource_tags=True
     default_context=provider_contexts.get("aws",(account,region,partition))
     if root is None and plan is None: raise ValueError('Provide a Terraform directory or saved plan JSON')
     has_root=root is not None
@@ -156,6 +157,8 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
             for i,(source,module_path,doc) in enumerate(resolved_docs):
                 key='resolved:'+str(i); module_paths[key]=(source,module_path); analysis_docs.append((key,doc))
         role_targets={}
+        profile_targets={}
+        current_role_targets={}
         identity_targets={}
         if plan is not None:
             analysis_docs=[]
@@ -167,7 +170,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                 analysis_docs.append((key,{entry['mode']:{entry['type']:{'instance':body}}}))
                 if entry['type']=='aws_iam_role' and entry['mode'] in ('resource','data'):
                     role=resolve(body.get('name')); arn=role_arn(body)
-                    if role and arn and context: role_targets.setdefault((account,partition,role),set()).add(arn)
+                    if role and arn and context:
+                        role_targets.setdefault((account,partition,role),set()).add(arn)
+                        if task['operation'] in ('create','update','read'): current_role_targets.setdefault((account,partition,role),set()).add(arn)
                 if entry['type'] in ('aws_iam_user','aws_iam_group') and entry['mode'] in ('resource','data'):
                     kind=entry['type'].split('_')[-1]
                     identity_name=resolve(body.get('name') or body.get('user_name') or body.get('group_name'))
@@ -181,6 +186,18 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                         target=f'arn:{partition}:iam::{account}:{kind}{path}{identity_name}'
                     else: target=None
                     if target and context: identity_targets.setdefault((account,partition,kind,identity_name),set()).add(target)
+            # Named IAM identities are unique within the account. Use a single
+            # current managed profile/role candidate only; never guess its path.
+            for task in plan_tasks:
+                entry=task['entry']; body=task['body']
+                if entry['type']!='aws_iam_instance_profile' or entry['mode']!='resource' or task['operation'] not in ('create','update','read'): continue
+                context=select_context(entry['address'])
+                if context is None: continue
+                a,rg,p=context
+                name=literal(body.get('name')); role=literal(body.get('role'))
+                targets=current_role_targets.get((a,p,role),set())
+                if name and len(targets)==1:
+                    profile_targets.setdefault((a,p,name),set()).update(targets)
         for src,doc in analysis_docs:
             for category in ('resource','data'):
                 for group in blocks(doc,category):
@@ -197,6 +214,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             resource_phase=('plan' if operation=='read' else 'destroy' if operation=='delete' else 'apply') if task else phase
                             if typ=='terraform_remote_state' and category=='data':
                                 backend(body.get('backend','unknown'),body.get('config',{}),address,True); continue
+                            if not task and typ=='random_id' and category=='resource' and body.get('_tfiam_local_random_id') is True:
+                                report['resources'].append({'address':address,'type':typ,'mode':category,'status':'SKIPPED','file':source,'skip_reason':'Local random identifier; no AWS IAM permissions'})
+                                continue
                             rule=get_rule(category,typ,version)
                             entry=task['entry'] if task else {'address':address,'type':typ,'mode':category,'status':'PARTIAL' if rule else 'UNSUPPORTED'}
                             if not task: entry['file']=source; report['resources'].append(entry)
@@ -219,17 +239,45 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if task and category=='resource':
                                 from .optimization import minimize
                                 acts=minimize(typ,acts,body,task)
+                            # Inline network rules are provider operations, not separate
+                            # Terraform resources. Retain their action candidates.
+                            if category=='resource' and resource_phase=='apply':
+                                extras=set()
+                                if typ=='aws_route_table' and (body.get('route') or unknown_field('route') or task and task.get('before',{}).get('route')):
+                                    if not task or operation=='create': extras.add('ec2:CreateRoute')
+                                    if not task or operation=='update' and (unknown_field('route') or body.get('route')!=task.get('before',{}).get('route')):
+                                        extras.update(('ec2:CreateRoute','ec2:ReplaceRoute','ec2:DeleteRoute'))
+                                if typ=='aws_security_group' and operation=='create':
+                                    extras.add('ec2:RevokeSecurityGroupEgress')
+                                    for field,action in (('ingress','ec2:AuthorizeSecurityGroupIngress'),('egress','ec2:AuthorizeSecurityGroupEgress')):
+                                        if body.get(field) or unknown_field(field): extras.add(action)
+                                acts=sorted(set(acts)|extras)
                             def emit(action,target,condition=None):
                                 add('aws',[action],target,address,condition=condition)
                             def omit(action):
                                 unresolved(address,action)
                             if task and scope_resource_tags and has_root:
                                 from .plan_network import recover, anchor
-                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task,network_sources)}
+                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task,network_sources,allow_name=scope_generated_names)}
                                 if operation=='create' and typ in EC2_TYPES and not body.get('id'):
-                                    body['_tfiam_self_tags']=anchor(body)
+                                    body['_tfiam_self_tags']=anchor(body,scope_generated_names)
+                                    if scope_generated_names and 'ec2:ResourceTag/Name' in body['_tfiam_self_tags'].get('StringEquals',{}):
+                                        info(address+': opt-in EC2 Name tag scope; names are not unique and tag mutation must be controlled independently.')
+                            if task and operation in ('create','update','read') and typ in ('aws_instance','aws_iam_instance_profile'):
+                                # Only current role identities from same account/partition.
+                                if typ=='aws_instance':
+                                    targets=profile_targets.get((account,partition,resolve(body.get('iam_instance_profile'))),set())
+                                else:
+                                    targets=current_role_targets.get((account,partition,resolve(body.get('role'))),set())
+                                if len(targets)==1:
+                                    body['_tfiam_profile_role_arn']=next(iter(targets))
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
-                                network(typ,body,acts,account,region,partition,resolve,emit,omit,task,scope_resource_tags=scope_resource_tags)
+                                if task and typ=='aws_instance' and operation=='create' and has_root:
+                                    from .plan_network import omitted_instance_key
+                                    if omitted_instance_key(plan,address,network_sources,version):
+                                        body['_tfiam_omitted_key_name']=True
+                                        info(address+': optional computed key_name is absent from source and plan configuration; no key-pair authorization required for direct creation.')
+                                network(typ,body,acts,account,region,partition,resolve,emit,omit,task,scope_resource_tags=scope_resource_tags,diagnose=lambda message: warn(address+': '+message))
                                 continue
                             if typ in ELB_TYPES:
                                 elb(typ,body,acts,account,region,partition,resolve,emit,omit,task)
@@ -286,6 +334,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                         else:
                                             for action in attr['actions']: unresolved(address,action)
                             scope='*'
+                            generated_bucket=False
                             if p=='aws' and typ.startswith('aws_s3_'):
                                 bucket=resolve(body.get('bucket'))
                                 if not bucket and task and operation in ('create','update') and has_root:
@@ -296,6 +345,13 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 if bucket and typ=='aws_s3_object':
                                     key=resolve(body.get('key')); scope=f'arn:{partition}:s3:::{bucket}/{key}' if key else '*'
                                 elif bucket: scope=f'arn:{partition}:s3:::{bucket}'
+                                elif scope_generated_names and task and has_root and operation=='create' and account:
+                                    pattern=recover_random_bucket_pattern(plan,address,definitions,select_context)
+                                    if pattern:
+                                        scope=f'arn:{partition}:s3:::{pattern}'
+                                        generated_bucket=True
+                                        info(address+': opt-in bounded bucket name pattern; matches other names of the same length and prefix. Review namespace ownership.')
+                                        report['resolved_dependencies'].append({'source':address,'action':'S3 generated bucket name','scope':scope,'method':'fixed-width random_id hex pattern from saved plan and source'})
                             if p=='aws' and typ=='aws_dynamodb_table' and account and region and literal(body.get('name')): scope=f'arn:{partition}:dynamodb:{region}:{account}:table/{body["name"]}'
                             if p=='aws' and typ=='aws_sqs_queue' and account and region and literal(body.get('name')): scope=f'arn:{partition}:sqs:{region}:{account}:{body["name"]}'
                             if typ=='aws_iam_role': scope=role_arn(body) or '*'
@@ -449,7 +505,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if scope=='*' and (typ.startswith('aws_s3_') or typ in ('aws_dynamodb_table','aws_sqs_queue')):
                                 for action in acts: unresolved(address,action)
                                 acts=[]
-                            add(p,acts,scope,address)
+                            if generated_bucket:
+                                for action in acts:
+                                    add(p,[action],scope,address,condition={'StringEquals':{'s3:ResourceAccount':account}} if action!='s3:CreateBucket' else None)
+                            else: add(p,acts,scope,address)
                             # Delegation and boundary approval appear in the risk inventory.
                             if typ=='aws_instance' and body.get('iam_instance_profile'): warn(address+': instance profile PassRole dependency unresolved; permission omitted')
                             if scope=='*': warn(address+': exact resource scope not inferred')
@@ -508,7 +567,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     else: report['authorization_metadata']={'status':'not-run','metadata_source':'not-packaged-in-source-checkout'}
 
     report['permissions'].sort(key=lambda p:(p['provider'],p['action'],p['scope'],p['source']))
-    report['scope_summary']={'global':sum(p['scope']=='*' for p in report['permissions']),'bounded_wildcard':sum(p['scope']!='*' and '*' in p['scope'] for p in report['permissions']),'exact':sum('*' not in p['scope'] and '?' not in p['scope'] for p in report['permissions']),'conditional':sum(bool(p.get('condition')) for p in report['permissions']),'unresolved':len(report['unresolved_permissions'])}
+    report['scope_summary']={'global':sum(p['scope']=='*' for p in report['permissions']),'bounded_wildcard':sum(p['scope']!='*' and ('*' in p['scope'] or '?' in p['scope']) for p in report['permissions']),'exact':sum('*' not in p['scope'] and '?' not in p['scope'] for p in report['permissions']),'conditional':sum(bool(p.get('condition')) for p in report['permissions']),'unresolved':len(report['unresolved_permissions'])}
     report['unresolved_permissions'].sort(key=lambda x:(x['source'],x['action']))
     report['risks'] = assess(report['permissions'])
     return report
