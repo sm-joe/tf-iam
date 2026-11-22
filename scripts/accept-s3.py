@@ -57,22 +57,31 @@ def check_operations(plan,expected):
         raise ValueError("Unexpected lifecycle operations; refusing apply")
     return rows
 
+def candidate_for(info):
+    import tempfile
+    records=[]
+    with tempfile.TemporaryDirectory(prefix="tfiam-s3-policy-") as tmp:
+        path=Path(tmp)
+        for name in info["buckets"]:
+            write(path/"main.tf.json",config(info["version"],info["region"],name))
+            r=scan(path,account=info["account"],region=info["region"],provider_version=info["version"])
+            if r["unresolved_permissions"] or r["mapping_coverage"]["mapped_resources"]!=3: raise ValueError("Fixture candidate scan incomplete")
+            records.extend(r["permissions"])
+    candidate=policy({"permissions":records},"aws","S3Acceptance",None)
+    grants(candidate)
+    return candidate
+
 def prepare(args):
     root=args.directory.resolve()
     if not VERSION.fullmatch(args.version) or not re.fullmatch(r"[0-9]{12}",args.account) or not re.fullmatch(r"[a-z]{2}-[a-z]+-[0-9]+",args.region): raise ValueError("Invalid version, account or commercial AWS region")
     root.mkdir(mode=0o700,parents=False,exist_ok=False)
     prefix="tfiam-test-"+uuid.uuid4().hex
     names=[prefix+"-a",prefix+"-b"]
-    records=[]
-    for name in names:
-        write(root/"main.tf.json",config(args.version,args.region,name))
-        r=scan(root,account=args.account,region=args.region,provider_version=args.version)
-        if r["unresolved_permissions"] or r["mapping_coverage"]["mapped_resources"]!=3: raise ValueError("Fixture candidate scan incomplete")
-        records.extend(r["permissions"])
-    candidate=policy({"permissions":records},"aws","S3Acceptance",None)
-    grants(candidate)
+    info={"version":args.version,"account":args.account,"region":args.region,"buckets":names}
+    candidate=candidate_for(info)
     write(root/"candidate-policy.json",candidate)
-    write(root/"prepare.json",{"version":args.version,"account":args.account,"region":args.region,"buckets":names,"candidate_sha256":digest(root/"candidate-policy.json")})
+    info["candidate_sha256"]=digest(root/"candidate-policy.json")
+    write(root/"prepare.json",info)
     write(root/"main.tf.json",config(args.version,args.region,names[0]))
     print("Prepared isolated fixture:",root)
     print("Review candidate-policy.json and attach only these grants to a new dedicated test role. No cloud changes performed.")
@@ -80,7 +89,11 @@ def prepare(args):
 def run(args):
     import boto3
     from botocore.exceptions import ClientError
+    from botocore.config import Config
+    client_config=Config(ignore_configured_endpoint_urls=True)
     root=args.directory.resolve()
+    if root.stat().st_mode & 0o077: raise ValueError("Fixture directory must be private (0700)")
+    if any(x.is_symlink() for x in root.iterdir()): raise ValueError("Fixture files must not be symlinks")
     info=json.loads((root/"prepare.json").read_bytes())
     candidate=json.loads((root/"candidate-policy.json").read_bytes())
     if digest(root/"candidate-policy.json")!=info["candidate_sha256"]: raise ValueError("Candidate changed after preparation")
@@ -89,17 +102,24 @@ def run(args):
     expected_grants=grants(candidate)
     if not all(re.fullmatch(r"tfiam-test-[a-f0-9]{32}-[ab]",b) for b in info["buckets"]) or len(set(info["buckets"]))!=2: raise ValueError("Invalid fixture bucket identities")
     if {r for _,r in expected_grants}!={"arn:aws:s3:::"+b for b in info["buckets"]}: raise ValueError("Candidate scopes do not match fixture buckets")
+    if not VERSION.fullmatch(info["version"]) or not re.fullmatch(r"[0-9]{12}",info["account"]) or not re.fullmatch(r"[a-z]{2}-[a-z]+-[0-9]+",info["region"]): raise ValueError("Invalid fixture context")
+    if expected_grants!=grants(candidate_for(info)): raise ValueError("Candidate differs from regenerated fixture policy")
     if any(x.name not in {"prepare.json","candidate-policy.json","main.tf.json"} for x in root.iterdir()): raise ValueError("Acceptance requires a fresh dedicated fixture directory")
     if any(x.is_symlink() for x in root.iterdir()): raise ValueError("Fixture files must not be symlinks")
+    if json.loads((root/"main.tf.json").read_bytes())!=config(info["version"],info["region"],info["buckets"][0]): raise ValueError("Fixture configuration changed since preparation")
     region=info["region"]; version=info["version"]
     test=boto3.Session(profile_name=args.test_profile,region_name=region)
-    frozen=test.get_credentials().get_frozen_credentials()
-    if not frozen.token: raise ValueError("Test identity must use temporary assumed-role credentials")
+    credentials=test.get_credentials()
+    if credentials is None: raise ValueError("Test profile has no AWS credentials")
+    frozen=credentials.get_frozen_credentials()
+    if not frozen or not frozen.token: raise ValueError("Test identity must use temporary assumed-role credentials")
     fixed=boto3.Session(aws_access_key_id=frozen.access_key,aws_secret_access_key=frozen.secret_key,aws_session_token=frozen.token,region_name=region)
-    identity=fixed.client("sts").get_caller_identity()
+    identity=fixed.client("sts",config=client_config).get_caller_identity()
     if identity["Account"]!=info["account"] or not re.fullmatch(r"arn:aws:sts::"+info["account"]+r":assumed-role/"+re.escape(args.role_name)+r"/[^/]+",identity["Arn"]): raise ValueError("Unexpected test identity")
     auditor=boto3.Session(profile_name=args.audit_profile,region_name=region)
-    iam=auditor.client("iam")
+    audit_identity=auditor.client("sts",config=client_config).get_caller_identity()
+    if audit_identity["Account"]!=info["account"] or audit_identity["UserId"].split(":")[0]==identity["UserId"].split(":")[0]: raise ValueError("Audit profile must be a separate identity in the fixture account")
+    iam=auditor.client("iam",config=client_config)
     def check_role():
         role=iam.get_role(RoleName=args.role_name)["Role"]
         if identity["UserId"].split(":")[0]!=role["RoleId"]: raise ValueError("Role identity mismatch")
@@ -108,20 +128,24 @@ def run(args):
         if grants(existing)!=expected_grants: raise ValueError("Test role's identity grants differ from the reviewed candidate")
         return role["Arn"]
     role_arn=check_role()
+    checkout=Path(__file__).resolve().parents[1]
+    source_commit=subprocess.check_output(["git","rev-parse","HEAD"],cwd=checkout,text=True).strip()
+    if not re.fullmatch(r"[a-f0-9]{40}",source_commit) or subprocess.check_output(["git","status","--porcelain","--untracked-files=no"],cwd=checkout).strip(): raise ValueError("Run acceptance from a clean committed repository checkout")
     # Prevent ambient AWS or Terraform CLI settings from changing credentials,
     # backend, provider source, CLI arguments or workspace.
     env={k:v for k,v in os.environ.items() if not k.startswith(("AWS_","TF_"))}
     (root/"terraform-cli.rc").write_text("")
     env.update({"AWS_ACCESS_KEY_ID":frozen.access_key,"AWS_SECRET_ACCESS_KEY":frozen.secret_key,"AWS_SESSION_TOKEN":frozen.token,"AWS_REGION":region,"AWS_DEFAULT_REGION":region,"AWS_EC2_METADATA_DISABLED":"true","TF_IN_AUTOMATION":"1","TF_CLI_CONFIG_FILE":str(root/"terraform-cli.rc")})
-    evidence={"schema_version":1,"fixture":"s3-general-purpose-empty","provider_version":version,"candidate_sha256":info["candidate_sha256"],"role_arn":role_arn,"session_arn":identity["Arn"],"region":region,"start":now(),"steps":{},"status":"incomplete"}
+    evidence={"schema_version":1,"fixture":"s3-general-purpose-empty","provider_version":version,"source_commit":source_commit,"candidate_sha256":info["candidate_sha256"],"role_arn":role_arn,"session_arn":identity["Arn"],"region":region,"start":now(),"steps":{},"status":"incomplete"}
     out=root/"lifecycle-evidence.json"
     write(out,evidence)
     def command(label,*arguments,allowed=(0,)):
-        result=subprocess.run(["terraform",*arguments],cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        result=subprocess.run(["terraform",*arguments],cwd=root,env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=1800)
         (root/(label+".log")).write_bytes(result.stdout+b"\n"+result.stderr)
         if result.returncode not in allowed: raise ValueError(label+" failed; inspect private local log")
         return result.stdout
     def stage(name,expected,extra=(),apply=True):
+        check_role()
         print("Lifecycle:",name,flush=True)
         path=root/(name+".tfplan")
         command(name+"-plan","plan","-input=false","-out="+str(path),*extra)
@@ -129,7 +153,9 @@ def run(args):
         # Terraform's binary plans and local logs must remain private.
         shown=subprocess.run(["terraform","show","-json",str(path)],cwd=root,env=env,check=True,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL).stdout
         actions=check_operations(json.loads(shown),expected)
+        check_role()
         if apply: command(name+"-apply","apply","-input=false",str(path))
+        check_role()
         evidence["steps"][name]={"status":"passed","operations":actions,"plan_sha256":digest(path),"completed":now()}
         write(out,evidence)
     try:
@@ -144,12 +170,16 @@ def run(args):
         write(root/"main.tf.json",config(version,region,info["buckets"][1],updated=True,create_first=True))
         stage("replace-create-first",["create","delete"])
         stage("destroy",["delete"],("-destroy",))
+        state=command("verify-empty-state","state","list")
+        if state.strip(): raise ValueError("Fixture state is not empty after destroy")
+        evidence["empty_state_verified"]=True
         try:
-            fixed.client("s3").list_buckets()
+            fixed.client("s3",config=client_config).list_buckets()
         except ClientError as exc:
             if exc.response.get("Error",{}).get("Code") not in ("AccessDenied","AccessDeniedException"): raise
         else: raise ValueError("Negative authorization failed: ListAllMyBuckets was allowed")
         evidence["negative_authorization"]="passed"
+        evidence["negative_action"]="s3:ListAllMyBuckets"
         check_role()
         evidence["identity_grants_rechecked"]=True
         evidence["status"]="fixture-passed"

@@ -28,7 +28,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     has_root=root is not None
     root=Path(root or '.').resolve()
     if not root.is_dir(): raise ValueError('Terraform directory does not exist')
-    report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'information':[], 'resolved_dependencies':[], 'backends':[], 'unresolved_permissions':[]}
+    report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'information':[], 'resolved_dependencies':[], 'backends':[], 'unresolved_permissions':[], 'input_blockers':[]}
     report['catalog']={'schema_version':CATALOG['schema_version'],'provider':CATALOG['provider'],'provider_version':None}
     provider_selection=selected_version(root if has_root else None,provider_version)
     version=provider_selection['version']
@@ -53,6 +53,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
         entries,plan_tasks,plan_warnings,meta=parse_plan(plan,phase)
         report['input']='terraform-plan-json'; report['plan']=meta; report['resources']=entries
         for message in plan_warnings: warn(message)
+        if meta.get('complete') is False or meta.get('deferred'): report['input_blockers'].append('Incomplete or deferred saved plan')
         unknown=sum(e['unknown_values'] for e in entries)
         sensitive=sum(e['sensitive_values'] for e in entries)
         if unknown: info(f'{unknown} planned resources contain computed or unknown values; masked values are not used for permission inference.')
@@ -82,6 +83,8 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     resolved_docs=[]
     if plan is None:
         resolved_docs,report['modules'],report['dependencies']=discover(root,account,region,partition,var_files,variables,warn,provider_contexts=provider_contexts)
+        for module in report['modules']:
+            if module.get('status')=='UNRESOLVED': report['input_blockers'].append('Unresolved static module')
     elif var_files or variables: raise ValueError('Variable overrides cannot be used with an already evaluated saved plan')
     def visit(folder,is_root=False):
         account,region,partition=default_context
@@ -94,14 +97,16 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
         docs=[]
         for f in files:
             src=str(f.relative_to(root)) if f.is_relative_to(root) else str(f)
+            if not f.resolve().is_relative_to(root):
+                warn(src+': source outside scan root'); report['input_blockers'].append('Source outside scan root'); continue
             try:
                 if f.name.endswith('.json'): doc=json.loads(f.read_text())
                 else:
                     import hcl2
                     with f.open() as handle: doc=hcl2.load(handle)
             except Exception as e:
-                warn(src+': parse failed ('+type(e).__name__+'); file not analyzed'); continue
-            if not isinstance(doc,dict): warn(src+': invalid document'); continue
+                warn(src+': parse failed ('+type(e).__name__+'); file not analyzed'); report['input_blockers'].append('Source parse failure'); continue
+            if not isinstance(doc,dict): warn(src+': invalid document'); report['input_blockers'].append('Invalid source document'); continue
             docs.append((src,doc))
         definitions={}
         for _,doc in docs:
@@ -136,6 +141,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
             name=resolve(body.get('name'),seen)
             path=resolve(body.get('path','/'),seen)
             return f'arn:{partition}:iam::{account}:role{path}{name}' if account and name and path else None
+        network_sources=None
+        if plan is not None and has_root and scope_resource_tags:
+            from .plan_network import source_index
+            network_sources=source_index(root,plan,definitions)
         task_lookup={}
         if plan is not None and has_root:
             report["source_only_resources"]=source_only_resources(plan,definitions)
@@ -216,7 +225,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 unresolved(address,action)
                             if task and scope_resource_tags and has_root:
                                 from .plan_network import recover, anchor
-                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task)}
+                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task,network_sources)}
                                 if operation=='create' and typ in EC2_TYPES and not body.get('id'):
                                     body['_tfiam_self_tags']=anchor(body)
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
@@ -229,10 +238,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
                             if category=='resource':
-                                if typ in ('aws_db_instance','aws_rds_cluster') and resource_phase=='apply' and (not task or operation=='create') and (body.get('snapshot_identifier') or unknown_field('snapshot_identifier')):
-                                    create='rds:CreateDBCluster' if typ=='aws_rds_cluster' else 'rds:CreateDBInstance'
-                                    restore='rds:RestoreDBClusterFromSnapshot' if typ=='aws_rds_cluster' else 'rds:RestoreDBInstanceFromDBSnapshot'
-                                    if create in acts: acts=sorted(set([a for a in acts if a!=create]+[restore]))
+                                if resource_phase=='apply':
+                                    from .dependencies import rds_create_actions
+                                    acts,blocked=rds_create_actions(typ,body,acts,task)
+                                    for action in blocked: omit(action)
                                 dependencies(typ,body,acts,account,region,partition,resolve,emit,omit,task,resource_phase)
                             if rule.get('scope_strategy'):
                                 expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task,unresolved=omit)
