@@ -136,6 +136,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
             name=resolve(body.get('name'),seen)
             path=resolve(body.get('path','/'),seen)
             return f'arn:{partition}:iam::{account}:role{path}{name}' if account and name and path else None
+        network_sources=None
+        if plan is not None and has_root and scope_resource_tags:
+            from .plan_network import source_index
+            network_sources=source_index(root,plan,definitions)
         task_lookup={}
         if plan is not None and has_root:
             report["source_only_resources"]=source_only_resources(plan,definitions)
@@ -216,7 +220,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 unresolved(address,action)
                             if task and scope_resource_tags and has_root:
                                 from .plan_network import recover, anchor
-                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task)}
+                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task,network_sources)}
                                 if operation=='create' and typ in EC2_TYPES and not body.get('id'):
                                     body['_tfiam_self_tags']=anchor(body)
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
