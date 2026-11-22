@@ -1,25 +1,25 @@
-# Release acceptance gates
+# Release Acceptance Gates
 
-## Evidence reported by the maintainer
+## Stable v1.0.0 Evidence
 
-- [x] EKS no-op saved plan: 13 mapped resources, read-only candidates, exact Pod Identity ARN.
-- [x] EKS destroy plan: 13 mapped resources and five conditional detach permissions; no resources destroyed.
-- [x] AWS catalog action-name audit: 442 recognized actions, zero findings.
-- [x] AWS provider lockfile extraction (6.73.0).
-- [x] IAM Access Analyzer integration returned zero findings for the submitted policy.
-- [x] Live IAM policy retrieval and comparison against an existing read-only role.
-- [x] CloudTrail connectivity and empty-result handling; the selected role was not used in the period.
-- [x] CI and standalone binary build on prior merged commits.
+The Initial Stable Release Was Validated Against AWS Provider 6.73.0 At Source Commit `261cd42ffe8abd8d7a0356b769f43be4f0da29fd`.
 
-## Outstanding stable-release requirements
+| Evidence | Result |
+| --- | --- |
+| Exact-Source CI And Linux Binary Smoke Tests | Passed |
+| Restricted-Role S3, SQS, VPC/subnet And DynamoDB Lifecycle Fixtures | Passed |
+| Create, Read, Update, Destroy And Both Replacement Orders | Passed |
+| Negative Authorization And Empty-State Verification | Passed |
+| IAM Access Analyzer | No Findings For The Four Candidate Policies |
+| Session-Filtered CloudTrail Management Events | 441 Matched; Zero Unmapped Operations |
+| Module Resolution, Backend Locking, Risk Gates And Sensitive-Value Regression Tests | Passed |
+| Reviewed Evidence Manifest And Signed Linux Build | Passed |
+| Stable v1.0.0 Publication | Completed |
 
-- [ ] Exact final commit CI and binary smoke test.
-- [ ] Real isolated AWS create, read, update, delete and both replacement order tests using separate restricted Terraform identities for S3, SQS, DynamoDB and VPC/subnet; service-specific denied operations and empty-state verification. Collect all four results using the structured evidence bundle described in [release process](release-process.md).
-- [ ] Verify provider-version-specific API calls and action/ARN/condition compatibility across supported service families.
-- [ ] Positive CloudTrail role activity and denial observations; verify no false claim of unused permissions.
-- [ ] Validate module resolution, backend locking, privilege separation, security gates and secret redaction with reviewed evidence.
-- [ ] Verify binary repeatability and signed build provenance.
-- [ ] Digest-verified acceptance manifest linked to the exact release commit.
-- [ ] Publish stable release only after review.
+The Signed Build Is Recorded In [GitHub Actions](https://github.com/sm-joe/tf-iam/actions/runs/45046329922). Download The Executable And Attested Source Receipt From The [Stable Release](https://github.com/sm-joe/tf-iam/releases/tag/v1.0.0).
 
-Unit tests and metadata compatibility do not substitute for live authorization verification. No production IAM policy should be attached solely on the basis of these reports.
+## Validation Scope
+
+The Four Isolated Fixtures Validate Only Their Tested Configurations. Catalog-Wide Provider Call Verification Remains Incomplete; Conditional Dependencies And Missing Candidates Require Review. The CloudTrail Report Is Session-Filtered And Does Not Cover Every Authorization Decision. VPC Default-Resource Discovery And S3 Tagging Fallback Limitations Are Documented In The [Provider Validation Guide](provider-validation.md) And [README](../README.md).
+
+For Future Releases, Follow The [Release Process](release-process.md), Collecting Fresh Evidence Against The Exact Source To Be Released. Unit Tests And Metadata Compatibility Do Not Substitute For Live Authorization Verification. Do Not Attach Production Policies Solely On The Basis Of These Reports.
