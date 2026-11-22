@@ -11,7 +11,7 @@ tf-iam Is An Open-Source Security CLI That Analyzes Terraform Configurations And
 
 Designed For Cloud Security, Platform Engineering And DevSecOps Teams, It Fits Into Existing Infrastructure-As-Code Workflows Without Deploying Resources, Modifying IAM Policies Or Requiring AWS Credentials For Offline Analysis.
 
-**[Download v1.0.0](https://github.com/sm-joe/tf-iam/releases/tag/v1.0.0)** · [Command Reference](#command-reference) · [Coverage](#coverage-and-validation) · [Security](SECURITY.md)
+**[Download v1.1.0](https://github.com/sm-joe/tf-iam/releases/tag/v1.1.0)** · [Command Reference](#command-reference) · [Coverage](#coverage-and-validation) · [Security](SECURITY.md)
 
 ## Why tf-iam?
 
@@ -36,7 +36,7 @@ Determining The Permissions A Terraform Deployment Identity Needs Is Difficult W
 | Automation | Machine-Readable JSON, Human-Readable Tables And Configurable Failure Gates |
 | Distribution | Standalone Linux x86_64 Executable And Python Source Installation |
 
-The Current Published Stable Release Is v1.0.0. The Default Branch Also Contains Upcoming v1.1.0 Features; `pack-policy` And `--scope-generated-names` Require A Build From The Newer Source Until Publication.
+The Current Published Stable Release Is v1.1.0, Including `pack-policy` And `--scope-generated-names`.
 
 ## Installation
 
@@ -53,7 +53,7 @@ Requirements: Linux x86_64, Bash And Authenticated GitHub CLI For Download And P
   cd "$WORK_DIR"
 
   gh auth status
-  gh release download v1.0.0 --repo sm-joe/tf-iam \
+  gh release download v1.1.0 --repo sm-joe/tf-iam \
     --pattern tfiam --pattern SHA256SUMS --pattern release-source.json
 
   sha256sum -c SHA256SUMS
@@ -92,7 +92,7 @@ Requires Python 3.10+ And Git. The Optional AWS Extra Enables Live Integrations.
 ~~~bash
 git clone https://github.com/sm-joe/tf-iam.git
 cd tf-iam
-git checkout v1.0.0
+git checkout v1.1.0
 
 python3 -m venv .venv
 source .venv/bin/activate
@@ -164,7 +164,7 @@ The Version-Aware Catalog Is Selected From Existing Provider Lockfile Informatio
 | generate | Render Candidate IAM Policies Or Terraform JSON |
 | compare | Compare With Existing Grants From A Policy Or IAM Role |
 | split | Partition Planner, Applier And Break-Glass Candidates |
-| pack-policy | Optimize And Partition Generated Policies Within AWS Size Quotas (Upcoming v1.1.0) |
+| pack-policy | Optimize And Partition Generated Policies Within AWS Size Quotas |
 | catalog-audit | Check Catalog Actions Against AWS Authorization Metadata |
 | validate-policy | Run AWS IAM Access Analyzer Policy Validation |
 | runtime-audit | Compare CloudTrail Observations With Scan Candidates |
@@ -210,7 +210,7 @@ tfiam generate ./infra \
 
 Generation Rejects Unmapped Resources And Unresolved Grants By Default. The Explicit `--allow-partial` Override Permits Candidate Output For Review, But Does Not Disable Configured Security Gates Or Definite Metadata Compatibility Failures. Do Not Treat Partial Output As Deployment-Ready.
 
-### Policy Size Management (Upcoming v1.1.0)
+### Policy Size Management
 
 Optimize A Generated Allow Policy Without Changing Its Action, Resource Or Condition Grants:
 
@@ -291,7 +291,7 @@ tfiam scan ./infra \
 
 The Output Is A Combined Candidate; Review And Partition Grants By Actual Deployment Identity. Credential And Assume-Role Contexts Are Not Guessed. For Supported Dynamic EC2 Dependencies, `--scope-resource-tags` Can Use A Known `tfiam:scope` Tag As An Authorization Anchor. The Condition Covers All Matching Resources, So Use Controlled Unique Tags And Restrict Tag Mutation.
 
-For Saved Plans, `--scope-generated-names` Opts Into Corroborated EC2 Name-Tag Scopes And Bounded Random S3 Bucket Patterns. These Patterns Can Match Other Resources; Review Namespace Ownership, Tag Mutation And Collision Risk. This Option Is Available In The Upcoming v1.1.0 Build.
+For Saved Plans, `--scope-generated-names` Opts Into Corroborated EC2 Name-Tag Scopes And Bounded Random S3 Bucket Patterns. These Patterns Can Match Other Resources; Review Namespace Ownership, Tag Mutation And Collision Risk.
 
 ## CI/CD Security Gates
 
@@ -384,7 +384,9 @@ The Suite Covers Create, Read, Update, Replacement In Both Orders, Destroy, Nega
 
 These Results Validate The Tested Configurations, Not Every Catalog Entry. Provider Review Includes Conditional And Unresolved Mappings, Including Legacy S3 And IAM Operations. VPC Default ACL, Route-Table And Security-Group Discovery May Leave Computed IDs Unavailable Without Additional Read Grants. The S3 Fixture Relies On Supported Provider Tagging Fallbacks.
 
-**Post-v1.0.0 Acceptance:** The Maintainer Reported Successful Create, Update And Destroy Of A Combined S3, SQS And DynamoDB Fixture With Empty Terraform State At Source Revision `5bbef87ec3bbbca209242a3c1d979034522e5588`. The EC2 Fixture Was Blocked By An Organization SCP. These Reported Results Are Not A Signed Release Evidence Bundle.
+**Additional Mixed-Fixture Acceptance:** The Maintainer Reported Successful Create, Update And Destroy Of A Combined S3, SQS And DynamoDB Fixture With Empty Terraform State At Source Revision `5bbef87ec3bbbca209242a3c1d979034522e5588`. The EC2 Fixture Was Blocked By An Organization SCP. These Reported Results Are Separate From The Signed v1.1.0 Release Evidence.
+
+**v1.1.0 Release Acceptance:** The [Signed Release Workflow](https://github.com/sm-joe/tf-iam/actions/runs/45066119415) Passed The Exact-Commit Evidence Gate And Published Attested Build Artifacts For Source Commit `f47c56999623945dc96135b772be4792e806bd3b`. See [Release Acceptance](docs/release-acceptance.md).
 
 ### Analysis Boundaries
 
