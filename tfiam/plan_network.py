@@ -179,7 +179,7 @@ def recover(plan,address,definitions,select,body,task,sources=None,allow_name=Fa
         elif isinstance(raw,list) and raw:
             flags=unknown.get(field)
             fully_unknown=flags is True and body.get(field) is None
-            element_unknown=isinstance(flags,list) and len(flags)==len(raw) and all(x is True for x in flags) and isinstance(body.get(field),list) and len(raw)==len(body[field]) and all(x is None for x in body[field])
+            element_unknown=isinstance(flags,list) and len(flags)==len(raw) and all(x is True for x in flags) and (body.get(field) is None or isinstance(body.get(field),list) and len(raw)==len(body[field]) and all(x is None for x in body[field]))
             if not (fully_unknown or element_unknown): continue
             refs=meta.get("references",[])
             if not isinstance(refs,list): continue
