@@ -58,6 +58,8 @@ def main(argv=None, *, maintainer=False):
     catalog.add_argument('--strict',action='store_true')
     validate=sub.add_parser('validate-policy',help='AWS IAM Access Analyzer identity policy validation')
     validate.add_argument('policy',type=Path); validate.add_argument('--aws-profile'); validate.add_argument('--aws-region'); validate.add_argument('--strict',action='store_true'); validate.add_argument('--output',type=Path)
+    pack=sub.add_parser('pack-policy',help='Optimize and partition generated AWS policies without changing grants')
+    pack.add_argument('policy',type=Path); pack.add_argument('--policy-type',choices=['managed','inline-role','inline-user','inline-group'],default='managed'); pack.add_argument('--max-chars',type=int); pack.add_argument('--max-policies',type=int,default=10); pack.add_argument('--name',default='TerraformPipeline'); pack.add_argument('--output-dir',type=Path,required=True)
     runtime=sub.add_parser('runtime-audit',help='Compare observed CloudTrail management operations with candidate actions')
     runtime.add_argument('--role-arn',required=True); runtime.add_argument('--events',type=Path); runtime.add_argument('--start'); runtime.add_argument('--end'); runtime.add_argument('--aws-profile'); runtime.add_argument('--aws-region'); runtime.add_argument('--candidate',type=Path,required=True); runtime.add_argument('--output',type=Path); runtime.add_argument('--session-name',action='append',default=[],help='Exact known STS session name; repeat for multiple sessions'); runtime.add_argument('--max-pages',type=int,default=100); runtime.add_argument('--max-seconds',type=int,default=120); runtime.add_argument('--quiet',action='store_true')
     for cmd in ('scan','generate','compare','split'):
@@ -88,6 +90,32 @@ def main(argv=None, *, maintainer=False):
             if args.show_table and args.format!='table': print(render(args.command,result),file=sys.stderr)
         else: print(output)
     try:
+        if args.command=='pack-policy':
+            from .policy_size import partition
+            from .policy_size import compact
+            result=partition(json.loads(args.policy.read_bytes()),args.policy_type,args.max_chars,args.max_policies,args.name)
+            # Never overwrite a previous policy set or leave a half-written set.
+            import os, tempfile, shutil
+            target=args.output_dir.absolute()
+            if target.exists() or target.is_symlink(): raise ValueError('Output directory already exists; choose a new directory')
+            stage=Path(tempfile.mkdtemp(prefix='.tfiam-pack-',dir=target.parent))
+            try:
+                for item in result['policies']:
+                    path=stage/(item['name']+'.json')
+                    path.write_text(compact(item['document'])+'\n',encoding='utf-8')
+                    item['file']=path.name
+                    del item['document']
+                (stage/'manifest.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
+                # Reserve destination exclusively, then move the completed files.
+                target.mkdir(mode=0o700)
+                try:
+                    for path in stage.iterdir(): os.rename(path,target/path.name)
+                except OSError:
+                    shutil.rmtree(target)
+                    raise
+            finally: shutil.rmtree(stage)
+            print(json.dumps(result,indent=2))
+            return 0
         if args.command=='evidence-audit':
             from .evidence_audit import reconcile,read_events
             run=json.loads(args.lifecycle.read_bytes()); source=json.loads(args.source_report.read_bytes())
