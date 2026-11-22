@@ -5,6 +5,7 @@
 | Version | Security Maintenance |
 | --- | --- |
 | 1.0.0 | Supported Stable Release |
+| 1.1.0 (Unreleased) | Pending Release Acceptance |
 | Unreleased Development Revisions | Best Effort; Use The Latest Stable Release |
 
 Security Fixes Are Developed On The Default Branch And Distributed Through Reviewed Releases. This Is A Community-Maintained Project; No Contractual Response-Time Or Support SLA Is Provided.
@@ -70,6 +71,8 @@ Review The Receipt's Tested Source Commit Against The Release Tag. Do Not Instal
 ## Validation Boundaries
 
 The v1.0.0 Release Includes Live Restricted-Role Acceptance For Four Representative AWS Fixtures. It Does Not Certify Every AWS Service, Terraform Configuration Or Effective IAM Policy. Review The [Provider Validation Guide](docs/provider-validation.md) For Evidence Scope And Known Limitations.
+
+Policy Packing Preserves The Exact Generated Action, Resource And Condition Union. It Does Not Resolve External Denies Or Validate Effective Permissions. Review Each Packed Policy And Remaining Attachment Quotas Before Deployment.
 
 ## License
 
