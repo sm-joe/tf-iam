@@ -81,17 +81,20 @@ def test_vpc_peering_same_region_exact_endpoints(tmp_path):
     accepter="arn:aws:ec2:us-east-1:123456789012:vpc/vpc-11223344"
     assert any(x["scope"]==requester for x in rows)
     peering=next(x for x in rows if x["scope"].endswith("vpc-peering-connection/*"))
-    assert peering["condition"]=={"ArnEquals":{"ec2:AccepterVpc":accepter,"ec2:RequesterVpc":requester}}
+    assert peering["condition"]=={"ArnEquals":{"ec2:AccepterVpc":accepter}}
     assert all(x["scope"]!="*" for x in rows)
 
 
-def test_vpc_peering_cross_account_does_not_invent_peer_permission(tmp_path):
+def test_vpc_peering_cross_account_uses_exact_peer_condition(tmp_path):
     report=source(tmp_path,{"aws_vpc_peering_connection":{"main":{
         "vpc_id":"vpc-aabbccdd","peer_vpc_id":"vpc-11223344",
         "peer_owner_id":"999999999999",
     }}})
-    assert not grants(report,"ec2:CreateVpcPeeringConnection")
-    assert any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
+    rows=grants(report,"ec2:CreateVpcPeeringConnection")
+    assert len(rows)==2
+    target=next(x for x in rows if x["scope"].endswith("vpc-peering-connection/*"))
+    assert target["condition"]=={"ArnEquals":{"ec2:AccepterVpc":"arn:aws:ec2:us-east-1:999999999999:vpc/vpc-11223344"}}
+    assert not any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
 
 
 def test_all_fifteen_networking_declarations_are_discovered(tmp_path):
