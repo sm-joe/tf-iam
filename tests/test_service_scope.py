@@ -104,11 +104,15 @@ def test_scaling_account_and_region_required(tmp_path):
     assert not any(p["action"]=="ec2:CreateLaunchTemplate" for p in report["permissions"])
 
 
-def test_asg_launch_template_requires_separate_run_instances_scope(tmp_path):
+def test_asg_launch_template_prospective_run_instances_scopes(tmp_path):
     write(tmp_path,{"aws_autoscaling_group":{"main":{"name":"workers","launch_template":[{"id":"lt-1234567890abcdef0","version":"1"}]}}})
     report=scan(tmp_path,account=ACCOUNT,region=REGION)
-    assert any(x["action"]=="ec2:RunInstances" and "AMI, subnet, security group" in x["reason"] for x in report["unresolved_permissions"])
-    assert not any(p["action"]=="ec2:RunInstances" for p in report["permissions"])
+    lt="arn:aws:ec2:us-east-1:123456789012:launch-template/lt-1234567890abcdef0"
+    check(report,"ec2:RunInstances",lt,{"ArnLike":{"ec2:LaunchTemplate":lt}})
+    check(report,"ec2:RunInstances","arn:aws:ec2:us-east-1::image/*",{"ArnLike":{"ec2:LaunchTemplate":lt}})
+    check(report,"ec2:RunInstances","arn:aws:ec2:us-east-1:123456789012:instance/*",{"ArnLike":{"ec2:LaunchTemplate":lt}})
+    assert not report["unresolved_permissions"]
+    assert any("uncomputed IDs" in x for x in report["information"])
 
 
 def test_launch_template_creation_tags_are_create_only(tmp_path):
@@ -175,3 +179,19 @@ def test_glue_catalog_literal_invalid_name_rejects_scope(tmp_path):
     report=scan(tmp_path,account=ACCOUNT,region=REGION)
     assert any(x["action"]=="glue:CreateDatabase" for x in report["unresolved_permissions"])
     assert not any(x["action"]=="glue:CreateDatabase" for x in report["permissions"])
+
+
+def test_asg_launch_template_computed_id_uses_bounded_scope(tmp_path):
+    write(tmp_path,{"aws_autoscaling_group":{"main":{"name":"workers","launch_template":[{"id":None,"version":"$Latest"}]}}})
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    launch="arn:aws:ec2:us-east-1:123456789012:launch-template/*"
+    check(report,"ec2:RunInstances",launch,{"ArnLike":{"ec2:LaunchTemplate":launch}})
+    assert not any(p["action"]=="ec2:RunInstances" and p["scope"]=="*" for p in report["permissions"])
+    assert not report["unresolved_permissions"]
+
+
+def test_asg_mixed_instances_policy_fails_closed(tmp_path):
+    write(tmp_path,{"aws_autoscaling_group":{"main":{"name":"workers","mixed_instances_policy":[{"launch_template":{}}]}}})
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert any(x["action"]=="ec2:RunInstances" for x in report["unresolved_permissions"])
+    assert not any(p["action"]=="ec2:RunInstances" for p in report["permissions"])
