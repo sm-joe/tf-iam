@@ -101,7 +101,7 @@
       "peer": {
         "vpc_id": "${aws_vpc.main.id}",
         "peer_vpc_id": "${var.peer_vpc_id}",
-        "peer_owner_id": "999999999999",
+        "peer_owner_id": "${var.peer_account_id}",
         "peer_region": "us-east-1"
       }
     },
@@ -113,6 +113,9 @@
   },
   "variable": {
     "peer_vpc_id": {
+      "type": "string"
+    },
+    "peer_account_id": {
       "type": "string"
     }
   }

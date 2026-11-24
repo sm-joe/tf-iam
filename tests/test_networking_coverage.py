@@ -145,13 +145,20 @@ def test_vpn_without_vpc_does_not_require_attach(tmp_path):
     assert not any(x["action"]=="ec2:AttachVpnGateway" for x in report["unresolved_permissions"])
 
 
-def test_cross_account_peer_unknown_owner_fails_closed(tmp_path):
+def test_cross_account_peer_unknown_owner_uses_requester_scope(tmp_path):
     report=source(tmp_path,{"aws_vpc_peering_connection":{"main":{
         "vpc_id":"vpc-aabbccdd","peer_vpc_id":"vpc-11223344",
         "peer_owner_id":"${var.owner}",
     }}})
-    assert not grants(report,"ec2:CreateVpcPeeringConnection")
-    assert any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
+    rows=grants(report,"ec2:CreateVpcPeeringConnection")
+    assert len(rows)==2,report["unresolved_permissions"]
+    assert {x["scope"] for x in rows}=={
+        "arn:aws:ec2:us-east-1:123456789012:vpc/vpc-aabbccdd",
+        "arn:aws:ec2:us-east-1:123456789012:vpc-peering-connection/*",
+    }
+    assert all("condition" not in x for x in rows)
+    assert not any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
+    assert any("without optional ec2:AccepterVpc restriction" in x for x in report["warnings"])
 
 
 def test_computed_networking_references_generate_prospective_scopes(tmp_path):
@@ -257,16 +264,17 @@ def test_cross_account_computed_peer_vpc_is_account_region_bound(tmp_path):
     assert not any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
 
 
-def test_computed_cross_account_peer_with_unknown_owner_stays_unresolved(tmp_path):
+def test_computed_cross_account_peer_with_unknown_owner_requester_scoped(tmp_path):
     report=source(tmp_path,{"aws_vpc_peering_connection":{"peer":{
         "vpc_id":"vpc-aabbccdd",
         "peer_vpc_id":"${var.remote_vpc_id}",
         "peer_owner_id":"${var.remote_account_id}",
         "peer_region":"us-west-2",
     }}})
-    assert not grants(report,"ec2:CreateVpcPeeringConnection")
-    assert any(x["action"]=="ec2:CreateVpcPeeringConnection" and
-        "peer AWS account" in x["reason"] for x in report["unresolved_permissions"])
+    rows=grants(report,"ec2:CreateVpcPeeringConnection")
+    assert len(rows)==2,report["unresolved_permissions"]
+    assert all("condition" not in x for x in rows)
+    assert not any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
 
 
 def test_peer_vpc_missing_is_not_inferred(tmp_path):
@@ -309,3 +317,26 @@ def test_static_peering_for_each_expands_remote_accounts_and_exact_vpc_ids(tmp_p
         'aws_vpc_peering_connection.peer["east"]',
     }
     assert not any("static resource instances not expanded" in x for x in report["warnings"])
+
+
+def test_unexpanded_peering_for_each_does_not_block_requester_iam(tmp_path):
+    (tmp_path/"main.tf.json").write_text(json.dumps({
+        "variable":{"peers":{"type":"map(object({vpc_id=string,account=string,region=string}))"}},
+        "resource":{
+            "aws_vpc":{"main":{"cidr_block":"10.0.0.0/16"}},
+            "aws_vpc_peering_connection":{"peer":{
+                "for_each":"${var.peers}",
+                "vpc_id":"${aws_vpc.main.id}",
+                "peer_vpc_id":"${each.value.vpc_id}",
+                "peer_owner_id":"${each.value.account}",
+                "peer_region":"${each.value.region}",
+            }},
+        },
+    }))
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert not report["unresolved_permissions"],report["unresolved_permissions"]
+    rows=grants(report,"ec2:CreateVpcPeeringConnection")
+    assert len(rows)==2
+    assert any(x["scope"]=="arn:aws:ec2:us-east-1:123456789012:vpc/*" for x in rows)
+    assert any(x["scope"]=="arn:aws:ec2:us-east-1:123456789012:vpc-peering-connection/*" for x in rows)
+    assert any("without optional ec2:AccepterVpc restriction" in x for x in report["warnings"])
