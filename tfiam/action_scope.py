@@ -83,17 +83,18 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
         if exact: return exact
         if task is None and managed_reference(body.get(field),kind):
             return prospective(kind)
-        if not scope_resource_tags: return None
         dynamic=body.get("_tfiam_dynamic_ec2",{}).get(field,{})
-        if not isinstance(dynamic,dict): return None
+        if not isinstance(dynamic,dict) or dynamic.get("kind")!=kind: return None
         condition=dynamic.get("condition")
-        if dynamic.get("kind")==kind and condition and ec(kind,"*"):
+        if scope_resource_tags and condition and ec(kind,"*"):
             return (ec(kind,"*"),condition)
+        if task is None and dynamic.get("prospective"):
+            return prospective(kind)
         return None
     def many(field,kind,prefix):
         raw=body.get(field)
         dynamic=body.get("_tfiam_dynamic_ec2",{}).get(field,[])
-        if raw is None and scope_resource_tags and isinstance(dynamic,list) and dynamic: raw=[None]*len(dynamic)
+        if raw is None and isinstance(dynamic,list) and dynamic: raw=[None]*len(dynamic)
         if not isinstance(raw,list) or not raw: return None
         out=[]
         for i,item in enumerate(raw):
@@ -102,9 +103,13 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 out.append(ec(kind,value)); continue
             if task is None and managed_reference(item,kind):
                 out.append(prospective(kind)); continue
-            ref=dynamic[i] if scope_resource_tags and isinstance(dynamic,list) and len(dynamic)==len(raw) else None
-            if isinstance(ref,dict) and ref.get("kind")==kind and ref.get("condition") and ec(kind,"*"):
-                out.append((ec(kind,"*"),ref["condition"]))
+            ref=dynamic[i] if isinstance(dynamic,list) and len(dynamic)==len(raw) else None
+            if isinstance(ref,dict) and ref.get("kind")==kind:
+                if scope_resource_tags and ref.get("condition") and ec(kind,"*"):
+                    out.append((ec(kind,"*"),ref["condition"]))
+                elif task is None and ref.get("prospective"):
+                    out.append(prospective(kind))
+                else: return None
             else: return None
         return out if all(out) else None
     def request_tags():
