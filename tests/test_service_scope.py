@@ -107,7 +107,7 @@ def test_scaling_account_and_region_required(tmp_path):
 def test_asg_launch_template_requires_separate_run_instances_scope(tmp_path):
     write(tmp_path,{"aws_autoscaling_group":{"main":{"name":"workers","launch_template":[{"id":"lt-1234567890abcdef0","version":"1"}]}}})
     report=scan(tmp_path,account=ACCOUNT,region=REGION)
-    assert any(x["action"]=="ec2:RunInstances" for x in report["unresolved_permissions"])
+    assert any(x["action"]=="ec2:RunInstances" and "AMI, subnet, security group" in x["reason"] for x in report["unresolved_permissions"])
     assert not any(p["action"]=="ec2:RunInstances" for p in report["permissions"])
 
 
