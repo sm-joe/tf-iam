@@ -171,6 +171,22 @@ The Version-Aware Catalog Is Selected From Existing Provider Lockfile Informatio
 
 Use `tfiam COMMAND --help` For The Full Options. Scan Defaults To A Table; Generate Defaults To IAM JSON And Writes Its Decision Report To Stderr. Use `--format json --output report.json --show-table` To Preserve The Complete Structured Report And View Tables. Table Views May Abbreviate Large Detail Sections.
 
+### Local Sibling Modules
+
+Terraform Configurations Can Reference A Local Module Outside The Root Directory, For Example `source = "../Modules/Terraform-SNS"`. tf-iam Resolves Such Explicit Local References Within The Root Directory's Parent Workspace And Reads Only Terraform Source Files Within The Referenced Module. Missing Modules, Symlinks And Paths Escaping The Workspace Remain Blocked; No Arbitrary Outside-Workspace Files Are Scanned.
+
+For Offline Scanning, Keep The Original Directory Layout And Specify The Real Account, Region And AWS Provider Version (Or Initialize Terraform To Generate The Lockfile):
+
+~~~bash
+tfiam generate ./SNS-Topic \
+  --aws-account "$AWS_ACCOUNT_ID" \
+  --aws-region us-east-1 \
+  --aws-provider-version 6.73.0 \
+  --output sns-policy.json
+~~~
+
+The Example Provider Version Must Match The Version Actually Selected For Your Terraform Configuration. A `required_providers` Version Range Does Not Establish The Exact Installed Version. For A Real S3 Backend With DynamoDB Locking, The Account And Region Are Necessary To Scope Locking Actions. Backend Workspace And Bucket-Policy Warnings Still Require Review.
+
 ## Analyze A Saved Terraform Plan
 
 Use A Planning Identity With Appropriate Permissions. tf-iam Does Not Run Terraform Itself.
