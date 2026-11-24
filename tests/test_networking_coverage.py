@@ -357,3 +357,56 @@ def test_unexpanded_peering_for_each_does_not_block_requester_iam(tmp_path):
     assert any(x["scope"]=="arn:aws:ec2:us-east-1:123456789012:vpc/*" for x in rows)
     assert any(x["scope"]=="arn:aws:ec2:us-east-1:123456789012:vpc-peering-connection/*" for x in rows)
     assert any("without optional ec2:AccepterVpc restriction" in x for x in report["warnings"])
+
+
+def test_source_tagged_networking_restricts_create_and_delete_tag_permissions(tmp_path):
+    report=source(tmp_path,{
+        "aws_vpc":{"main":{"cidr_block":"10.0.0.0/16","tags":{"Name":"dev-vpc","Environment":"dev"}}},
+        "aws_subnet":{"main":{
+            "vpc_id":"${aws_vpc.main.id}",
+            "cidr_block":"10.0.1.0/24",
+            "tags":{"Name":"dev-subnet","Environment":"dev"},
+        }},
+    })
+    assert not report["unresolved_permissions"],report["unresolved_permissions"]
+    vpc=f"arn:aws:ec2:{REGION}:{ACCOUNT}:vpc/*"
+    subnet=f"arn:aws:ec2:{REGION}:{ACCOUNT}:subnet/*"
+    for address,target,create,name,delete in (
+        ("aws_vpc.main",vpc,"CreateVpc","dev-vpc","ec2:DeleteVpc"),
+        ("aws_subnet.main",subnet,"CreateSubnet","dev-subnet","ec2:DeleteSubnet"),
+    ):
+        rows=[p for p in report["permissions"] if p["source"]==address]
+        creates=[p for p in rows if p["action"]=="ec2:CreateTags"]
+        assert any(p["scope"]==target and p.get("condition",{}).get("StringEquals",{}).get("ec2:CreateAction")==create
+                   for p in creates)
+        for tag_action in ("ec2:CreateTags","ec2:DeleteTags"):
+            matching=[p for p in rows if p["action"]==tag_action]
+            assert matching,tag_action
+            assert all(p.get("condition") for p in matching)
+            for p in matching:
+                condition=p["condition"]
+                assert condition["Null"]=={"aws:TagKeys":"false"}
+                assert condition["ForAllValues:StringEquals"]["aws:TagKeys"]==["Environment","Name"]
+        updates=[p for p in creates if "ec2:ResourceTag/Name" in p.get("condition",{}).get("StringEquals",{})]
+        assert any(p["condition"]["StringEquals"]["ec2:ResourceTag/Name"]==name for p in updates)
+        deletes=[p for p in rows if p["action"]==delete]
+        assert deletes and all(p.get("condition")=={"StringEquals":{"ec2:ResourceTag/Name":name}} for p in deletes)
+
+
+def test_source_tagging_restrictions_reject_unlisted_keys_and_missing_key_context(tmp_path):
+    report=source(tmp_path,{"aws_vpc":{"main":{
+        "cidr_block":"10.0.0.0/16","tags":{"Name":"team-vpc"}
+    }}})
+    assert not report["unresolved_permissions"]
+    for action in ("ec2:CreateTags","ec2:DeleteTags"):
+        rows=grants(report,action)
+        assert rows
+        assert all(p["condition"].get("Null")=={"aws:TagKeys":"false"} for p in rows)
+        assert all(p["condition"]["ForAllValues:StringEquals"]["aws:TagKeys"]==["Name"] for p in rows)
+
+
+def test_untagged_networking_keeps_existing_policy_compatibility(tmp_path):
+    report=source(tmp_path,{"aws_vpc":{"main":{"cidr_block":"10.0.0.0/16"}}})
+    assert grants(report,"ec2:CreateTags")
+    assert grants(report,"ec2:DeleteTags")
+    assert not report["unresolved_permissions"]
