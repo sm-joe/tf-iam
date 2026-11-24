@@ -23,6 +23,11 @@ jobs:
           dist/tfiam catalog-audit --strict --format json
           dist/tfiam scan examples/aws-hcl --format json > "$RUNNER_TEMP/offline-scan.json"
           python -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["authorization_metadata"]["metadata_source"]=="packaged"' "$RUNNER_TEMP/offline-scan.json"
+          (
+            cd examples/networking-18
+            AWS_ACCOUNT_ID=123456789012 AWS_REGION=us-east-1 ../../dist/tfiam generate . --output "$RUNNER_TEMP/network-policy.json"
+          )
+          python -c 'import json,sys; p=json.load(open(sys.argv[1])); a={a for s in p["Statement"] for a in s["Action"]}; assert {"ec2:CreateVpc","ec2:CreateSubnet","ec2:CreateNatGateway","ec2:CreateVpcEndpoint","ec2:CreateVpcPeeringConnection","route53:ChangeResourceRecordSets"} <= a' "$RUNNER_TEMP/network-policy.json"
       - uses: actions/upload-artifact@v4
         with:
           name: tfiam-linux-x86_64
