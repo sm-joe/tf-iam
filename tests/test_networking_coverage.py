@@ -218,3 +218,24 @@ def test_managed_vpc_peering_reference_scopes_accepter(tmp_path):
         "ArnEquals":{"ec2:AccepterVpc":"arn:aws:ec2:us-east-1:123456789012:vpc/*"}
     } for row in action), action
     assert not any(row["action"]=="ec2:CreateVpcPeeringConnection" for row in report["unresolved_permissions"])
+
+
+def test_peering_resolves_verified_aws_identity_data_sources(tmp_path):
+    (tmp_path/"main.tf.json").write_text(json.dumps({
+        "data":{
+            "aws_caller_identity":{"current":{}},
+            "aws_region":{"current":{}},
+        },
+        "resource":{"aws_vpc_peering_connection":{"peer":{
+            "vpc_id":"vpc-aabbccdd",
+            "peer_vpc_id":"vpc-11223344",
+            "peer_owner_id":"${data.aws_caller_identity.current.account_id}",
+            "peer_region":"${data.aws_region.current.name}",
+        }}},
+    }))
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    permissions=grants(report,"ec2:CreateVpcPeeringConnection")
+    assert any(row.get("condition")=={"ArnEquals":{
+        "ec2:AccepterVpc":"arn:aws:ec2:us-east-1:123456789012:vpc/vpc-11223344"
+    }} for row in permissions),report["unresolved_permissions"]
+    assert not any(row["action"]=="ec2:CreateVpcPeeringConnection" for row in report["unresolved_permissions"])
