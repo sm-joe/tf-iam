@@ -6,7 +6,7 @@ For records, restrict write operations to the normalized record name and type.
 import re
 
 ZONE_ID=re.compile(r"Z[A-Z0-9]{5,}")
-DNS=re.compile(r"(?:[a-z0-9_-]+\\.)*[a-z0-9_-]+\\.?",re.I)
+DNS=re.compile(r"^[A-Za-z0-9_-]+(?:[.][A-Za-z0-9_-]+)*[.]?$",re.I)
 TYPES={"A","AAAA","CAA","CNAME","DS","HTTPS","MX","NAPTR","NS","PTR","SOA","SPF","SRV","SSHFP","SVCB","TLSA","TXT"}
 
 def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,diagnose=lambda msg:None):
