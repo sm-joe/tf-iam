@@ -272,6 +272,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     targets=current_role_targets.get((account,partition,resolve(body.get('role'))),set())
                                 if len(targets)==1:
                                     body['_tfiam_profile_role_arn']=next(iter(targets))
+                            if typ in ('aws_autoscaling_group','aws_launch_template') and category=='resource':
+                                scaling_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
+                                continue
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
                                 if task and typ=='aws_instance' and operation=='create' and has_root:
                                     from .plan_network import omitted_instance_key
@@ -282,9 +285,6 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 continue
                             if typ in ELB_TYPES:
                                 elb(typ,body,acts,account,region,partition,resolve,emit,omit,task)
-                                continue
-                            if typ in ('aws_autoscaling_group','aws_launch_template') and category=='resource':
-                                scaling_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
                             if typ in SERVICE_TYPES and category=='resource':
                                 scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
