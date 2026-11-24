@@ -107,7 +107,43 @@ def test_generation_default_decision_grid(tmp_path,capsys):
 def test_generation_blocked_decision_grid(tmp_path,capsys):
     (tmp_path/"main.tf.json").write_text(json.dumps({"resource":{"aws_unknown_fixture":{"x":{}}}}))
     dest=tmp_path/"policy.json"
-    assert main(["generate",str(tmp_path),"--output",str(dest)])==4
+    assert main(["generate",str(tmp_path),"--output",str(dest),"--require-complete"])==4
     assert not dest.exists()
     out=capsys.readouterr().err
     assert "BLOCKED" in out and "BLOCKING CHECKS" in out and "DO NOT DEPLOY" in out
+
+
+def test_candidate_generation_writes_policy_and_missing_permissions_report(tmp_path,capsys):
+    (tmp_path/"main.tf.json").write_text(json.dumps({"resource":{
+        "aws_s3_bucket":{"b":{"bucket":"candidate-bucket"}},
+        "aws_unknown_fixture":{"x":{}},
+    }}))
+    output=tmp_path/"candidate-policy.json"
+    assert main(["generate",str(tmp_path),"--output",str(output)])==0
+    document=json.loads(output.read_text())
+    assert document["Version"]=="2012-10-17" and document["Statement"]
+    assert set(document)=={"Version","Statement"}
+    companion=tmp_path/"candidate-policy.json.report.json"
+    assert companion.is_file()
+    report=json.loads(companion.read_text())
+    assert report["candidate_status"]=="INCOMPLETE"
+    assert report["mapping_coverage"]["unmapped_resources"]==1
+    assert "INCOMPLETE" in capsys.readouterr().err
+    output.unlink()
+    companion.unlink()
+    assert main(["generate",str(tmp_path),"--require-complete","--output",str(output)])==4
+    assert not output.exists() and not companion.exists()
+
+
+def test_candidate_unresolved_permissions_are_not_implicitly_granted(tmp_path):
+    (tmp_path/"main.tf.json").write_text(json.dumps({"resource":{
+        "aws_s3_bucket":{"b":{"bucket":"candidate-bucket"}},
+        "aws_volume_attachment":{"main":{"instance_id":"i-12345678","volume_id":"${var.unknown}"}}
+    }}))
+    output=tmp_path/"candidate-policy.json"
+    assert main(["generate",str(tmp_path),"--aws-account","123456789012","--aws-region","us-east-1","--output",str(output)])==0
+    doc=json.loads(output.read_text())
+    actions={action for statement in doc["Statement"] for action in statement["Action"]}
+    assert "ec2:AttachVolume" not in actions
+    companion=json.loads((tmp_path/"candidate-policy.json.report.json").read_text())
+    assert any(x["action"]=="ec2:AttachVolume" for x in companion["unresolved_permissions"])
