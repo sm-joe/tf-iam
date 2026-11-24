@@ -310,3 +310,26 @@ def test_static_peering_for_each_expands_remote_accounts_and_exact_vpc_ids(tmp_p
         'aws_vpc_peering_connection.peer["east"]',
     }
     assert not any("static resource instances not expanded" in x for x in report["warnings"])
+
+
+def test_unexpanded_peering_for_each_does_not_block_requester_iam(tmp_path):
+    (tmp_path/"main.tf.json").write_text(json.dumps({
+        "variable":{"peers":{"type":"map(object({vpc_id=string,account=string,region=string}))"}},
+        "resource":{
+            "aws_vpc":{"main":{"cidr_block":"10.0.0.0/16"}},
+            "aws_vpc_peering_connection":{"peer":{
+                "for_each":"${var.peers}",
+                "vpc_id":"${aws_vpc.main.id}",
+                "peer_vpc_id":"${each.value.vpc_id}",
+                "peer_owner_id":"${each.value.account}",
+                "peer_region":"${each.value.region}",
+            }},
+        },
+    }))
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert not report["unresolved_permissions"],report["unresolved_permissions"]
+    rows=grants(report,"ec2:CreateVpcPeeringConnection")
+    assert len(rows)==2
+    assert any(x["scope"]=="arn:aws:ec2:us-east-1:123456789012:vpc/*" for x in rows)
+    assert any(x["scope"]=="arn:aws:ec2:us-east-1:123456789012:vpc-peering-connection/*" for x in rows)
+    assert any("without optional ec2:AccepterVpc restriction" in x for x in report["warnings"])
