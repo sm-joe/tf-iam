@@ -39,7 +39,7 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
         # An ASG launch template can require multi-resource ec2:RunInstances
         # permissions; a group ARN alone does not justify these grants.
         if body.get("launch_template") or body.get("mixed_instances_policy"):
-            omit("ec2:RunInstances")
+            omit("ec2:RunInstances","Auto Scaling launch-template RunInstances requires AMI, subnet, security group, launch-template, instance/volume/network-interface scopes and optional instance-profile PassRole; exact dependencies not proven from static configuration")
         if body.get("service_linked_role_arn"):
             role=value("service_linked_role_arn")
             if role and re.fullmatch(rf"arn:{partition}:iam::{account}:role/aws-service-role/autoscaling.amazonaws.com/[A-Za-z0-9_+=,.@-]+",role):
