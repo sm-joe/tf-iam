@@ -36,9 +36,16 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
             if action in ASG_DESCRIBE: emit(action,"*")
             elif action.startswith("autoscaling:"): emit(action,arn)
             else: omit(action)
-        # Auto Scaling launch authorization can also require ec2:RunInstances,
-        # instance-profile PassRole, KMS and a custom service-linked role. Such
-        # unrelated grants are not inferred from an Auto Scaling group name.
+        # An ASG launch template can require multi-resource ec2:RunInstances
+        # permissions; a group ARN alone does not justify these grants.
+        if body.get("launch_template") or body.get("mixed_instances_policy"):
+            omit("ec2:RunInstances")
+        if body.get("service_linked_role_arn"):
+            role=value("service_linked_role_arn")
+            if role and re.fullmatch(rf"arn:{partition}:iam::{account}:role/aws-service-role/autoscaling.amazonaws.com/[A-Za-z0-9_+=,.@-]+",role):
+                emit("iam:PassRole",role,{"StringEquals":{"iam:PassedToService":"autoscaling.amazonaws.com"}})
+            else:
+                omit("iam:PassRole")
         return
     if typ=="aws_launch_template":
         prefix=f"arn:{partition}:ec2:{region}:{account}:launch-template/"
@@ -63,7 +70,7 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
                 else:
                     omit(action)
             elif action=="ec2:CreateTags":
-                if task and task.get("operation")=="create" and tags:
+                if (not task or task.get("operation")=="create") and tags:
                     emit(action,target or prefix+"*",{"StringEquals":{"ec2:CreateAction":"CreateLaunchTemplate"}})
                 elif target:
                     emit(action,target)
