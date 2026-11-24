@@ -62,16 +62,24 @@ def discover_aws_identity(account=None,region=None,partition="aws",profile=None)
     import subprocess
 
     region=region or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
-    if not shutil.which("aws"):
-        # Standalone/Python installs may ship boto3 without the separate AWS CLI.
-        # Short timeouts prevent credential-discovery hangs on non-AWS hosts.
+    # AWS_ACCOUNT_ID is an explicit account selection commonly used by CI.
+    # Never treat an unvalidated value as a usable IAM account identity.
+    if account is None:
+        env_account=os.environ.get("AWS_ACCOUNT_ID") or os.environ.get("TFIAM_AWS_ACCOUNT_ID")
+        if isinstance(env_account,str) and re.fullmatch(r"[0-9]{12}",env_account):
+            account=env_account
+    if account is not None and region is not None:
+        return account,region,partition
+    def sdk_identity():
+        # SDK credentials can work even if AWS CLI is installed but its profile
+        # or binary fails. A failed CLI call must never silently mask SDK identity.
         try:
             import boto3
             from botocore.config import Config
             session=boto3.Session(profile_name=profile)
-            region=region or session.region_name
-            sts_region=region or {"aws":"us-east-1","aws-cn":"cn-north-1",
-                                  "aws-us-gov":"us-gov-west-1"}[partition]
+            sdk_region=region or session.region_name
+            sts_region=sdk_region or {"aws":"us-east-1","aws-cn":"cn-north-1",
+                                      "aws-us-gov":"us-gov-west-1"}[partition]
             identity=session.client("sts",region_name=sts_region,config=Config(
                 connect_timeout=2,read_timeout=2,retries={"max_attempts":1}
             )).get_caller_identity()
@@ -79,10 +87,13 @@ def discover_aws_identity(account=None,region=None,partition="aws",profile=None)
             matched=re.match(r"arn:(aws|aws-cn|aws-us-gov):",arn)
             candidate=identity.get("Account")
             if matched and isinstance(candidate,str) and re.fullmatch(r"[0-9]{12}",candidate):
-                return candidate,region,matched.group(1)
+                return candidate,sdk_region,matched.group(1)
         except Exception:
-            pass  # No usable AWS identity; the resolver will surface the omission.
+            pass
         return account,region,partition
+
+    if not shutil.which("aws"):
+        return sdk_identity()
     env=dict(os.environ)  # Respect the normal AWS credential chain, including instance roles.
     if not region:
         try:
@@ -101,7 +112,7 @@ def discover_aws_identity(account=None,region=None,partition="aws",profile=None)
         cmd=["aws"]+(["--profile",profile] if profile else [])+["sts","get-caller-identity","--output","json"]
         if region: cmd.extend(["--region",region])
         result=subprocess.run(cmd,capture_output=True,text=True,timeout=5,env=env,check=False)
-        if result.returncode!=0: return account,region,partition
+        if result.returncode!=0: return sdk_identity()
         identity=json.loads(result.stdout)
         arn=identity.get("Arn","")
         matched=re.match(r"arn:(aws|aws-cn|aws-us-gov):",arn)
@@ -110,7 +121,7 @@ def discover_aws_identity(account=None,region=None,partition="aws",profile=None)
             return candidate,region,matched.group(1)
     except (OSError,ValueError,subprocess.TimeoutExpired):
         pass
-    return account,region,partition
+    return sdk_identity()
 
 def plan_contexts(plan,default,overrides):
     config=plan.get("configuration",{})

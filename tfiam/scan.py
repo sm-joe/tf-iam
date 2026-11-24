@@ -258,6 +258,13 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             def emit(action,target,condition=None):
                                 add('aws',[action],target,address,condition=condition)
                             def omit(action,reason='action-specific scope or dependency unresolved'):
+                                # Missing identity is one root cause, not dozens of
+                                # independent AWS authorization catalog failures.
+                                if reason=='action-specific scope or dependency unresolved' and action.startswith('ec2:'):
+                                    if not account:
+                                        reason='AWS target account unknown; resolve AWS STS identity, AWS_ACCOUNT_ID, or a literal Terraform assume_role target'
+                                    elif not region:
+                                        reason='AWS target region unknown; set a Terraform provider region or AWS_REGION'
                                 unresolved(address,action,reason)
                             if task and scope_resource_tags and has_root:
                                 from .plan_network import recover, anchor
