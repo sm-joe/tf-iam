@@ -104,15 +104,11 @@ def test_scaling_account_and_region_required(tmp_path):
     assert not any(p["action"]=="ec2:CreateLaunchTemplate" for p in report["permissions"])
 
 
-def test_asg_launch_template_prospective_run_instances_scopes(tmp_path):
+def test_asg_launch_template_requires_separate_run_instances_scope(tmp_path):
     write(tmp_path,{"aws_autoscaling_group":{"main":{"name":"workers","launch_template":[{"id":"lt-1234567890abcdef0","version":"1"}]}}})
     report=scan(tmp_path,account=ACCOUNT,region=REGION)
-    lt="arn:aws:ec2:us-east-1:123456789012:launch-template/lt-1234567890abcdef0"
-    check(report,"ec2:RunInstances",lt,{"ArnLike":{"ec2:LaunchTemplate":lt}})
-    check(report,"ec2:RunInstances","arn:aws:ec2:us-east-1::image/*",{"ArnLike":{"ec2:LaunchTemplate":lt}})
-    check(report,"ec2:RunInstances","arn:aws:ec2:us-east-1:123456789012:instance/*",{"ArnLike":{"ec2:LaunchTemplate":lt}})
-    assert not report["unresolved_permissions"]
-    assert any("uncomputed IDs" in x for x in report["information"])
+    assert any(x["action"]=="ec2:RunInstances" and "AMI, subnet, security group" in x["reason"] for x in report["unresolved_permissions"])
+    assert not any(p["action"]=="ec2:RunInstances" for p in report["permissions"])
 
 
 def test_launch_template_creation_tags_are_create_only(tmp_path):
@@ -150,6 +146,8 @@ def test_glue_catalog_database_and_job_are_mapped_and_scoped(tmp_path):
     assert not report["unresolved_permissions"],report["unresolved_permissions"]
     check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:catalog")
     check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:database/analytics")
+    check(report,"glue:DeleteDatabase","arn:aws:glue:us-east-1:123456789012:table/analytics/*")
+    check(report,"glue:DeleteDatabase","arn:aws:glue:us-east-1:123456789012:userDefinedFunction/analytics/*")
     check(report,"glue:CreateJob","arn:aws:glue:us-east-1:123456789012:job/etl-worker")
     check(report,"iam:PassRole","arn:aws:iam::123456789012:role/etl-worker",{"StringEquals":{"iam:PassedToService":"glue.amazonaws.com"}})
     output=tmp_path/"policy.json"
@@ -170,6 +168,8 @@ def test_glue_catalog_unknown_database_name_uses_bounded_prospective_scope(tmp_p
     report=scan(tmp_path,account=ACCOUNT,region=REGION)
     check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:catalog")
     check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:database/*")
+    check(report,"glue:DeleteDatabase","arn:aws:glue:us-east-1:123456789012:table/*/*")
+    check(report,"glue:DeleteDatabase","arn:aws:glue:us-east-1:123456789012:userDefinedFunction/*/*")
     assert not report["unresolved_permissions"]
     assert any("prospective database/*" in x for x in report["information"])
 
@@ -179,7 +179,6 @@ def test_glue_catalog_literal_invalid_name_rejects_scope(tmp_path):
     report=scan(tmp_path,account=ACCOUNT,region=REGION)
     assert any(x["action"]=="glue:CreateDatabase" for x in report["unresolved_permissions"])
     assert not any(x["action"]=="glue:CreateDatabase" for x in report["permissions"])
-
 
 def test_asg_launch_template_computed_id_uses_bounded_scope(tmp_path):
     write(tmp_path,{"aws_autoscaling_group":{"main":{"name":"workers","launch_template":[{"id":None,"version":"$Latest"}]}}})
