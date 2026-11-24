@@ -3250,6 +3250,65 @@
         "glue:UpdateJob"
       ]
     },
+    "aws_ec2_transit_gateway": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeTransitGateways"
+      ],
+      "write": [
+        "ec2:CreateTransitGateway",
+        "ec2:CreateTags",
+        "ec2:DeleteTags",
+        "ec2:ModifyTransitGateway"
+      ],
+      "delete": [
+        "ec2:DeleteTransitGateway"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateTransitGateway",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:ModifyTransitGateway",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
+    "aws_vpn_gateway": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_ec2.html",
+      "read": [
+        "ec2:DescribeVpnGateways"
+      ],
+      "write": [
+        "ec2:CreateVpnGateway",
+        "ec2:AttachVpnGateway",
+        "ec2:DetachVpnGateway",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "delete": [
+        "ec2:DeleteVpnGateway"
+      ],
+      "attributes": [],
+      "create": [
+        "ec2:CreateVpnGateway",
+        "ec2:AttachVpnGateway",
+        "ec2:CreateTags"
+      ],
+      "update": [
+        "ec2:AttachVpnGateway",
+        "ec2:DetachVpnGateway",
+        "ec2:CreateTags",
+        "ec2:DeleteTags"
+      ],
+      "scope_strategy": "review"
+    },
     "aws_sns_topic": {
       "validation": "candidate",
       "provider_versions": [],

@@ -329,8 +329,10 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                                 provider=body.get("provider","random")
                                 if provider in ("random","${random}"):
                                     evaluated["_tfiam_local_random_id"]=True
-                            # A generated ID is never fabricated. Only direct references to
-                            # same-context, explicitly tagged managed EC2 parents qualify.
+                            # Preserve direct managed EC2 parent references even when
+                            # Terraform cannot evaluate the AWS-assigned ID.
+                            # Same-context and non-ambiguous identity are required;
+                            # no user-defined IAM tags are required.
                             dynamic={}
                             def dynamic_reference(raw):
                                 match=EXPR.fullmatch(raw) if isinstance(raw,str) else None
@@ -342,7 +344,7 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                                 if not parent or parent_type not in EC2_TYPES or "count" in parent or "for_each" in parent or context is None or ctx.provider_context(parent)!=context: return None
                                 tags=ctx.evaluate(parent.get("tags",{}))
                                 condition=tag_conditions({"tags":{"tfiam:scope":tags["tfiam:scope"]}},"ec2:ResourceTag/") if isinstance(tags,dict) and isinstance(tags.get("tfiam:scope"),str) and tags["tfiam:scope"] else {}
-                                return {"kind":EC2_TYPES[parent_type][0],"condition":condition} if condition else None
+                                return {"kind":EC2_TYPES[parent_type][0],"condition":condition,"prospective":True}
                             for field,raw in body.items():
                                 if isinstance(raw,list):
                                     entries=[dynamic_reference(item) for item in raw]

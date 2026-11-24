@@ -15,6 +15,8 @@ EC2_TYPES={
     "aws_network_interface":("network-interface","eni"),
     "aws_vpc_peering_connection":("vpc-peering-connection","pcx"),
     "aws_vpc_peering_connection_accepter":("vpc-peering-connection","pcx"),
+    "aws_ec2_transit_gateway":("transit-gateway","tgw"),
+    "aws_vpn_gateway":("vpn-gateway","vgw"),
     "aws_vpc_security_group_ingress_rule":("security-group-rule","sgr"),
     "aws_vpc_security_group_egress_rule":("security-group-rule","sgr"),
 }
@@ -23,7 +25,7 @@ EC2_GLOBAL={"ec2:"+s for s in (
     "DescribeVpcs DescribeVpcAttribute DescribeTags DescribeSubnets DescribeInstances DescribeInstanceAttribute "
     "DescribeVolumes DescribeInstanceStatus DescribeImages DescribeSecurityGroups DescribeSecurityGroupRules "
     "DescribeInternetGateways DescribeNatGateways DescribeRouteTables DescribeVpcEndpoints DescribeNetworkAcls "
-    "DescribeAddresses DescribeLaunchTemplates DescribeLaunchTemplateVersions DescribeNetworkInterfaces DescribeVpcPeeringConnections"
+    "DescribeAddresses DescribeLaunchTemplates DescribeLaunchTemplateVersions DescribeNetworkInterfaces DescribeVpcPeeringConnections DescribeTransitGateways DescribeVpnGateways"
 ).split()}
 ELB_GLOBAL={"elasticloadbalancing:"+s for s in "DescribeLoadBalancers DescribeTargetGroups DescribeListeners DescribeRules DescribeTags".split()}
 # Create request authorization includes the allocated resource and listed parent dependencies.
@@ -36,9 +38,11 @@ CREATE={
     "AllocateAddress":("elastic-ip",()),
     "CreateLaunchTemplate":("launch-template",()),
     "CreateVolume":("volume",()),
+    "CreateTransitGateway":("transit-gateway",()),
+    "CreateVpnGateway":("vpn-gateway",()),
 }
 # Only actions whose resource types have been selected explicitly are emitted.
-SELF_ACTIONS=set("ModifyVpcAttribute DeleteVpc ModifySubnetAttribute DeleteSubnet ModifyInstanceAttribute StartInstances StopInstances TerminateInstances DeleteInternetGateway DeleteNatGateway DeleteRouteTable DeleteSecurityGroup DeleteVpcEndpoints DeleteNetworkAcl ReleaseAddress CreateLaunchTemplateVersion ModifyLaunchTemplate DeleteLaunchTemplateVersions DeleteLaunchTemplate ModifyVolume DeleteVolume ModifyNetworkInterfaceAttribute DeleteNetworkInterface AcceptVpcPeeringConnection ModifyVpcPeeringConnectionOptions DeleteVpcPeeringConnection".split())
+SELF_ACTIONS=set("ModifyVpcAttribute DeleteVpc ModifySubnetAttribute DeleteSubnet ModifyInstanceAttribute StartInstances StopInstances TerminateInstances DeleteInternetGateway DeleteNatGateway DeleteRouteTable DeleteSecurityGroup DeleteVpcEndpoints DeleteNetworkAcl ReleaseAddress CreateLaunchTemplateVersion ModifyLaunchTemplate DeleteLaunchTemplateVersions DeleteLaunchTemplate ModifyVolume DeleteVolume ModifyNetworkInterfaceAttribute DeleteNetworkInterface AcceptVpcPeeringConnection ModifyVpcPeeringConnectionOptions DeleteVpcPeeringConnection ModifyTransitGateway DeleteTransitGateway DeleteVpnGateway".split())
 def tag_conditions(body,prefix):
     tags=body.get("tags")
     if not isinstance(tags,dict) or not tags: return {}
@@ -54,30 +58,58 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
         return f"arn:{partition}:ec2:{region}:{account if owner is None else owner}:{kind}/{ident}"
     def ident(field,prefix):
         v=val(field)
-        return v if v and re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",v) else None
+        return v if isinstance(v,str) and re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",v) else None
+    managed={
+        "vpc":"aws_vpc","subnet":"aws_subnet",
+        "route-table":"aws_route_table","security-group":"aws_security_group",
+        "internet-gateway":"aws_internet_gateway","natgateway":"aws_nat_gateway",
+        "elastic-ip":"aws_eip","network-acl":"aws_network_acl",
+        "vpc-endpoint":"aws_vpc_endpoint","vpc-peering-connection":"aws_vpc_peering_connection",
+        "transit-gateway":"aws_ec2_transit_gateway","vpn-gateway":"aws_vpn_gateway",
+    }
+    def managed_reference(value,kind):
+        # A Terraform resource attribute is computed at creation. It is
+        # not an arbitrary var, an external ID, or a user-created IAM tag.
+        return bool(isinstance(value,str) and re.fullmatch(
+            r"\$\{"+re.escape(managed.get(kind,"<none>"))+
+            r"\.[A-Za-z_][A-Za-z0-9_]*(?:\[[0-9]+\])?\.(?:id|allocation_id)\}",value))
+    def prospective(kind):
+        candidate=ec(kind,"*")
+        if candidate:
+            diagnose("AWS-generated "+kind+" ID unknown until create; scoped to account, region and resource class "+candidate)
+        return candidate
     def dep(field,kind,prefix):
         exact=ec(kind,ident(field,prefix))
         if exact: return exact
-        if not scope_resource_tags: return None
+        if task is None and managed_reference(body.get(field),kind):
+            return prospective(kind)
         dynamic=body.get("_tfiam_dynamic_ec2",{}).get(field,{})
-        if not isinstance(dynamic,dict): return None
+        if not isinstance(dynamic,dict) or dynamic.get("kind")!=kind: return None
         condition=dynamic.get("condition")
-        if dynamic.get("kind")==kind and condition and ec(kind,"*"):
+        if scope_resource_tags and condition and ec(kind,"*"):
             return (ec(kind,"*"),condition)
+        if task is None and dynamic.get("prospective"):
+            return prospective(kind)
         return None
     def many(field,kind,prefix):
         raw=body.get(field)
         dynamic=body.get("_tfiam_dynamic_ec2",{}).get(field,[])
-        if raw is None and scope_resource_tags and isinstance(dynamic,list) and dynamic: raw=[None]*len(dynamic)
+        if raw is None and isinstance(dynamic,list) and dynamic: raw=[None]*len(dynamic)
         if not isinstance(raw,list) or not raw: return None
         out=[]
         for i,item in enumerate(raw):
             value=resolve(item)
-            if value and re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",value):
+            if isinstance(value,str) and re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",value):
                 out.append(ec(kind,value)); continue
-            ref=dynamic[i] if scope_resource_tags and isinstance(dynamic,list) and len(dynamic)==len(raw) else None
-            if isinstance(ref,dict) and ref.get("kind")==kind and ref.get("condition") and ec(kind,"*"):
-                out.append((ec(kind,"*"),ref["condition"]))
+            if task is None and managed_reference(item,kind):
+                out.append(prospective(kind)); continue
+            ref=dynamic[i] if isinstance(dynamic,list) and len(dynamic)==len(raw) else None
+            if isinstance(ref,dict) and ref.get("kind")==kind:
+                if scope_resource_tags and ref.get("condition") and ec(kind,"*"):
+                    out.append((ec(kind,"*"),ref["condition"]))
+                elif task is None and ref.get("prospective"):
+                    out.append(prospective(kind))
+                else: return None
             else: return None
         return out if all(out) else None
     def request_tags():
@@ -105,11 +137,29 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     if not own and scope_resource_tags and spec and body.get("_tfiam_self_tags") and ec(spec[0],"*"):
         own=(ec(spec[0],"*"),body["_tfiam_self_tags"])
     if typ=="aws_eip": own=dep("allocation_id","elastic-ip","eipalloc") or own
+    # AWS allocates IDs for new gateways. Scope unknown current identity to
+    # the verified regional resource class without inventing an exact ID.
+    if not own and task is None and spec and (
+        body.get("id") is None or managed_reference(body.get("id"),spec[0])
+    ) and (typ!="aws_vpc_endpoint" or bool(
+        body.get("vpc_id") or body.get("_tfiam_dynamic_ec2",{}).get("vpc_id")
+    )):
+        # A fresh static configuration has no AWS-assigned ID. Authorize
+        # the prospective resource class; never claim this identifies only
+        # one resource, and preserve exact IDs when supplied by a saved plan.
+        own=prospective(spec[0])
     if typ in ("aws_route","aws_route_table_association"): own=dep("route_table_id","route-table","rtb")
     if typ=="aws_security_group_rule": own=dep("security_group_id","security-group","sg")
     if typ=="aws_network_acl_rule": own=dep("network_acl_id","network-acl","acl")
     if typ.startswith("aws_vpc_endpoint_"): own=dep("vpc_endpoint_id","vpc-endpoint","vpce")
     op=task.get("operation") if task else None
+    # Optional Terraform lifecycle branches must not force unrelated
+    # privileges or unresolved findings when the feature is not configured.
+    uncertain=set(task.get("unknown_fields",[])) if task else set(body.get("_tfiam_unknown_fields",[]))
+    if typ=="aws_vpn_gateway" and not body.get("vpc_id") and "vpc_id" not in uncertain:
+        actions=[action for action in actions if action not in ("ec2:AttachVpnGateway","ec2:DetachVpnGateway")]
+    if typ=="aws_vpc_peering_connection" and body.get("auto_accept") is not True and "auto_accept" not in uncertain:
+        actions=[action for action in actions if action!="ec2:AcceptVpcPeeringConnection"]
     creates=set()
     for action in sorted(actions,key=lambda a:(a in ("ec2:CreateTags","ec2:DeleteTags"),a)):
         short=action.split(":")[1]
@@ -131,6 +181,32 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 emit(action,target,request_tags() or None)
                 creates.add(short)
             else: omit(action)
+            continue
+        if short=="CreateVpcPeeringConnection" and typ=="aws_vpc_peering_connection":
+            # AWS VPC peering IAM documentation explicitly supports a
+            # requester VPC ARN and an AccepterVpc condition that identifies
+            # the other account and region. The accepter account separately
+            # authorizes acceptance; never grant that role implicitly.
+            requester=dep("vpc_id","vpc","vpc")
+            peer_account=val("peer_owner_id") if "peer_owner_id" in body else account
+            peer_region=val("peer_region") if "peer_region" in body else region
+            peer_id=ident("peer_vpc_id","vpc")
+            accepter=(
+                f"arn:{partition}:ec2:{peer_region}:{peer_account}:vpc/{peer_id}"
+                if peer_id and isinstance(peer_account,str)
+                and re.fullmatch(r"[0-9]{12}",peer_account)
+                and isinstance(peer_region,str)
+                and re.fullmatch(r"[a-z]{2}(?:-gov)?-[a-z]+-[0-9]",peer_region)
+                else dep("peer_vpc_id","vpc","vpc")
+                if peer_account==account and peer_region==region else None
+            )
+            target=ec("vpc-peering-connection","*")
+            if requester and accepter and target:
+                emit(action,requester)
+                emit(action,target,{"ArnEquals":{"ec2:AccepterVpc":accepter}})
+                creates.add(short)
+            else:
+                omit(action)
             continue
         if short=="CreateNatGateway" and typ=="aws_nat_gateway":
             # Zonal NAT only; regional NAT uses different request dependencies.
@@ -179,7 +255,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             continue
         if short in ("AttachVolume","DetachVolume"):
             grant(action,[dep("instance_id","instance","i"),dep("volume_id","volume","vol")]); continue
-        if short in ("AttachInternetGateway","DetachInternetGateway"):
+        if short in ("AttachInternetGateway","DetachInternetGateway","AttachVpnGateway","DetachVpnGateway"):
             grant(action,[own,dep("vpc_id","vpc","vpc")]); continue
         if short in ("CreateRoute","ReplaceRoute","DeleteRoute"):
             grant(action,[own]); continue
