@@ -212,7 +212,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 raw_peer=body.get("peer_vpc_id")
                 computed_peer=(
                     isinstance(raw_peer,str) and
-                    re.fullmatch(r"\\$\\{[^{}]+\\}",raw_peer) is not None
+                    re.fullmatch(r"\$\{[^{}]+\}",raw_peer) is not None
                 ) or (task is not None and "peer_vpc_id" in task.get("unknown_fields",[]))
                 if computed_peer:
                     accepter=f"arn:{partition}:ec2:{peer_region}:{peer_account}:vpc/*"
