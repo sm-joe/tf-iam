@@ -43,7 +43,7 @@ def configured(key,cfg,default,overrides):
         if isinstance(assumption,list) and len(assumption)==1: assumption=assumption[0]
         if not isinstance(assumption,dict): return None
         role=assumption.get("role_arn")
-        match=re.fullmatch(r"arn:(aws|aws-cn|aws-us-gov):iam::([0-9]{12}):role/[^*?\\s]+",role) if isinstance(role,str) else None
+        match=re.fullmatch(r"arn:(aws|aws-cn|aws-us-gov):iam::([0-9]{12}):role/[^*?\s]+",role) if isinstance(role,str) else None
         if not match: return None
         p,a=match.group(1),match.group(2)
     if r is not None and ((str(r).startswith("cn-")) != (p=="aws-cn") or (str(r).startswith("us-gov-")) != (p=="aws-us-gov")): return None
