@@ -225,13 +225,25 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                     "ArnLike" if prospective_accepter else "ArnEquals":{"ec2:AccepterVpc":accepter}
                 })
                 creates.add(short)
+            elif requester and target and "peer_vpc_id" in body and (
+                peer_id or "peer_vpc_id" in body.get("_tfiam_unknown_fields",[])
+                or body.get("peer_vpc_id") is not None
+                or (task is not None and "peer_vpc_id" in task.get("unknown_fields",[]))
+            ):
+                # AWS explicitly supports CreateVpcPeeringConnection on the
+                # requester VPC and peering-connection ARNs without an
+                # ec2:AccepterVpc condition. Do not turn an optional *extra*
+                # restriction into a mandatory permission-resolution failure.
+                # Requester scope stays bounded; no cross-account Accept grant.
+                emit(action,requester)
+                emit(action,target)
+                diagnose("Peer account/region or peer VPC identity unresolved; ec2:CreateVpcPeeringConnection scoped to requester VPC and local peering resource, without optional ec2:AccepterVpc restriction. This permits requests to other accepter VPCs; use a saved plan or exact peer values to constrain it.")
+                creates.add(short)
             else:
                 if not requester:
                     omit(action,"requester VPC identity unresolved; provide a managed VPC reference or known VPC ID")
-                elif not peer_context_known:
-                    omit(action,"peer AWS account or region unresolved; provide peer_owner_id and peer_region (or resolvable Terraform references)")
                 else:
-                    omit(action,"peer VPC ID unresolved; provide peer_vpc_id or a Terraform expression evaluated at apply time")
+                    omit(action,"peer_vpc_id missing; peering destination must be declared")
             continue
         if short=="CreateNatGateway" and typ=="aws_nat_gateway":
             # Zonal NAT only; regional NAT uses different request dependencies.
