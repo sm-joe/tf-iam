@@ -60,11 +60,22 @@ def discover_aws_identity(account=None,region=None,partition="aws"):
     import subprocess
 
     region=region or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
-    if account is not None:
-        return account,region,partition
     if not shutil.which("aws"):
         return account,region,partition
     env=dict(os.environ, AWS_EC2_METADATA_DISABLED="true")
+    if not region:
+        try:
+            configured_region=subprocess.run(
+                ["aws","configure","get","region"],capture_output=True,text=True,
+                timeout=3,env=env,check=False,
+            )
+            candidate=configured_region.stdout.strip()
+            if configured_region.returncode==0 and re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-[0-9]+",candidate):
+                region=candidate
+        except (OSError,subprocess.TimeoutExpired):
+            pass
+    if account is not None:
+        return account,region,partition
     try:
         cmd=["aws","sts","get-caller-identity","--output","json"]
         if region: cmd.extend(["--region",region])
