@@ -123,3 +123,13 @@ def test_all_fifteen_networking_declarations_are_discovered(tmp_path):
     assert grants(report,"ec2:CreateTransitGateway")
     assert grants(report,"ec2:CreateVpnGateway")
     assert grants(report,"route53:ChangeResourceRecordSets")
+
+
+def test_route53_wildcard_record_name_uses_aws_octal_condition(tmp_path):
+    report=source(tmp_path,{"aws_route53_record":{"main":{
+        "zone_id":"Z123456789ABC","name":"*.example.com.","type":"CNAME"
+    }}})
+    row=grants(report,"route53:ChangeResourceRecordSets")[0]
+    assert row["condition"]["ForAllValues:StringEquals"][
+        "route53:ChangeResourceRecordSetsNormalizedRecordNames"
+    ]==[chr(92)+"052.example.com"]
