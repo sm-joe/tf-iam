@@ -213,6 +213,9 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
     provider_contexts=provider_contexts or {}
     """Resolve each module call independently, with installed module manifest only."""
     root=Path(root).resolve()
+    # Allow explicitly referenced sibling modules in the Terraform workspace,
+    # but do not traverse arbitrary ancestors or follow symlinks.
+    workspace=root.parent
     manifest={}
     manifest_path=root/".terraform/modules/modules.json"
     if manifest_path.exists():
@@ -228,19 +231,20 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
             warn("Installed module manifest invalid; remote module discovery disabled")
     inventory=[]; contexts=[]; edges=[]
     def collect(folder,path,parent_inputs,stack,root_call=False,inherited=None):
-        folder=folder.resolve()
+        folder=Path(os.path.abspath(folder))
         if folder in stack or len(stack)>=64:
             warn((path or "root")+": module cycle or depth limit; skipped")
             return None
-        if not folder.is_relative_to(root) or not folder.is_dir():
-            warn((path or "root")+": module outside scan root or missing; skipped")
+        if (not folder.is_relative_to(workspace) or not folder.is_dir()
+                or any(part.is_symlink() for part in (folder, *folder.parents) if part.is_relative_to(workspace))):
+            warn((path or "root")+": module outside workspace, symlinked or missing; skipped")
             return None
         docs=[]
         files=sorted(set(folder.glob("*.tf"))|set(folder.glob("*.tf.json")))
         for file in files:
             try:
-                if not file.resolve().is_relative_to(root): raise ValueError()
-                docs.append((str(file.relative_to(root)),read_document(file)))
+                if file.is_symlink() or not file.resolve().is_relative_to(folder): raise ValueError()
+                docs.append((str(file.relative_to(root)) if file.is_relative_to(root) else os.path.relpath(file,root),read_document(file)))
             except Exception:
                 warn((path or "root")+": Terraform file parse failed: "+file.name)
         if not files: warn((path or "root")+": no Terraform files")

@@ -59,3 +59,20 @@ def test_saved_plan_operation_and_unknown_role(tmp_path):
     assert "dynamodb:CreateTable" in actions
     assert not {"dynamodb:DeleteTable","dynamodb:UpdateTimeToLive","dynamodb:UpdateContinuousBackups","eks:DeleteFargateProfile"} & actions
     assert any(p["action"]=="iam:PassRole" for p in r["unresolved_permissions"])
+
+
+def test_saved_plan_counted_sns_topic_and_subscription(tmp_path):
+    topic="arn:aws:sns:us-east-1:123456789012:notifications"
+    plan={"format_version":"1.2","terraform_version":"1.10.0","complete":True,"resource_changes":[
+        {"address":"module.sns-topic.aws_sns_topic.sns-topic[0]","mode":"managed","type":"aws_sns_topic","provider_name":"registry.terraform.io/hashicorp/aws","change":{"actions":["create"],"before":None,"after":{"name":"notifications","arn":topic}}},
+        {"address":"module.sns-topic.aws_sns_topic_subscription.sns-subscription[0]","mode":"managed","type":"aws_sns_topic_subscription","provider_name":"registry.terraform.io/hashicorp/aws","change":{"actions":["create"],"before":None,"after":{"topic_arn":topic,"endpoint":"ops@example.org","protocol":"email"}}}
+    ]}
+    report=scan(plan=plan,account=ACCOUNT,region=REGION,provider_version="6.73.0")
+    assert report["mapping_coverage"]["mapped_resources"]==2
+    assert not report["unresolved_permissions"],report["unresolved_permissions"]
+    check(report,"sns:CreateTopic",topic)
+    check(report,"sns:Subscribe",topic,{"StringEquals":{"sns:Endpoint":"ops@example.org","sns:Protocol":"email"}})
+    output=tmp_path/"sns-policy.json"
+    (tmp_path/"plan.json").write_text(json.dumps(plan))
+    assert main(["generate","--plan-json",str(tmp_path/"plan.json"),"--aws-account",ACCOUNT,"--aws-region",REGION,"--aws-provider-version","6.73.0","--output",str(output)])==0
+    assert output.is_file()

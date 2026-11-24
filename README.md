@@ -171,6 +171,35 @@ The Version-Aware Catalog Is Selected From Existing Provider Lockfile Informatio
 
 Use `tfiam COMMAND --help` For The Full Options. Scan Defaults To A Table; Generate Defaults To IAM JSON And Writes Its Decision Report To Stderr. Use `--format json --output report.json --show-table` To Preserve The Complete Structured Report And View Tables. Table Views May Abbreviate Large Detail Sections.
 
+### Local Sibling Modules
+
+Terraform Configurations Can Reference A Local Module Outside The Root Directory, For Example `source = "../Modules/Terraform-SNS"`. tf-iam Resolves Such Explicit Local References Within The Root Directory's Parent Workspace And Reads Only Terraform Source Files Within The Referenced Module. Missing Modules, Symlinks And Paths Escaping The Workspace Remain Blocked; No Arbitrary Outside-Workspace Files Are Scanned.
+
+For Offline Scanning, Keep The Original Directory Layout And Specify The Real Account, Region And AWS Provider Version (Or Initialize Terraform To Generate The Lockfile):
+
+~~~bash
+tfiam generate ./SNS-Topic \
+  --aws-account "$AWS_ACCOUNT_ID" \
+  --aws-region us-east-1 \
+  --aws-provider-version 6.73.0 \
+  --output sns-policy.json
+~~~
+
+For Modules With `count` Or `for_each`, Prefer An Exact Saved Plan So Terraform Evaluates Instance Expansion And Resource References. For Example:
+
+~~~bash
+terraform -chdir=./SNS-Topic init
+terraform -chdir=./SNS-Topic plan -out=tfplan
+terraform -chdir=./SNS-Topic show -json tfplan > sns-plan.json
+tfiam generate ./SNS-Topic --plan-json sns-plan.json \
+  --aws-account "$AWS_ACCOUNT_ID" --aws-region us-east-1 \
+  --output sns-policy.json
+~~~
+
+Run These Commands From The Workspace Parent And Replace The Relative Paths With Your Real Terraform Root. Sensitive Plan JSON Must Be Kept Private. A Plan Can Still Contain Unknown Future Resource ARNs; The CLI Will Report Those As Unresolved Rather Than Guess A Scope. `--allow-partial` Is Not A Production Authorization Fix.
+
+The Example Provider Version Must Match The Version Actually Selected For Your Terraform Configuration. A `required_providers` Version Range Does Not Establish The Exact Installed Version. For A Real S3 Backend With DynamoDB Locking, The Account And Region Are Necessary To Scope Locking Actions. Backend Workspace And Bucket-Policy Warnings Still Require Review.
+
 ## Analyze A Saved Terraform Plan
 
 Use A Planning Identity With Appropriate Permissions. tf-iam Does Not Run Terraform Itself.

@@ -162,3 +162,45 @@ def test_random_id_unknown_bucket_and_custom_provider_still_block(tmp_path):
     put(tmp_path,"main.tf.json",config)
     report=scan(tmp_path,account="123456789012",region="us-east-1")
     assert report["mapping_coverage"]["unmapped_resources"]==1
+
+
+def test_explicit_sibling_module_resolves_without_plan(tmp_path):
+    root=tmp_path/"SNS-Topic"
+    module=tmp_path/"Modules"/"Terraform-SNS"
+    put(root,"main.tf.json",{"module":{"sns-topic":{"source":"../Modules/Terraform-SNS","is_sns_enable":True,"sns_topic_name":"my-test-topic"}}})
+    put(module,"main.tf.json",{"variable":{"sns_topic_name":{}},"resource":{"aws_sns_topic":{"this":{"name":"${var.sns_topic_name}"}}}})
+    report=scan(root,account="123456789012",region="us-east-1",provider_version="6.73.0")
+    assert report["modules"][0]["status"]=="RESOLVED"
+    assert any(x["address"]=="module.sns-topic.aws_sns_topic.this" for x in report["resources"])
+    assert any(x["action"]=="sns:CreateTopic" for x in report["permissions"])
+    assert not report["input_blockers"]
+
+
+def test_sibling_module_missing_is_fail_closed(tmp_path):
+    root=tmp_path/"SNS-Topic"
+    put(root,"main.tf.json",{"module":{"sns-topic":{"source":"../Modules/Terraform-SNS"}}})
+    report=scan(root,account="123456789012",region="us-east-1",provider_version="6.73.0")
+    assert report["input_blockers"]
+    assert report["modules"][0]["status"]=="UNRESOLVED"
+
+
+def test_sibling_module_cannot_escape_workspace(tmp_path):
+    root=tmp_path/"workspace"/"SNS-Topic"
+    outside=tmp_path/"other"
+    put(root,"main.tf.json",{"module":{"escape":{"source":"../../other"}}})
+    put(outside,"main.tf.json",{"resource":{"aws_sns_topic":{"bad":{"name":"outside"}}}})
+    report=scan(root,account="123456789012",region="us-east-1",provider_version="6.73.0")
+    assert report["input_blockers"]
+    assert not any(x["type"]=="aws_sns_topic" for x in report["resources"])
+
+
+def test_sibling_module_symlink_is_rejected(tmp_path):
+    root=tmp_path/"SNS-Topic"
+    module=tmp_path/"Modules"/"Terraform-SNS"
+    put(root,"main.tf.json",{"module":{"sns":{"source":"../Modules/Terraform-SNS"}}})
+    put(tmp_path/"real","main.tf.json",{"resource":{"aws_sns_topic":{"x":{"name":"name"}}}})
+    module.parent.mkdir()
+    module.symlink_to(tmp_path/"real",target_is_directory=True)
+    report=scan(root,account="123456789012",region="us-east-1",provider_version="6.73.0")
+    assert report["input_blockers"]
+    assert not report["resources"]
