@@ -111,7 +111,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     if typ=="aws_eip": own=dep("allocation_id","elastic-ip","eipalloc") or own
     # AWS allocates IDs for new gateways. Scope unknown current identity to
     # the verified regional resource class without inventing an exact ID.
-    if not own and typ in ("aws_ec2_transit_gateway","aws_vpn_gateway"):
+    if not own and typ in ("aws_ec2_transit_gateway","aws_vpn_gateway","aws_vpc_peering_connection"):
         own=ec(spec[0],"*")
         if own: diagnose(typ+": generated gateway ID unavailable; prospective resource-class wildcard requires review")
     if typ in ("aws_route","aws_route_table_association"): own=dep("route_table_id","route-table","rtb")
@@ -140,6 +140,24 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 emit(action,target,request_tags() or None)
                 creates.add(short)
             else: omit(action)
+            continue
+        if short=="CreateVpcPeeringConnection" and typ=="aws_vpc_peering_connection":
+            # AWS requires authorization on the requester VPC and the
+            # prospective peering connection. Cross-account acceptance
+            # belongs to the peer identity and is never guessed here.
+            requester=dep("vpc_id","vpc","vpc")
+            accepter=dep("peer_vpc_id","vpc","vpc")
+            peer_account=val("peer_owner_id")
+            peer_region=val("peer_region")
+            if peer_account and peer_account!=account or peer_region and peer_region!=region:
+                diagnose("Cross-account or cross-region peering requires peer-specific authorization evidence")
+                omit(action); continue
+            target=ec("vpc-peering-connection","*")
+            if requester and accepter and target:
+                if grant(action,[requester,target],{"ArnEquals":{"ec2:AccepterVpc":accepter,"ec2:RequesterVpc":requester}}):
+                    creates.add(short)
+            else:
+                omit(action)
             continue
         if short=="CreateNatGateway" and typ=="aws_nat_gateway":
             # Zonal NAT only; regional NAT uses different request dependencies.
