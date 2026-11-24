@@ -12,6 +12,7 @@ from .authorization import audit
 from .expanded_scope import expand
 from .dependencies import dependencies, object_dependencies
 from .service_scope import TYPES as SERVICE_TYPES, scoped
+from .scaling_scope import scoped as scaling_scoped
 from .action_scope import network, elb, EC2_TYPES, ELB_TYPES, EC2_GLOBAL
 
 def blocks(doc, key):
@@ -281,6 +282,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 continue
                             if typ in ELB_TYPES:
                                 elb(typ,body,acts,account,region,partition,resolve,emit,omit,task)
+                                continue
+                            if typ in ('aws_autoscaling_group','aws_launch_template') and category=='resource':
+                                scaling_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
                             if typ in SERVICE_TYPES and category=='resource':
                                 scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
