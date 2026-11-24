@@ -132,3 +132,37 @@ def test_aws_caller_identity_needs_no_iam_grant(tmp_path):
     assert report["mapping_coverage"]["mapped_resources"]==1
     assert not any(x["action"]=="sts:GetCallerIdentity" for x in report["permissions"])
     assert not report["unresolved_permissions"]
+
+
+def test_glue_catalog_database_and_job_are_mapped_and_scoped(tmp_path):
+    (tmp_path/"main.tf.json").write_text(json.dumps({"resource":{
+        "aws_iam_role":{"glue_role":{"name":"etl-worker","assume_role_policy":"{}"}},
+        "aws_glue_catalog_database":{"main":{"name":"analytics"}},
+        "aws_glue_job":{"main":{"name":"etl-worker","role_arn":"${aws_iam_role.glue_role.arn}","command":{"script_location":"s3://scripts/job.py"}}},
+    }}))
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert report["mapping_coverage"]["eligible_resources"]==3
+    assert report["mapping_coverage"]["mapped_resources"]==3
+    assert not report["unresolved_permissions"],report["unresolved_permissions"]
+    check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:catalog")
+    check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:database/analytics")
+    check(report,"glue:CreateJob","arn:aws:glue:us-east-1:123456789012:job/etl-worker")
+    check(report,"iam:PassRole","arn:aws:iam::123456789012:role/etl-worker",{"StringEquals":{"iam:PassedToService":"glue.amazonaws.com"}})
+    output=tmp_path/"policy.json"
+    assert main(["generate",str(tmp_path),"--aws-account",ACCOUNT,"--aws-region",REGION,"--output",str(output)])==0
+    assert output.exists()
+
+
+def test_glue_job_unknown_role_fails_closed(tmp_path):
+    write(tmp_path,{"aws_glue_job":{"main":{"name":"etl-worker","role_arn":"${var.unresolved}"}}})
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert report["mapping_coverage"]["unmapped_resources"]==0
+    assert any(x["action"]=="iam:PassRole" for x in report["unresolved_permissions"])
+    assert not any(p["action"]=="iam:PassRole" for p in report["permissions"])
+
+
+def test_glue_catalog_unknown_database_name_fails_closed(tmp_path):
+    write(tmp_path,{"aws_glue_catalog_database":{"main":{"name":"${var.missing}"}}})
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert any(x["action"]=="glue:CreateDatabase" for x in report["unresolved_permissions"])
+    assert not any(x["action"]=="glue:CreateDatabase" for x in report["permissions"])
