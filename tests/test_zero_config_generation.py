@@ -112,3 +112,65 @@ def test_explicit_provider_contexts_do_not_require_network(tmp_path,monkeypatch)
     assert main(["generate",str(tmp_path),"--provider-contexts",str(tmp_path/"contexts.json"),
                  "--output",str(tmp_path/"policy.json")])==0
     assert json.loads((tmp_path/"policy.json").read_text())["Statement"]
+
+
+def test_full_networking_project_writes_policy_without_context_flags(tmp_path,monkeypatch):
+    vpc="${aws_vpc.main.id}"
+    public="${aws_subnet.public.id}"
+    private="${aws_subnet.private.id}"
+    routes_public="${aws_route_table.public.id}"
+    routes_private="${aws_route_table.private.id}"
+    config={"provider":{"aws":{"region":"us-east-1"}},"resource":{
+        "aws_vpc":{"main":{"cidr_block":"10.60.0.0/16"}},
+        "aws_subnet":{
+            "public":{"vpc_id":vpc,"cidr_block":"10.60.1.0/24"},
+            "private":{"vpc_id":vpc,"cidr_block":"10.60.2.0/24"},
+        },
+        "aws_internet_gateway":{"main":{"vpc_id":vpc}},
+        "aws_eip":{"nat":{"domain":"vpc"}},
+        "aws_nat_gateway":{"main":{"subnet_id":public,"allocation_id":"${aws_eip.nat.id}"}},
+        "aws_route_table":{
+            "public":{"vpc_id":vpc},
+            "private":{"vpc_id":vpc},
+        },
+        "aws_route_table_association":{
+            "public":{"route_table_id":routes_public,"subnet_id":public},
+            "private":{"route_table_id":routes_private,"subnet_id":private},
+        },
+        "aws_security_group":{"main":{"vpc_id":vpc,"name":"network-main"}},
+        "aws_network_acl":{"main":{"vpc_id":vpc}},
+        "aws_ec2_transit_gateway":{"main":{"description":"transit"}},
+        "aws_vpc_endpoint":{"s3":{
+            "vpc_id":vpc,"service_name":"com.amazonaws.us-east-1.s3",
+            "vpc_endpoint_type":"Gateway",
+            "route_table_ids":[routes_public,routes_private],
+        }},
+        "aws_route53_zone":{"main":{"name":"example.com"}},
+        "aws_route53_record":{"app":{
+            "zone_id":"${aws_route53_zone.main.zone_id}","name":"app.example.com",
+            "type":"A","ttl":60,"records":["192.0.2.10"],
+        }},
+        "aws_vpc_peering_connection":{"peer":{
+            "vpc_id":vpc,"peer_vpc_id":"vpc-aabbccdd",
+            "peer_owner_id":"999999999999","peer_region":"us-east-1",
+        }},
+        "aws_vpn_gateway":{"main":{"vpc_id":vpc}},
+    }}
+    (tmp_path/"main.tf.json").write_text(json.dumps(config))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("AWS_REGION","us-east-1")
+    monkeypatch.setattr("shutil.which",lambda command:"/usr/bin/aws" if command=="aws" else None)
+    def fake_run(args,**kwargs):
+        return SimpleNamespace(returncode=0,stdout=json.dumps({
+            "Account":"123456789012",
+            "Arn":"arn:aws:iam::123456789012:user/runner",
+        }))
+    monkeypatch.setattr("subprocess.run",fake_run)
+    assert main(["generate",".","--output","policy.json"])==0
+    policy=json.loads((tmp_path/"policy.json").read_text())
+    actions={a for row in policy["Statement"] for a in row["Action"]}
+    assert {"ec2:CreateVpc","ec2:CreateSubnet","ec2:CreateNatGateway",
+            "ec2:CreateVpcEndpoint","ec2:CreateVpcPeeringConnection",
+            "route53:ChangeResourceRecordSets","ec2:CreateTransitGateway",
+            "ec2:CreateVpnGateway"}<=actions
+    assert policy["Statement"]
