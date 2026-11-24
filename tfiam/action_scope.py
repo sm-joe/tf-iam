@@ -154,8 +154,9 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 omit(action); continue
             target=ec("vpc-peering-connection","*")
             if requester and accepter and target:
-                if grant(action,[requester,target],{"ArnEquals":{"ec2:AccepterVpc":accepter,"ec2:RequesterVpc":requester}}):
-                    creates.add(short)
+                emit(action,requester)
+                emit(action,target,{"ArnEquals":{"ec2:AccepterVpc":accepter,"ec2:RequesterVpc":requester}})
+                creates.add(short)
             else:
                 omit(action)
             continue
