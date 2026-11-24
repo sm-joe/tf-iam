@@ -119,6 +119,13 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     if typ=="aws_network_acl_rule": own=dep("network_acl_id","network-acl","acl")
     if typ.startswith("aws_vpc_endpoint_"): own=dep("vpc_endpoint_id","vpc-endpoint","vpce")
     op=task.get("operation") if task else None
+    # Optional Terraform lifecycle branches must not force unrelated
+    # privileges or unresolved findings when the feature is not configured.
+    uncertain=set(task.get("unknown_fields",[])) if task else set(body.get("_tfiam_unknown_fields",[]))
+    if typ=="aws_vpn_gateway" and not body.get("vpc_id") and "vpc_id" not in uncertain:
+        actions=[action for action in actions if action not in ("ec2:AttachVpnGateway","ec2:DetachVpnGateway")]
+    if typ=="aws_vpc_peering_connection" and body.get("auto_accept") is not True and "auto_accept" not in uncertain:
+        actions=[action for action in actions if action!="ec2:AcceptVpcPeeringConnection"]
     creates=set()
     for action in sorted(actions,key=lambda a:(a in ("ec2:CreateTags","ec2:DeleteTags"),a)):
         short=action.split(":")[1]
@@ -149,7 +156,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             accepter=dep("peer_vpc_id","vpc","vpc")
             peer_account=val("peer_owner_id")
             peer_region=val("peer_region")
-            if peer_account and peer_account!=account or peer_region and peer_region!=region:
+            if ("peer_owner_id" in body and not peer_account) or ("peer_region" in body and not peer_region) or (peer_account and peer_account!=account) or (peer_region and peer_region!=region):
                 diagnose("Cross-account or cross-region peering requires peer-specific authorization evidence")
                 omit(action); continue
             target=ec("vpc-peering-connection","*")
