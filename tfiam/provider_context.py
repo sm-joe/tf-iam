@@ -83,7 +83,7 @@ def discover_aws_identity(account=None,region=None,partition="aws",profile=None)
         except Exception:
             pass  # No usable AWS identity; the resolver will surface the omission.
         return account,region,partition
-    env=dict(os.environ, AWS_EC2_METADATA_DISABLED="true")
+    env=dict(os.environ)  # Respect the normal AWS credential chain, including instance roles.
     if not region:
         try:
             configured_region=subprocess.run(
