@@ -187,3 +187,34 @@ def test_unknown_external_dependency_remains_unresolved(tmp_path):
     report=source(tmp_path,{"aws_subnet":{"main":{"vpc_id":"${var.external_vpc}","cidr_block":"10.0.1.0/24"}}})
     assert not grants(report,"ec2:CreateSubnet")
     assert any(x["action"]=="ec2:CreateSubnet" for x in report["unresolved_permissions"])
+
+
+def test_endpoint_lifecycle_scope_not_withheld_by_missing_creation_service(tmp_path):
+    """A managed endpoint's mutation scope must not depend on create-time inputs."""
+    report=source(tmp_path,{"aws_vpc_endpoint":{"s3":{
+        "vpc_id":"vpc-aabbccdd",
+        "vpc_endpoint_type":"Gateway",
+    }}})
+    prospective="arn:aws:ec2:us-east-1:123456789012:vpc-endpoint/*"
+    for action in ("ec2:ModifyVpcEndpoint","ec2:DeleteVpcEndpoints","ec2:DeleteTags"):
+        assert any(row["scope"]==prospective for row in grants(report,action)),(action,report["unresolved_permissions"])
+        assert not any(row["action"]==action for row in report["unresolved_permissions"])
+    # Creating an endpoint still requires an actual known service target.
+    assert any(row["action"]=="ec2:CreateVpcEndpoint" for row in report["unresolved_permissions"])
+
+
+def test_managed_vpc_peering_reference_scopes_accepter(tmp_path):
+    report=source(tmp_path,{
+        "aws_vpc":{"main":{"cidr_block":"10.0.0.0/16"},
+                   "peer":{"cidr_block":"10.1.0.0/16"}},
+        "aws_vpc_peering_connection":{"peer":{
+            "vpc_id":"${aws_vpc.main.id}",
+            "peer_vpc_id":"${aws_vpc.peer.id}",
+        }},
+    })
+    action=grants(report,"ec2:CreateVpcPeeringConnection")
+    assert any(row["scope"]=="arn:aws:ec2:us-east-1:123456789012:vpc/*" for row in action), action
+    assert any(row.get("condition")=={
+        "ArnEquals":{"ec2:AccepterVpc":"arn:aws:ec2:us-east-1:123456789012:vpc/*"}
+    } for row in action), action
+    assert not any(row["action"]=="ec2:CreateVpcPeeringConnection" for row in report["unresolved_permissions"])
