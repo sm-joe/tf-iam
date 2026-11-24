@@ -88,3 +88,27 @@ def test_packaged_snapshot_automatically_selected(tmp_path,monkeypatch):
     assert report["authorization_metadata"]["status"]=="issues" # deliberately incomplete test snapshot
     report=scan(tmp_path,authorization_metadata=root)
     assert report["authorization_metadata"]["metadata_source"]=="explicit-offline-snapshot"
+
+
+def test_global_autoscaling_and_sts_reference_fallback(tmp_path):
+    actions=[
+        "autoscaling:DescribeAutoScalingGroups",
+        "autoscaling:DescribeScalingActivities",
+        "autoscaling:DescribeTags",
+        "sts:GetCallerIdentity",
+    ]
+    for service, names in (
+        ("autoscaling",[a.split(":")[1] for a in actions[:3]]),
+        ("sts",["GetCallerIdentity"]),
+    ):
+        (tmp_path/(service+".json")).write_text(json.dumps({
+            "Name":service,
+            "Actions":[{"Name":name} for name in names]
+        }))
+    rows=[{"action":action,"scope":"*","source":"fixture"} for action in actions]
+    out=audit(actions,rows,tmp_path)
+    assert out["status"]=="compatible",out["findings"]
+    assert {x["action"] for x in out["reference_fallbacks"]}==set(actions)
+    rows[0]["scope"]="arn:aws:autoscaling:us-east-1:123456789012:autoScalingGroup:*:autoScalingGroupName/test"
+    out=audit(actions,rows,tmp_path)
+    assert any(x["action"]==actions[0] and x["code"]=="action-requires-global-scope" for x in out["findings"])
