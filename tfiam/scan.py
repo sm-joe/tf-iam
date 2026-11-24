@@ -12,6 +12,7 @@ from .authorization import audit
 from .expanded_scope import expand
 from .dependencies import dependencies, object_dependencies
 from .service_scope import TYPES as SERVICE_TYPES, scoped
+from .scaling_scope import scoped as scaling_scoped
 from .action_scope import network, elb, EC2_TYPES, ELB_TYPES, EC2_GLOBAL
 
 def blocks(doc, key):
@@ -40,10 +41,10 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
         if msg not in report['warnings']: report['warnings'].append(msg)
     def info(message):
         if message not in report['information']: report['information'].append(message)
-    def unresolved(source,action):
-        row={'source':source,'action':action,'reason':'action-specific scope or dependency unresolved'}
+    def unresolved(source,action,reason='action-specific scope or dependency unresolved'):
+        row={'source':source,'action':action,'reason':reason}
         if row not in report['unresolved_permissions']: report['unresolved_permissions'].append(row)
-        warn(source+': '+action+' omitted; action-specific scope or dependency unresolved')
+        warn(source+': '+action+' omitted; '+reason)
     def add(p,a,s,source,plane='management',condition=None):
         for action in a:
             key=(p,action,s,source,plane,json.dumps(condition,sort_keys=True))
@@ -254,8 +255,8 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 acts=sorted(set(acts)|extras)
                             def emit(action,target,condition=None):
                                 add('aws',[action],target,address,condition=condition)
-                            def omit(action):
-                                unresolved(address,action)
+                            def omit(action,reason='action-specific scope or dependency unresolved'):
+                                unresolved(address,action,reason)
                             if task and scope_resource_tags and has_root:
                                 from .plan_network import recover, anchor
                                 body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task,network_sources,allow_name=scope_generated_names)}
@@ -271,6 +272,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     targets=current_role_targets.get((account,partition,resolve(body.get('role'))),set())
                                 if len(targets)==1:
                                     body['_tfiam_profile_role_arn']=next(iter(targets))
+                            if typ in ('aws_autoscaling_group','aws_launch_template') and category=='resource':
+                                scaling_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
+                                continue
                             if typ in EC2_TYPES or typ in ('aws_route','aws_route_table_association','aws_main_route_table_association','aws_security_group_rule','aws_network_acl_rule','aws_network_acl_association','aws_eip_association','aws_volume_attachment','aws_vpc_endpoint_route_table_association','aws_vpc_endpoint_subnet_association'):
                                 if task and typ=='aws_instance' and operation=='create' and has_root:
                                     from .plan_network import omitted_instance_key
