@@ -202,3 +202,24 @@ def test_asg_destroy_does_not_generate_launch_authorization(tmp_path):
     report=scan(tmp_path,phase="destroy",account=ACCOUNT,region=REGION)
     assert not any(p["action"]=="ec2:RunInstances" for p in report["permissions"])
     assert not any(p["action"]=="ec2:RunInstances" for p in report["unresolved_permissions"])
+
+
+def test_untagged_cross_resource_glue_asg_policy_generation(tmp_path):
+    """Integration: ordinary Terraform creates a launch template and Glue DB,
+    without custom tags, while their AWS-assigned identities are still unknown.
+    """
+    write(tmp_path,{
+        "aws_launch_template":{"main":{"name":"workload-launch","image_id":"ami-0123456789abcdef0"}},
+        "aws_autoscaling_group":{"main":{"name":"workload-asg","launch_template":[{"id":"${aws_launch_template.main.id}","version":"1"}]}},
+        "aws_glue_catalog_database":{"main":{"name":"${var.computed_database_name}"}},
+        "aws_glue_job":{"main":{"name":"workload-etl","role":"arn:aws:iam::123456789012:role/workload-etl"}},
+    })
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert report["mapping_coverage"]["eligible_resources"]==4
+    assert report["mapping_coverage"]["unmapped_resources"]==0
+    assert not report["unresolved_permissions"],report["unresolved_permissions"]
+    assert any(p["action"]=="ec2:RunInstances" for p in report["permissions"])
+    assert any(p["action"]=="glue:CreateDatabase" for p in report["permissions"])
+    output=tmp_path/"policy.json"
+    assert main(["generate",str(tmp_path),"--aws-account",ACCOUNT,"--aws-region",REGION,"--output",str(output)])==0
+    assert output.exists()
