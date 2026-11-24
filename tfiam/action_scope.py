@@ -58,10 +58,31 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
         return f"arn:{partition}:ec2:{region}:{account if owner is None else owner}:{kind}/{ident}"
     def ident(field,prefix):
         v=val(field)
-        return v if v and re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",v) else None
+        return v if isinstance(v,str) and re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",v) else None
+    managed={
+        "vpc":"aws_vpc","subnet":"aws_subnet",
+        "route-table":"aws_route_table","security-group":"aws_security_group",
+        "internet-gateway":"aws_internet_gateway","natgateway":"aws_nat_gateway",
+        "elastic-ip":"aws_eip","network-acl":"aws_network_acl",
+        "vpc-endpoint":"aws_vpc_endpoint","vpc-peering-connection":"aws_vpc_peering_connection",
+        "transit-gateway":"aws_ec2_transit_gateway","vpn-gateway":"aws_vpn_gateway",
+    }
+    def managed_reference(value,kind):
+        # A Terraform resource attribute is computed at creation. It is
+        # not an arbitrary var, an external ID, or a user-created IAM tag.
+        return bool(isinstance(value,str) and re.fullmatch(
+            r"\$\{"+re.escape(managed.get(kind,"<none>"))+
+            r"\.[A-Za-z_][A-Za-z0-9_]*(?:\[[0-9]+\])?\.(?:id|allocation_id)\}",value))
+    def prospective(kind):
+        candidate=ec(kind,"*")
+        if candidate:
+            diagnose("AWS-generated "+kind+" ID unknown until create; scoped to account, region and resource class "+candidate)
+        return candidate
     def dep(field,kind,prefix):
         exact=ec(kind,ident(field,prefix))
         if exact: return exact
+        if task is None and managed_reference(body.get(field),kind):
+            return prospective(kind)
         if not scope_resource_tags: return None
         dynamic=body.get("_tfiam_dynamic_ec2",{}).get(field,{})
         if not isinstance(dynamic,dict): return None
@@ -77,8 +98,10 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
         out=[]
         for i,item in enumerate(raw):
             value=resolve(item)
-            if value and re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",value):
+            if isinstance(value,str) and re.fullmatch(re.escape(prefix)+r"-[0-9a-f]+",value):
                 out.append(ec(kind,value)); continue
+            if task is None and managed_reference(item,kind):
+                out.append(prospective(kind)); continue
             ref=dynamic[i] if scope_resource_tags and isinstance(dynamic,list) and len(dynamic)==len(raw) else None
             if isinstance(ref,dict) and ref.get("kind")==kind and ref.get("condition") and ec(kind,"*"):
                 out.append((ec(kind,"*"),ref["condition"]))
@@ -111,9 +134,13 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     if typ=="aws_eip": own=dep("allocation_id","elastic-ip","eipalloc") or own
     # AWS allocates IDs for new gateways. Scope unknown current identity to
     # the verified regional resource class without inventing an exact ID.
-    if not own and typ in ("aws_ec2_transit_gateway","aws_vpn_gateway","aws_vpc_peering_connection"):
-        own=ec(spec[0],"*")
-        if own: diagnose(typ+": generated gateway ID unavailable; prospective resource-class wildcard requires review")
+    if not own and task is None and spec and (
+        body.get("id") is None or managed_reference(body.get("id"),spec[0])
+    ):
+        # A fresh static configuration has no AWS-assigned ID. Authorize
+        # the prospective resource class; never claim this identifies only
+        # one resource, and preserve exact IDs when supplied by a saved plan.
+        own=prospective(spec[0])
     if typ in ("aws_route","aws_route_table_association"): own=dep("route_table_id","route-table","rtb")
     if typ=="aws_security_group_rule": own=dep("security_group_id","security-group","sg")
     if typ=="aws_network_acl_rule": own=dep("network_acl_id","network-acl","acl")
