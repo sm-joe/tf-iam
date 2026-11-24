@@ -274,6 +274,8 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 if len(targets)==1:
                                     body['_tfiam_profile_role_arn']=next(iter(targets))
                             if typ in ('aws_glue_catalog_database','aws_glue_job') and category=='resource':
+                                if typ=='aws_glue_catalog_database' and body.get('name') is None and account and region:
+                                    info(address+': database name not statically resolved; using prospective database/* ARN in the selected account and region. This grants access to other databases in the same resource class; inspect scan coverage before deployment.')
                                 glue_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
                             if typ in ('aws_autoscaling_group','aws_launch_template') and category=='resource':
