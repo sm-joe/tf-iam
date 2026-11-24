@@ -19,15 +19,66 @@ def validate(raw):
     return out
 
 def configured(key,cfg,default,overrides):
+    """Determine the target of a Terraform AWS provider, not its caller's identity.
+
+    A constant assume_role ARN selects the destination account. Never substitute
+    the caller's account for an unresolved assumed role or a different profile.
+    """
     if key in overrides: return overrides[key]
-    if key!="aws" or any(k in cfg for k in ("assume_role","assume_role_with_web_identity","profile","access_key","secret_key","token","endpoints")): return None
+    if not normalize(key) or not isinstance(cfg,dict): return None
+    if any(k in cfg for k in ("access_key","secret_key","token","endpoints")): return None
     a,r,p=default
-    if "region" in cfg:
-        value=cfg["region"]
-        if not isinstance(value,str) or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-[0-9]+",value): return None
-        if r and r!=value: return None
-        r=value
+    region=cfg.get("region")
+    if region is not None:
+        if not isinstance(region,str) or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-[0-9]+",region): return None
+        r=region  # Explicit Terraform provider region takes precedence over AWS CLI defaults.
+    profile=cfg.get("profile")
+    if profile is not None:
+        import os
+        if not isinstance(profile,str) or profile != os.environ.get("AWS_PROFILE"): return None
+    assumption=cfg.get("assume_role",cfg.get("assume_role_with_web_identity"))
+    if assumption is not None:
+        if isinstance(assumption,list) and len(assumption)==1: assumption=assumption[0]
+        if not isinstance(assumption,dict): return None
+        role=assumption.get("role_arn")
+        match=re.fullmatch(r"arn:(aws|aws-cn|aws-us-gov):iam::([0-9]{12}):role/[^*?\\s]+",role) if isinstance(role,str) else None
+        if not match: return None
+        p,a=match.group(1),match.group(2)
+    if r is not None and ((str(r).startswith("cn-")) != (p=="aws-cn") or (str(r).startswith("us-gov-")) != (p=="aws-us-gov")): return None
     return a,r,p
+
+
+def discover_aws_identity(account=None,region=None,partition="aws"):
+    """Read-only best-effort caller discovery for zero-config CLI invocations.
+
+    This never modifies AWS, assumes a role, or fabricates an AWS account ID.
+    The identity is the *caller*, and configured() handles target assume_role.
+    """
+    import json
+    import os
+    import shutil
+    import subprocess
+
+    region=region or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+    if account is not None:
+        return account,region,partition
+    if not shutil.which("aws"):
+        return account,region,partition
+    env=dict(os.environ, AWS_EC2_METADATA_DISABLED="true")
+    try:
+        cmd=["aws","sts","get-caller-identity","--output","json"]
+        if region: cmd.extend(["--region",region])
+        result=subprocess.run(cmd,capture_output=True,text=True,timeout=5,env=env,check=False)
+        if result.returncode!=0: return account,region,partition
+        identity=json.loads(result.stdout)
+        arn=identity.get("Arn","")
+        matched=re.match(r"arn:(aws|aws-cn|aws-us-gov):",arn)
+        candidate=identity.get("Account")
+        if matched and isinstance(candidate,str) and re.fullmatch(r"[0-9]{12}",candidate):
+            return candidate,region,matched.group(1)
+    except (OSError,ValueError,subprocess.TimeoutExpired):
+        pass
+    return account,region,partition
 
 def plan_contexts(plan,default,overrides):
     config=plan.get("configuration",{})
