@@ -3206,6 +3206,50 @@
         "sqs:SetQueueAttributes"
       ]
     },
+    "aws_glue_catalog_database": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_glue.html",
+      "read": [
+        "glue:GetDatabase"
+      ],
+      "write": [
+        "glue:CreateDatabase",
+        "glue:UpdateDatabase"
+      ],
+      "delete": [
+        "glue:DeleteDatabase"
+      ],
+      "attributes": [],
+      "create": [
+        "glue:CreateDatabase"
+      ],
+      "update": [
+        "glue:UpdateDatabase"
+      ]
+    },
+    "aws_glue_job": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_glue.html",
+      "read": [
+        "glue:GetJob"
+      ],
+      "write": [
+        "glue:CreateJob",
+        "glue:UpdateJob"
+      ],
+      "delete": [
+        "glue:DeleteJob"
+      ],
+      "attributes": [],
+      "create": [
+        "glue:CreateJob"
+      ],
+      "update": [
+        "glue:UpdateJob"
+      ]
+    },
     "aws_sns_topic": {
       "validation": "candidate",
       "provider_versions": [],
