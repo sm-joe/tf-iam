@@ -59,3 +59,43 @@ def test_saved_plan_operation_and_unknown_role(tmp_path):
     assert "dynamodb:CreateTable" in actions
     assert not {"dynamodb:DeleteTable","dynamodb:UpdateTimeToLive","dynamodb:UpdateContinuousBackups","eks:DeleteFargateProfile"} & actions
     assert any(p["action"]=="iam:PassRole" for p in r["unresolved_permissions"])
+
+
+def test_asg_named_scope_and_describe_global(tmp_path):
+    write(tmp_path,{"aws_autoscaling_group":{"main":{"name":"worker-asg","max_size":2,"min_size":0}}})
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    arn="arn:aws:autoscaling:us-east-1:123456789012:autoScalingGroup:*:autoScalingGroupName/worker-asg"
+    check(report,"autoscaling:CreateAutoScalingGroup",arn)
+    check(report,"autoscaling:UpdateAutoScalingGroup",arn)
+    check(report,"autoscaling:DescribeAutoScalingGroups","*")
+    assert not report["unresolved_permissions"]
+
+
+def test_asg_unknown_name_fail_closed(tmp_path):
+    write(tmp_path,{"aws_autoscaling_group":{"main":{"name":"${var.missing}","max_size":1,"min_size":0}}})
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert any(x["action"]=="autoscaling:CreateAutoScalingGroup" for x in report["unresolved_permissions"])
+    assert not any(x["action"]=="autoscaling:CreateAutoScalingGroup" for x in report["permissions"])
+
+
+def test_launch_template_creation_request_tag_and_scope(tmp_path):
+    write(tmp_path,{"aws_launch_template":{"main":{"name":"worker","tags":{"tfiam:scope":"worker-owned"}}}})
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    target="arn:aws:ec2:us-east-1:123456789012:launch-template/*"
+    check(report,"ec2:CreateLaunchTemplate",target,{"StringEquals":{"aws:RequestTag/tfiam:scope":"worker-owned"}})
+    check(report,"ec2:DeleteLaunchTemplate",target,{"StringEquals":{"ec2:ResourceTag/tfiam:scope":"worker-owned"}})
+    check(report,"ec2:DescribeLaunchTemplates","*")
+
+
+def test_launch_template_no_tag_or_id_fails_closed(tmp_path):
+    write(tmp_path,{"aws_launch_template":{"main":{"name":"worker"}}})
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert any(x["action"]=="ec2:CreateLaunchTemplate" for x in report["unresolved_permissions"])
+    assert not any(x["action"]=="ec2:DeleteLaunchTemplate" for x in report["permissions"])
+
+
+def test_scaling_account_and_region_required(tmp_path):
+    write(tmp_path,{"aws_autoscaling_group":{"a":{"name":"worker"}},"aws_launch_template":{"b":{"tags":{"tfiam:scope":"owned"}}}})
+    report=scan(tmp_path)
+    assert not any(p["action"]=="autoscaling:CreateAutoScalingGroup" for p in report["permissions"])
+    assert not any(p["action"]=="ec2:CreateLaunchTemplate" for p in report["permissions"])
