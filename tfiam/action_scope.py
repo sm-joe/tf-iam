@@ -191,22 +191,47 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             peer_account=val("peer_owner_id") if "peer_owner_id" in body else account
             peer_region=val("peer_region") if "peer_region" in body else region
             peer_id=ident("peer_vpc_id","vpc")
-            accepter=(
-                f"arn:{partition}:ec2:{peer_region}:{peer_account}:vpc/{peer_id}"
-                if peer_id and isinstance(peer_account,str)
+            peer_context_known=(
+                isinstance(peer_account,str)
                 and re.fullmatch(r"[0-9]{12}",peer_account)
                 and isinstance(peer_region,str)
                 and re.fullmatch(r"[a-z]{2}(?:-gov)?-[a-z]+-[0-9]",peer_region)
+            )
+            accepter=(
+                f"arn:{partition}:ec2:{peer_region}:{peer_account}:vpc/{peer_id}"
+                if peer_id and peer_context_known
                 else dep("peer_vpc_id","vpc","vpc")
                 if peer_account==account and peer_region==region else None
             )
+            prospective_accepter=False
+            if not accepter and peer_context_known:
+                # The peer VPC ID may be supplied only at apply time (e.g.
+                # var.peer_vpc_id). The peer account and region still bound
+                # the AccepterVpc condition to one specific AWS context.
+                # Never infer this from a missing peer_vpc_id declaration.
+                raw_peer=body.get("peer_vpc_id")
+                computed_peer=(
+                    isinstance(raw_peer,str) and
+                    re.fullmatch(r"\\$\\{[^{}]+\\}",raw_peer) is not None
+                ) or (task is not None and "peer_vpc_id" in task.get("unknown_fields",[]))
+                if computed_peer:
+                    accepter=f"arn:{partition}:ec2:{peer_region}:{peer_account}:vpc/*"
+                    prospective_accepter=True
+                    diagnose("Peer VPC ID is computed; ec2:AccepterVpc is scoped to peer account and region, but permits any VPC in that context: "+accepter)
             target=ec("vpc-peering-connection","*")
             if requester and accepter and target:
                 emit(action,requester)
-                emit(action,target,{"ArnEquals":{"ec2:AccepterVpc":accepter}})
+                emit(action,target,{
+                    "ArnLike" if prospective_accepter else "ArnEquals":{"ec2:AccepterVpc":accepter}
+                })
                 creates.add(short)
             else:
-                omit(action)
+                if not requester:
+                    omit(action,"requester VPC identity unresolved; provide a managed VPC reference or known VPC ID")
+                elif not peer_context_known:
+                    omit(action,"peer AWS account or region unresolved; provide peer_owner_id and peer_region (or resolvable Terraform references)")
+                else:
+                    omit(action,"peer VPC ID unresolved; provide peer_vpc_id or a Terraform expression evaluated at apply time")
             continue
         if short=="CreateNatGateway" and typ=="aws_nat_gateway":
             # Zonal NAT only; regional NAT uses different request dependencies.
