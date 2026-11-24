@@ -375,6 +375,12 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                             refs=dependencies(body)
                             edges.extend({"source":addr,"reference":r} for r in sorted(refs))
                             evaluated=ctx.evaluate(body)
+                            if category=="resource" and kind=="aws_vpc_peering_connection":
+                                # Preserve declaration presence, not an invented
+                                # peer VPC value. IAM scopes must not depend on
+                                # a peer attribute that AWS does not require for
+                                # requester-side resource authorization.
+                                evaluated["_tfiam_declared_fields"]=sorted(body)
                             evaluated["_tfiam_context"]=ctx.provider_context(body)
                             evaluated.pop("_tfiam_local_random_id",None)
                             if category=="resource" and kind=="random_id" and ctx.random_source in ("hashicorp/random","registry.terraform.io/hashicorp/random"):
