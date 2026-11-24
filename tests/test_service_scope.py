@@ -146,6 +146,8 @@ def test_glue_catalog_database_and_job_are_mapped_and_scoped(tmp_path):
     assert not report["unresolved_permissions"],report["unresolved_permissions"]
     check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:catalog")
     check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:database/analytics")
+    check(report,"glue:DeleteDatabase","arn:aws:glue:us-east-1:123456789012:table/analytics/*")
+    check(report,"glue:DeleteDatabase","arn:aws:glue:us-east-1:123456789012:userDefinedFunction/analytics/*")
     check(report,"glue:CreateJob","arn:aws:glue:us-east-1:123456789012:job/etl-worker")
     check(report,"iam:PassRole","arn:aws:iam::123456789012:role/etl-worker",{"StringEquals":{"iam:PassedToService":"glue.amazonaws.com"}})
     output=tmp_path/"policy.json"
@@ -166,6 +168,8 @@ def test_glue_catalog_unknown_database_name_uses_bounded_prospective_scope(tmp_p
     report=scan(tmp_path,account=ACCOUNT,region=REGION)
     check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:catalog")
     check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:database/*")
+    check(report,"glue:DeleteDatabase","arn:aws:glue:us-east-1:123456789012:table/*/*")
+    check(report,"glue:DeleteDatabase","arn:aws:glue:us-east-1:123456789012:userDefinedFunction/*/*")
     assert not report["unresolved_permissions"]
     assert any("prospective database/*" in x for x in report["information"])
 
