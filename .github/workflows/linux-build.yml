@@ -28,6 +28,30 @@ jobs:
             AWS_ACCOUNT_ID=123456789012 AWS_REGION=us-east-1 ../../dist/tfiam generate . --output "$RUNNER_TEMP/network-policy.json"
           )
           python -c 'import json,sys; p=json.load(open(sys.argv[1])); a={a for s in p["Statement"] for a in s["Action"]}; assert {"ec2:CreateVpc","ec2:CreateSubnet","ec2:CreateNatGateway","ec2:CreateVpcEndpoint","ec2:CreateVpcPeeringConnection","route53:ChangeResourceRecordSets"} <= a' "$RUNNER_TEMP/network-policy.json"
+          python - "$RUNNER_TEMP/network-policy.json" <<'PY'
+          import json
+          import sys
+
+          policy=json.load(open(sys.argv[1]))
+          actions={a for row in policy["Statement"] for a in row["Action"]}
+          assert "ec2:CreateTags" in actions and "ec2:DeleteTags" in actions
+          destructive={
+              "ec2:DeleteVpc","ec2:DeleteSubnet","ec2:DeleteNatGateway",
+              "ec2:DeleteNetworkAcl","ec2:DeleteRouteTable",
+              "ec2:DeleteSecurityGroup","ec2:DeleteTransitGateway",
+              "ec2:DeleteVpcEndpoints","ec2:DeleteVpcPeeringConnection",
+          }
+          for statement in policy["Statement"]:
+              condition=statement.get("Condition",{})
+              strings=condition.get("StringEquals",{})
+              if destructive.intersection(statement["Action"]):
+                  assert "ec2:ResourceTag/Name" in strings,statement
+              if {"ec2:CreateTags","ec2:DeleteTags"}.intersection(statement["Action"]):
+                  assert "ec2:CreateAction" in strings or "ec2:ResourceTag/Name" in strings,statement
+                  assert condition["ForAllValues:StringEquals"]["aws:TagKeys"],statement
+                  assert condition["Null"]=={"aws:TagKeys":"false"},statement
+          print("PASS: packaged IAM policy retains bounded EC2 tagging and destruction")
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: tfiam-linux-x86_64
