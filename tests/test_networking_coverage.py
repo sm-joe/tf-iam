@@ -150,8 +150,15 @@ def test_cross_account_peer_unknown_owner_uses_requester_scope(tmp_path):
         "vpc_id":"vpc-aabbccdd","peer_vpc_id":"vpc-11223344",
         "peer_owner_id":"${var.owner}",
     }}})
-    assert not grants(report,"ec2:CreateVpcPeeringConnection")
-    assert any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
+    rows=grants(report,"ec2:CreateVpcPeeringConnection")
+    assert len(rows)==2,report["unresolved_permissions"]
+    assert {x["scope"] for x in rows}=={
+        "arn:aws:ec2:us-east-1:123456789012:vpc/vpc-aabbccdd",
+        "arn:aws:ec2:us-east-1:123456789012:vpc-peering-connection/*",
+    }
+    assert all("condition" not in x for x in rows)
+    assert not any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
+    assert any("without optional ec2:AccepterVpc restriction" in x for x in report["warnings"])
 
 
 def test_computed_networking_references_generate_prospective_scopes(tmp_path):
