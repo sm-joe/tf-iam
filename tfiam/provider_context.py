@@ -61,6 +61,25 @@ def discover_aws_identity(account=None,region=None,partition="aws"):
 
     region=region or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
     if not shutil.which("aws"):
+        # Standalone/Python installs may ship boto3 without the separate AWS CLI.
+        # Short timeouts prevent credential-discovery hangs on non-AWS hosts.
+        try:
+            import boto3
+            from botocore.config import Config
+            session=boto3.Session()
+            region=region or session.region_name
+            sts_region=region or {"aws":"us-east-1","aws-cn":"cn-north-1",
+                                  "aws-us-gov":"us-gov-west-1"}[partition]
+            identity=session.client("sts",region_name=sts_region,config=Config(
+                connect_timeout=2,read_timeout=2,retries={"max_attempts":1}
+            )).get_caller_identity()
+            arn=identity.get("Arn","")
+            matched=re.match(r"arn:(aws|aws-cn|aws-us-gov):",arn)
+            candidate=identity.get("Account")
+            if matched and isinstance(candidate,str) and re.fullmatch(r"[0-9]{12}",candidate):
+                return candidate,region,matched.group(1)
+        except Exception:
+            pass  # No usable AWS identity; the resolver will surface the omission.
         return account,region,partition
     env=dict(os.environ, AWS_EC2_METADATA_DISABLED="true")
     if not region:
