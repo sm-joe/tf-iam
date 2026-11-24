@@ -9,3 +9,12 @@ References: [EC2 Authorization](https://docs.aws.amazon.com/service-authorizatio
 Not A Complete IAM Authorization Evaluator. Launch Templates, Default subnets/security Groups, Instance Profile Role Lookup, NAT Gateway And Complex Endpoint Dependencies, Unknown Existing IDs, Service-Linked Roles, Provider Aliases And Full Per-Action Condition Support Require Further Evidence. A Saved Plan Is Recommended. Candidate Mappings Remain PARTIAL Until Provider-Version And Real Lifecycle Validation.
 
 Optional `--scope-resource-tags` Applies EC2 Resource Tag Conditions To A Limited Set Of Existing-Resource Mutations When The Saved Plan Confirms Tags Are Stable Before And After The Change. It Is Disabled By Default And Does Not Add Conditions Derived From Newly Added Or Changed Tags. Review IAM Condition Support And Tag Lifecycle Before Deploying.
+
+
+## Auto Scaling Groups And EC2 Launch Templates
+
+For a statically resolved Auto Scaling group name, the generator scopes supported lifecycle actions to the AWS documented `autoScalingGroup:*:autoScalingGroupName/<name>` ARN. AWS Auto Scaling describe actions use `Resource: "*"` because resource-level IAM permissions are not supported for those calls.
+
+A launch template's ID is assigned by AWS, not derived from the Terraform `name` field. The generator uses an exact ID only when supplied in trusted saved-plan values. For new templates, optional explicit `tags = { "tfiam:scope" = "..." }` can bound creation with `aws:RequestTag/tfiam:scope` and later mutations with `ec2:ResourceTag/tfiam:scope`. The tag must actually be applied to the launch template. `ec2:CreateTags` for creation is limited with `ec2:CreateAction = CreateLaunchTemplate`. Unscoped mutations remain unresolved, not silently broadened.
+
+Auto Scaling groups using launch templates require independently validated `ec2:RunInstances` dependencies across AMI, instances, networking, volumes and instance profile roles. These cannot be inferred from the ASG name alone; when such configuration is detected, the generator reports an explicit unresolved dependency instead of producing an apparently complete deployment policy. A custom service-linked role is granted `iam:PassRole` only when a matching exact ARN can be proven. Review and validate all IAM statements before use.
