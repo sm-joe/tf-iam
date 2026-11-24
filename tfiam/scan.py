@@ -14,6 +14,7 @@ from .dependencies import dependencies, object_dependencies
 from .service_scope import TYPES as SERVICE_TYPES, scoped
 from .scaling_scope import scoped as scaling_scoped
 from .glue_scope import scoped as glue_scoped
+from .route53_scope import scoped as route53_scoped
 from .action_scope import network, elb, EC2_TYPES, ELB_TYPES, EC2_GLOBAL
 
 def blocks(doc, key):
@@ -273,6 +274,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     targets=current_role_targets.get((account,partition,resolve(body.get('role'))),set())
                                 if len(targets)==1:
                                     body['_tfiam_profile_role_arn']=next(iter(targets))
+                            if typ in ('aws_route53_zone','aws_route53_record') and category=='resource':
+                                route53_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task,diagnose=lambda msg: info(address+': '+msg))
+                                continue
                             if typ in ('aws_glue_catalog_database','aws_glue_job') and category=='resource':
                                 if typ=='aws_glue_catalog_database' and body.get('name') is None and account and region:
                                     info(address+': database name not statically resolved; using prospective database/* ARN in the selected account and region. This grants access to other databases in the same resource class; inspect scan coverage before deployment.')
