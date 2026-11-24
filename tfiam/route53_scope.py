@@ -6,7 +6,7 @@ For records, restrict write operations to the normalized record name and type.
 import re
 
 ZONE_ID=re.compile(r"Z[A-Z0-9]{5,}")
-DNS=re.compile(r"^[A-Za-z0-9_-]+(?:[.][A-Za-z0-9_-]+)*[.]?$",re.I)
+DNS=re.compile(r"^(?:[*][.])?[A-Za-z0-9_-]+(?:[.][A-Za-z0-9_-]+)*[.]?$",re.I)
 TYPES={"A","AAAA","CAA","CNAME","DS","HTTPS","MX","NAPTR","NS","PTR","SOA","SPF","SRV","SSHFP","SVCB","TLSA","TXT"}
 
 def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,diagnose=lambda msg:None):
@@ -24,6 +24,8 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
             for action in actions:omit(action)
             return
         record=name.lower().rstrip(".")
+        if record.startswith("*."):
+            record=chr(92)+"052."+record[2:]  # Route 53 IAM octal-escapes wildcard labels
         request_condition={
             "ForAllValues:StringEquals":{
                 "route53:ChangeResourceRecordSetsNormalizedRecordNames":[record],
