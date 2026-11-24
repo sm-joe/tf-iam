@@ -3291,10 +3291,8 @@
     "aws_caller_identity": {
       "validation": "candidate",
       "provider_versions": [],
-      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/reference.html",
-      "read": [
-        "sts:GetCallerIdentity"
-      ],
+      "reference": "https://docs.aws.amazon.com/STS/latest/APIReference/API_GetCallerIdentity.html",
+      "read": [],
       "write": [],
       "delete": [],
       "attributes": [],
