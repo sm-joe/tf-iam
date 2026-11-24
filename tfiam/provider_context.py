@@ -33,10 +33,12 @@ def configured(key,cfg,default,overrides):
         if not isinstance(region,str) or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-[0-9]+",region): return None
         r=region  # Explicit Terraform provider region takes precedence over AWS CLI defaults.
     profile=cfg.get("profile")
+    assumption=cfg.get("assume_role",cfg.get("assume_role_with_web_identity"))
     if profile is not None:
         import os
-        if not isinstance(profile,str) or profile != os.environ.get("AWS_PROFILE"): return None
-    assumption=cfg.get("assume_role",cfg.get("assume_role_with_web_identity"))
+        # For a known destination role, the profile selects source credentials,
+        # not the account in which Terraform will create the resources.
+        if not isinstance(profile,str) or (assumption is None and profile != os.environ.get("AWS_PROFILE")): return None
     if assumption is not None:
         if isinstance(assumption,list) and len(assumption)==1: assumption=assumption[0]
         if not isinstance(assumption,dict): return None
@@ -48,7 +50,7 @@ def configured(key,cfg,default,overrides):
     return a,r,p
 
 
-def discover_aws_identity(account=None,region=None,partition="aws"):
+def discover_aws_identity(account=None,region=None,partition="aws",profile=None):
     """Read-only best-effort caller discovery for zero-config CLI invocations.
 
     This never modifies AWS, assumes a role, or fabricates an AWS account ID.
@@ -66,7 +68,7 @@ def discover_aws_identity(account=None,region=None,partition="aws"):
         try:
             import boto3
             from botocore.config import Config
-            session=boto3.Session()
+            session=boto3.Session(profile_name=profile)
             region=region or session.region_name
             sts_region=region or {"aws":"us-east-1","aws-cn":"cn-north-1",
                                   "aws-us-gov":"us-gov-west-1"}[partition]
@@ -85,7 +87,7 @@ def discover_aws_identity(account=None,region=None,partition="aws"):
     if not region:
         try:
             configured_region=subprocess.run(
-                ["aws","configure","get","region"],capture_output=True,text=True,
+                ["aws"]+(["--profile",profile] if profile else [])+["configure","get","region"],capture_output=True,text=True,
                 timeout=3,env=env,check=False,
             )
             candidate=configured_region.stdout.strip()
@@ -96,7 +98,7 @@ def discover_aws_identity(account=None,region=None,partition="aws"):
     if account is not None:
         return account,region,partition
     try:
-        cmd=["aws","sts","get-caller-identity","--output","json"]
+        cmd=["aws"]+(["--profile",profile] if profile else [])+["sts","get-caller-identity","--output","json"]
         if region: cmd.extend(["--region",region])
         result=subprocess.run(cmd,capture_output=True,text=True,timeout=5,env=env,check=False)
         if result.returncode!=0: return account,region,partition
@@ -138,3 +140,36 @@ def plan_contexts(plan,default,overrides):
         values={k:v.get("constant_value") if isinstance(v,dict) else None for k,v in expressions.items()}
         return configured(key,values,default,overrides)
     return select
+
+
+def discover_profile_contexts(root,contexts=None):
+    """Resolve named AWS provider profiles for zero-config generation only.
+
+    Only literal provider/profile declarations are eligible. Arbitrary
+    expressions, credentials, or unknown identities are not guessed.
+    """
+    from pathlib import Path
+    from .resolver import read_document,groups
+    out=dict(contexts or {})
+    if root is None: return out
+    folder=Path(root)
+    if not folder.is_dir(): return out
+    for path in sorted(set(folder.glob("*.tf"))|set(folder.glob("*.tf.json"))):
+        try:
+            doc=read_document(path)
+        except (ValueError,OSError,ImportError):
+            continue
+        for group in groups(doc,"provider"):
+            for cfg in group.get("aws",[]) if isinstance(group.get("aws",[]),list) else [group.get("aws",{})]:
+                if not isinstance(cfg,dict): continue
+                alias=cfg.get("alias")
+                key="aws."+alias if isinstance(alias,str) else "aws"
+                if key in out: continue
+                profile=cfg.get("profile")
+                if not isinstance(profile,str) or not re.fullmatch(r"[A-Za-z0-9_+=,.@-]{1,128}",profile): continue
+                if cfg.get("assume_role") or cfg.get("assume_role_with_web_identity"): continue
+                region=cfg.get("region")
+                if region is not None and (not isinstance(region,str) or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-[0-9]+",region)): continue
+                a,r,p=discover_aws_identity(region=region,profile=profile)
+                if a and r: out[key]={"account":a,"region":r,"partition":p}
+    return out
