@@ -20,7 +20,7 @@ LT_DESCRIBE={
     "ec2:DescribeLaunchTemplateVersions",
 }
 
-def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None):
+def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,diagnose=lambda message: None):
     def value(field):
         return resolve(body.get(field))
     if not account or not region:
