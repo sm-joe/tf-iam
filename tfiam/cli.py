@@ -186,7 +186,7 @@ def main(argv=None, *, maintainer=False):
             if not sep or not key: raise ValueError('--var requires NAME=VALUE')
             variables.append((key,value))
         account,region,partition=args.aws_account,args.aws_region,args.aws_partition
-        if args.command in ('generate','split') and account is None:
+        if args.command in ('generate','split') and (account is None or region is None):
             from .provider_context import discover_aws_identity
             account,region,partition=discover_aws_identity(account,region,partition)
         report=scan(args.directory,args.phase,account,region,partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags,scope_generated_names=args.scope_generated_names,provider_version=args.aws_provider_version,authorization_metadata=args.authorization_metadata,provider_contexts=json.loads(args.provider_contexts.read_text()) if args.provider_contexts else None)
