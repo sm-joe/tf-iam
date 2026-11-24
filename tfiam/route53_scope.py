@@ -18,6 +18,10 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
     if not isinstance(raw,str) or not ZONE_ID.fullmatch(raw):
         diagnose("AWS-generated hosted-zone ID unresolved; prospective hostedzone/* scope may affect other hosted zones")
     name=value("name")
+    if name is None and isinstance(body.get("name"),str) and body["name"].startswith("*.") and "${" not in body["name"] and "%{" not in body["name"]:
+        # The generic resolver rejects wildcard characters as uncertain.
+        # A leading wildcard DNS label is a valid, bounded Route 53 name.
+        name=body["name"]
     record_type=value("type")
     if typ=="aws_route53_record":
         if not isinstance(name,str) or not DNS.fullmatch(name) or record_type not in TYPES:
