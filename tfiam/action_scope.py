@@ -149,7 +149,8 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     tagged_delete_actions={
         "DeleteVpc","DeleteSubnet","DeleteInternetGateway","DeleteNatGateway",
         "DeleteNetworkAcl","DeleteRouteTable","DeleteSecurityGroup",
-        "DeleteTransitGateway","DeleteVpnGateway",
+        "DeleteTransitGateway","DeleteVpnGateway","DeleteVpcEndpoints",
+        "DeleteVpcPeeringConnection","ReleaseAddress",
     }
     # Only documented EC2 resource-tag authorization paths are eligible.
     dynamic_actions={"CreateSubnet","CreateRouteTable","CreateSecurityGroup","CreateNetworkAcl","CreateNatGateway","CreateVpcEndpoint","AttachInternetGateway","DetachInternetGateway","AssociateRouteTable","ReplaceRouteTableAssociation","DisassociateRouteTable","CreateRoute","ReplaceRoute","DeleteRoute","AuthorizeSecurityGroupIngress","AuthorizeSecurityGroupEgress","RevokeSecurityGroupIngress","RevokeSecurityGroupEgress","ModifyVpcAttribute","DeleteVpc","ModifySubnetAttribute","DeleteSubnet","DeleteRouteTable","DeleteSecurityGroup","DeleteNetworkAcl","DeleteNatGateway","DeleteInternetGateway","RunInstances","ModifyInstanceAttribute","DescribeInstanceAttribute","DescribeVpcAttribute"}
