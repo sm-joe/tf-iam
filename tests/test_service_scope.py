@@ -195,3 +195,10 @@ def test_asg_mixed_instances_policy_fails_closed(tmp_path):
     report=scan(tmp_path,account=ACCOUNT,region=REGION)
     assert any(x["action"]=="ec2:RunInstances" for x in report["unresolved_permissions"])
     assert not any(p["action"]=="ec2:RunInstances" for p in report["permissions"])
+
+
+def test_asg_destroy_does_not_generate_launch_authorization(tmp_path):
+    write(tmp_path,{"aws_autoscaling_group":{"main":{"name":"workers","launch_template":[{"id":None,"version":"1"}]}}})
+    report=scan(tmp_path,phase="destroy",account=ACCOUNT,region=REGION)
+    assert not any(p["action"]=="ec2:RunInstances" for p in report["permissions"])
+    assert not any(p["action"]=="ec2:RunInstances" for p in report["unresolved_permissions"])
