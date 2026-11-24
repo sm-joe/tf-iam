@@ -6,14 +6,14 @@ For records, restrict write operations to the normalized record name and type.
 import re
 
 ZONE_ID=re.compile(r"Z[A-Z0-9]{5,}")
-DNS=re.compile(r"(?:[a-z0-9_*](?:[a-z0-9_*.-]*[a-z0-9_*])?\\.?){1,255}",re.I)
+DNS=re.compile(r"(?:[a-z0-9_-]+\\.)*[a-z0-9_-]+\\.?",re.I)
 TYPES={"A","AAAA","CAA","CNAME","DS","HTTPS","MX","NAPTR","NS","PTR","SOA","SPF","SRV","SSHFP","SVCB","TLSA","TXT"}
 
 def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,diagnose=lambda msg:None):
     if typ not in ("aws_route53_zone","aws_route53_record"):
         raise ValueError("Unsupported Route53 resource")
     value=lambda field:resolve(body.get(field))
-    raw=value("zone_id") or value("id") if typ=="aws_route53_zone" else value("zone_id")
+    raw=(value("zone_id") or value("id")) if typ=="aws_route53_zone" else value("zone_id")
     zone=f"arn:{partition}:route53:::hostedzone/{raw}" if isinstance(raw,str) and ZONE_ID.fullmatch(raw) else f"arn:{partition}:route53:::hostedzone/*"
     if not isinstance(raw,str) or not ZONE_ID.fullmatch(raw):
         diagnose("AWS-generated hosted-zone ID unresolved; prospective hostedzone/* scope may affect other hosted zones")
@@ -23,7 +23,7 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
         if not isinstance(name,str) or not DNS.fullmatch(name) or record_type not in TYPES:
             for action in actions:omit(action)
             return
-        record=name.lower().rstrip(".")+"."
+        record=name.lower().rstrip(".")
         request_condition={
             "ForAllValues:StringEquals":{
                 "route53:ChangeResourceRecordSetsNormalizedRecordNames":[record],
