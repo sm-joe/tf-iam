@@ -174,3 +174,67 @@ def test_full_networking_project_writes_policy_without_context_flags(tmp_path,mo
             "route53:ChangeResourceRecordSets","ec2:CreateTransitGateway",
             "ec2:CreateVpnGateway"}<=actions
     assert policy["Statement"]
+
+
+def test_account_from_validated_environment_produces_policy_without_network(tmp_path,monkeypatch):
+    (tmp_path/"main.tf.json").write_text(json.dumps({
+        "provider":{"aws":{"region":"us-east-1"}},
+        "resource":{
+            "aws_vpc":{"main":{"cidr_block":"10.20.0.0/16"}},
+            "aws_subnet":{"private":{"vpc_id":"${aws_vpc.main.id}","cidr_block":"10.20.1.0/24"}},
+        },
+    }))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("AWS_ACCOUNT_ID","123456789012")
+    monkeypatch.setenv("AWS_REGION","us-east-1")
+    monkeypatch.setattr("subprocess.run",lambda *a,**k: (_ for _ in ()).throw(
+        AssertionError("Explicit AWS account context must not trigger AWS CLI")))
+    assert main(["generate",".","--output","policy.json"])==0
+    doc=json.loads((tmp_path/"policy.json").read_text())
+    assert any("ec2:CreateSubnet" in statement["Action"] for statement in doc["Statement"])
+
+
+def test_failed_aws_cli_sts_falls_back_to_sdk(monkeypatch):
+    import sys
+    from types import ModuleType
+    from tfiam.provider_context import discover_aws_identity
+    monkeypatch.delenv("AWS_ACCOUNT_ID",raising=False)
+    monkeypatch.delenv("TFIAM_AWS_ACCOUNT_ID",raising=False)
+    monkeypatch.delenv("AWS_REGION",raising=False)
+    monkeypatch.delenv("AWS_DEFAULT_REGION",raising=False)
+    monkeypatch.setattr("shutil.which",lambda command:"/usr/bin/aws" if command=="aws" else None)
+    def failing_cli(args,**kwargs):
+        if args[-2:]==["get","region"]:
+            return SimpleNamespace(returncode=0,stdout="us-east-1\n")
+        return SimpleNamespace(returncode=255,stdout="",stderr="expired CLI credentials")
+    monkeypatch.setattr("subprocess.run",failing_cli)
+    class FakeSession:
+        region_name="us-east-1"
+        def client(self,*args,**kwargs):
+            return SimpleNamespace(get_caller_identity=lambda:{
+                "Account":"123456789012",
+                "Arn":"arn:aws:sts::123456789012:assumed-role/test/test"
+            })
+    boto3=ModuleType("boto3")
+    boto3.Session=lambda **kwargs:FakeSession()
+    botocore=ModuleType("botocore")
+    botocore.__path__=[]
+    config=ModuleType("botocore.config")
+    config.Config=lambda **kwargs:kwargs
+    monkeypatch.setitem(sys.modules,"boto3",boto3)
+    monkeypatch.setitem(sys.modules,"botocore",botocore)
+    monkeypatch.setitem(sys.modules,"botocore.config",config)
+    assert discover_aws_identity()==("123456789012","us-east-1","aws")
+
+
+def test_missing_context_has_explicit_root_cause(tmp_path):
+    (tmp_path/"main.tf.json").write_text(json.dumps({
+        "resource":{"aws_vpc":{"main":{"cidr_block":"10.0.0.0/16"}}},
+    }))
+    from tfiam.scan import scan
+    report=scan(tmp_path)
+    assert any(
+        row["action"]=="ec2:CreateVpc" and
+        "AWS target account unknown" in row["reason"]
+        for row in report["unresolved_permissions"]
+    )
