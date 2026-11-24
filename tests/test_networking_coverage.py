@@ -239,3 +239,41 @@ def test_peering_resolves_verified_aws_identity_data_sources(tmp_path):
         "ec2:AccepterVpc":"arn:aws:ec2:us-east-1:123456789012:vpc/vpc-11223344"
     }} for row in permissions),report["unresolved_permissions"]
     assert not any(row["action"]=="ec2:CreateVpcPeeringConnection" for row in report["unresolved_permissions"])
+
+
+def test_cross_account_computed_peer_vpc_is_account_region_bound(tmp_path):
+    report=source(tmp_path,{"aws_vpc_peering_connection":{"peer":{
+        "vpc_id":"vpc-aabbccdd",
+        "peer_vpc_id":"${var.remote_vpc_id}",
+        "peer_owner_id":"999999999999",
+        "peer_region":"us-west-2",
+    }}})
+    rows=grants(report,"ec2:CreateVpcPeeringConnection")
+    assert len(rows)==2,report["unresolved_permissions"]
+    assert any(x["scope"]=="arn:aws:ec2:us-east-1:123456789012:vpc/vpc-aabbccdd" for x in rows)
+    assert any(x.get("condition")=={"ArnLike":{
+        "ec2:AccepterVpc":"arn:aws:ec2:us-west-2:999999999999:vpc/*"
+    }} for x in rows)
+    assert not any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
+
+
+def test_computed_cross_account_peer_with_unknown_owner_stays_unresolved(tmp_path):
+    report=source(tmp_path,{"aws_vpc_peering_connection":{"peer":{
+        "vpc_id":"vpc-aabbccdd",
+        "peer_vpc_id":"${var.remote_vpc_id}",
+        "peer_owner_id":"${var.remote_account_id}",
+        "peer_region":"us-west-2",
+    }}})
+    assert not grants(report,"ec2:CreateVpcPeeringConnection")
+    assert any(x["action"]=="ec2:CreateVpcPeeringConnection" and
+        "peer AWS account" in x["reason"] for x in report["unresolved_permissions"])
+
+
+def test_peer_vpc_missing_is_not_inferred(tmp_path):
+    report=source(tmp_path,{"aws_vpc_peering_connection":{"peer":{
+        "vpc_id":"vpc-aabbccdd",
+        "peer_owner_id":"999999999999",
+        "peer_region":"us-west-2",
+    }}})
+    assert not grants(report,"ec2:CreateVpcPeeringConnection")
+    assert any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
