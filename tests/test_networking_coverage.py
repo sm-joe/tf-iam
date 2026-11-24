@@ -277,3 +277,35 @@ def test_peer_vpc_missing_is_not_inferred(tmp_path):
     }}})
     assert not grants(report,"ec2:CreateVpcPeeringConnection")
     assert any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
+
+
+def test_static_peering_for_each_expands_remote_accounts_and_exact_vpc_ids(tmp_path):
+    (tmp_path/"main.tf.json").write_text(json.dumps({
+        "variable":{"peers":{"default":{
+            "west":{"vpc_id":"vpc-aabbccdd","account":"999999999999","region":"us-west-2"},
+            "east":{"vpc_id":"vpc-11223344","account":"888888888888","region":"us-east-1"},
+        }}},
+        "resource":{
+            "aws_vpc":{"main":{"cidr_block":"10.0.0.0/16"}},
+            "aws_vpc_peering_connection":{"peer":{
+                "for_each":"${var.peers}",
+                "vpc_id":"${aws_vpc.main.id}",
+                "peer_vpc_id":"${each.value.vpc_id}",
+                "peer_owner_id":"${each.value.account}",
+                "peer_region":"${each.value.region}",
+            }},
+        },
+    }))
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert not report["unresolved_permissions"],report["unresolved_permissions"]
+    peer_rows=grants(report,"ec2:CreateVpcPeeringConnection")
+    conditions={x["condition"]["ArnEquals"]["ec2:AccepterVpc"] for x in peer_rows if "condition" in x}
+    assert conditions=={
+        "arn:aws:ec2:us-west-2:999999999999:vpc/vpc-aabbccdd",
+        "arn:aws:ec2:us-east-1:888888888888:vpc/vpc-11223344",
+    }
+    assert {x["source"] for x in peer_rows}=={
+        'aws_vpc_peering_connection.peer["west"]',
+        'aws_vpc_peering_connection.peer["east"]',
+    }
+    assert not any("static resource instances not expanded" in x for x in report["warnings"])
