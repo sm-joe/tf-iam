@@ -99,3 +99,17 @@ def test_scaling_account_and_region_required(tmp_path):
     report=scan(tmp_path)
     assert not any(p["action"]=="autoscaling:CreateAutoScalingGroup" for p in report["permissions"])
     assert not any(p["action"]=="ec2:CreateLaunchTemplate" for p in report["permissions"])
+
+
+def test_asg_launch_template_requires_separate_run_instances_scope(tmp_path):
+    write(tmp_path,{"aws_autoscaling_group":{"main":{"name":"workers","launch_template":[{"id":"lt-1234567890abcdef0","version":"1"}]}}})
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert any(x["action"]=="ec2:RunInstances" for x in report["unresolved_permissions"])
+    assert not any(p["action"]=="ec2:RunInstances" for p in report["permissions"])
+
+
+def test_launch_template_creation_tags_are_create_only(tmp_path):
+    write(tmp_path,{"aws_launch_template":{"main":{"name":"worker","tags":{"tfiam:scope":"team-worker"}}}})
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    target="arn:aws:ec2:us-east-1:123456789012:launch-template/*"
+    check(report,"ec2:CreateTags",target,{"StringEquals":{"ec2:CreateAction":"CreateLaunchTemplate"}})
