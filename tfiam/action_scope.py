@@ -141,7 +141,9 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     # the verified regional resource class without inventing an exact ID.
     if not own and task is None and spec and (
         body.get("id") is None or managed_reference(body.get("id"),spec[0])
-    ):
+    ) and (typ!="aws_vpc_endpoint" or bool(
+        body.get("vpc_id") or body.get("service_name") or body.get("_tfiam_dynamic_ec2",{}).get("vpc_id")
+    )):
         # A fresh static configuration has no AWS-assigned ID. Authorize
         # the prospective resource class; never claim this identifies only
         # one resource, and preserve exact IDs when supplied by a saved plan.
