@@ -85,6 +85,7 @@ class Context:
         self.warn=warn
         self.path=path
         self.resources={}
+        self.data_sources={}
         self.locals={}
         self.outputs={}
         self.children={}
@@ -108,6 +109,10 @@ class Context:
                 for kind,instances in group.items():
                     for name,body in instances.items():
                         self.resources[kind+"."+name]=body
+            for group in groups(doc,"data"):
+                for kind,instances in group.items():
+                    for name,body in instances.items():
+                        self.data_sources[kind+"."+name]=body
 
     def provider_context(self,body):
         key=normalize(body.get("provider","aws"))
@@ -151,6 +156,22 @@ class Context:
             if output.get("sensitive") is True or output.get("ephemeral") is True: return UNKNOWN
             value=child.evaluate(output.get("value",UNKNOWN),seen)
             rest=parts[3:]
+        elif len(parts)==4 and parts[0]=="data":
+            _,kind,name,attr=parts
+            body=self.data_sources.get(kind+"."+name)
+            if body is None or "count" in body or "for_each" in body: return UNKNOWN
+            context=self.provider_context(body)
+            if context is None: return UNKNOWN
+            account,region,partition=context
+            # AWS identity data sources are determined by the same verified
+            # provider context as the resource, not by a fabricated AWS ID.
+            if kind=="aws_caller_identity" and attr=="account_id":
+                return account if account else UNKNOWN
+            if kind=="aws_region" and attr in ("name","id"):
+                return region if region else UNKNOWN
+            if kind=="aws_partition" and attr=="partition":
+                return partition if partition else UNKNOWN
+            return UNKNOWN
         elif len(parts)==3:
             kind,name,attr=parts
             body=self.resources.get(kind+"."+name)
