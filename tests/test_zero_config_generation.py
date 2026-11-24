@@ -63,3 +63,52 @@ def test_ambiguous_assume_role_stays_unresolved():
         "assume_role":{"role_arn":None},
     },("123456789012","us-east-1","aws"),{})
     assert actual is None
+
+
+def test_named_profile_alias_generates_without_manual_context(tmp_path,monkeypatch):
+    config={
+        "provider":{"aws":[
+            {"region":"us-east-1"},
+            {"alias":"west","region":"us-west-2","profile":"production"},
+        ]},
+        "resource":{"aws_sqs_queue":{
+            "main":{"name":"main"},
+            "west":{"provider":"aws.west","name":"west"},
+        }},
+    }
+    (tmp_path/"main.tf.json").write_text(json.dumps(config))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("shutil.which",lambda command:"/usr/bin/aws" if command=="aws" else None)
+    def fake_run(args,**kwargs):
+        if args[-3:]==["get","region"]:
+            return SimpleNamespace(returncode=0,stdout="us-east-1\n")
+        if "--profile" in args:
+            assert args[args.index("--profile")+1]=="production"
+            return SimpleNamespace(returncode=0,stdout=json.dumps({
+                "Account":"999999999999",
+                "Arn":"arn:aws:iam::999999999999:user/builder",
+            }))
+        return SimpleNamespace(returncode=0,stdout=json.dumps({
+            "Account":"123456789012",
+            "Arn":"arn:aws:iam::123456789012:user/builder",
+        }))
+    monkeypatch.setattr("subprocess.run",fake_run)
+    assert main(["generate",".","--output","policy.json"])==0
+    policy=json.loads((tmp_path/"policy.json").read_text())
+    scopes={s["Resource"] for s in policy["Statement"]}
+    assert "arn:aws:sqs:us-east-1:123456789012:main" in scopes
+    assert "arn:aws:sqs:us-west-2:999999999999:west" in scopes
+
+
+def test_explicit_provider_contexts_do_not_require_network(tmp_path,monkeypatch):
+    (tmp_path/"main.tf.json").write_text(json.dumps({
+        "provider":{"aws":{"region":"us-east-1"}},
+        "resource":{"aws_vpc":{"main":{"cidr_block":"10.0.0.0/16"}}},
+    }))
+    (tmp_path/"contexts.json").write_text(json.dumps({
+        "aws":{"account":"123456789012","region":"us-east-1","partition":"aws"}
+    }))
+    monkeypatch.setattr("subprocess.run",lambda *a,**kw:(_ for _ in ()).throw(AssertionError("Network attempt")))
+    assert main(["generate",str(tmp_path),"--provider-contexts",str(tmp_path/"contexts.json"),
+                 "--output",str(tmp_path/"policy.json")])==0
+    assert json.loads((tmp_path/"policy.json").read_text())["Statement"]
