@@ -53,7 +53,7 @@ def test_route53_record_has_name_type_and_change_action_restrictions(tmp_path):
     row=action[0]
     assert row["scope"]=="arn:aws:route53:::hostedzone/Z123456789ABC"
     condition=row["condition"]["ForAllValues:StringEquals"]
-    assert condition["route53:ChangeResourceRecordSetsNormalizedRecordNames"]==["app.example.com."]
+    assert condition["route53:ChangeResourceRecordSetsNormalizedRecordNames"]==["app.example.com"]
     assert condition["route53:ChangeResourceRecordSetsRecordTypes"]==["A"]
     assert condition["route53:ChangeResourceRecordSetsActions"]==["CREATE","UPSERT","DELETE"]
     assert any(p["scope"]=="arn:aws:route53:::change/*" for p in grants(report,"route53:GetChange"))
