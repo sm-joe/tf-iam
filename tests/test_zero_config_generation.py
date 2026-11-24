@@ -80,7 +80,7 @@ def test_named_profile_alias_generates_without_manual_context(tmp_path,monkeypat
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("shutil.which",lambda command:"/usr/bin/aws" if command=="aws" else None)
     def fake_run(args,**kwargs):
-        if args[-3:]==["get","region"]:
+        if args[-2:]==["get","region"]:
             return SimpleNamespace(returncode=0,stdout="us-east-1\n")
         if "--profile" in args:
             assert args[args.index("--profile")+1]=="production"
