@@ -31,8 +31,12 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
                 emit(action,catalog)
                 emit(action,database)
             else: omit(action)
-        # Deleting a database with existing tables can require permissions
-        # on child resources. Do not invent grants for unknown table names.
+        # AWS Glue requires authorization on database descendants for
+        # DeleteDatabase, even when the table/UDF names are not declared
+        # by Terraform. Confine children to the database prefix.
+        if "glue:DeleteDatabase" in actions:
+            emit("glue:DeleteDatabase",base+"table/"+database.rsplit("/",1)[1]+"/*")
+            emit("glue:DeleteDatabase",base+"userDefinedFunction/"+database.rsplit("/",1)[1]+"/*")
         return
     if typ=="aws_glue_job":
         if not isinstance(name,str) or not JOB_NAME.fullmatch(name):
