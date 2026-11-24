@@ -68,7 +68,10 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
                 elif target:
                     emit(action,target)
                 else:
-                    omit(action)
+                    # AWS allocates the LT ID. IAM cannot match its Terraform
+                    # name against the generated ID; use the account/region/
+                    # resource-type prospective ARN without requiring tags.
+                    emit(action,prefix+"*")
             elif action=="ec2:CreateTags":
                 if (not task or task.get("operation")=="create") and tags:
                     emit(action,target or prefix+"*",{"StringEquals":{"ec2:CreateAction":"CreateLaunchTemplate"}})
@@ -77,12 +80,15 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
                 elif valid_tag:
                     emit(action,prefix+"*",{"StringEquals":{"ec2:ResourceTag/tfiam:scope":scope_tag}})
                 else:
-                    omit(action)
+                    emit(action,prefix+"*")
             elif target:
                 emit(action,target)
             elif valid_tag and action.startswith("ec2:"):
                 emit(action,prefix+"*",{"StringEquals":{"ec2:ResourceTag/tfiam:scope":scope_tag}})
             else:
-                omit(action)
+                # Without a known LT ID or a tag already declared by the
+                # user, a launch-template-class wildcard is the narrowest
+                # supported resource ARN. Do not invent tags or an ID.
+                emit(action,prefix+"*")
         return
     raise ValueError("Unexpected service scope type")
