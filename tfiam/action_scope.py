@@ -120,6 +120,38 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             if isinstance(anchor,str) and anchor:
                 condition={"StringEquals":{"aws:RequestTag/tfiam:scope":anchor}}
         return condition
+    # Source-only generation cannot know resource IDs before creation.
+    # Use a declared stable tag to limit operations on existing resources.
+    # Name is not globally unique: this is a resource-tag boundary, not
+    # proof of Terraform ownership. Prefer a dedicated tfiam:scope anchor.
+    declared_tags=body.get("tags")
+    tag_keys=sorted(declared_tags) if isinstance(declared_tags,dict) and declared_tags and all(
+        isinstance(k,str) and re.fullmatch(r"[\w .:/=+@-]{1,128}",k)
+        and not k.lower().startswith("aws:") for k in declared_tags
+    ) else []
+    anchor=None
+    for key in ("tfiam:scope","Name"):
+        candidate=declared_tags.get(key) if isinstance(declared_tags,dict) else None
+        if isinstance(candidate,str) and candidate and "\x00" not in candidate and "${" not in candidate:
+            anchor=(key,candidate)
+            break
+    def existing_tag_condition():
+        if not anchor: return None
+        return {"StringEquals":{"ec2:ResourceTag/"+anchor[0]:anchor[1]}}
+    def tag_keys_condition():
+        if not tag_keys: return {}
+        # IAM ForAllValues is true for absent context keys; explicitly
+        # require the aws:TagKeys key for both tag-add and tag-delete calls.
+        return {"ForAllValues:StringEquals":{"aws:TagKeys":tag_keys},
+                "Null":{"aws:TagKeys":"false"}}
+    # EC2 actions confirmed to accept ec2:ResourceTag in AWS's Service
+    # Authorization Reference. Do not generically tag-scope other actions.
+    tagged_delete_actions={
+        "DeleteVpc","DeleteSubnet","DeleteInternetGateway","DeleteNatGateway",
+        "DeleteNetworkAcl","DeleteRouteTable","DeleteSecurityGroup",
+        "DeleteTransitGateway","DeleteVpnGateway","DeleteVpcEndpoints",
+        "DeleteVpcPeeringConnection","ReleaseAddress",
+    }
     # Only documented EC2 resource-tag authorization paths are eligible.
     dynamic_actions={"CreateSubnet","CreateRouteTable","CreateSecurityGroup","CreateNetworkAcl","CreateNatGateway","CreateVpcEndpoint","AttachInternetGateway","DetachInternetGateway","AssociateRouteTable","ReplaceRouteTableAssociation","DisassociateRouteTable","CreateRoute","ReplaceRoute","DeleteRoute","AuthorizeSecurityGroupIngress","AuthorizeSecurityGroupEgress","RevokeSecurityGroupIngress","RevokeSecurityGroupEgress","ModifyVpcAttribute","DeleteVpc","ModifySubnetAttribute","DeleteSubnet","DeleteRouteTable","DeleteSecurityGroup","DeleteNetworkAcl","DeleteNatGateway","DeleteInternetGateway","RunInstances","ModifyInstanceAttribute","DescribeInstanceAttribute","DescribeVpcAttribute"}
     def grant(action,targets,condition=None):
@@ -152,6 +184,14 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     if typ=="aws_security_group_rule": own=dep("security_group_id","security-group","sg")
     if typ=="aws_network_acl_rule": own=dep("network_acl_id","network-acl","acl")
     if typ.startswith("aws_vpc_endpoint_"): own=dep("vpc_endpoint_id","vpc-endpoint","vpce")
+    # Only narrow source-only wildcard resource scopes; an exact saved-plan
+    # ARN already identifies the target and should retain its semantics.
+    anchor_wildcard=(
+        task is None and isinstance(own,str) and own.endswith("/*")
+        and anchor is not None and bool(tag_keys)
+    )
+    if anchor_wildcard and anchor[0]=="Name":
+        diagnose("Name-tag resource binding is not unique or immutable; generated ARN wildcard plus ec2:ResourceTag/Name matches other resources with the same Name. Supply a saved plan for exact existing IDs.")
     op=task.get("operation") if task else None
     # Optional Terraform lifecycle branches must not force unrelated
     # privileges or unresolved findings when the feature is not configured.
@@ -335,9 +375,29 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 if isinstance(old,dict) and isinstance(current,dict):
                     stable={k:v for k,v in old.items() if k in current and current[k]==v}
                     condition=tag_conditions({"tags":stable},"ec2:ResourceTag/") or None
+            if anchor_wildcard and short in tagged_delete_actions:
+                condition=existing_tag_condition()
             grant(action,[own],condition); continue
         if short in ("CreateTags","DeleteTags"):
-            if own and (op!="create") and not isinstance(own,tuple):
+            if anchor_wildcard:
+                if short=="CreateTags" and creates and spec:
+                    # Create-time tagging is explicitly authorized only as
+                    # part of the corresponding EC2 create operation.
+                    for create in sorted(creates):
+                        emit(action,ec(spec[0],"*"),{
+                            "StringEquals":{"ec2:CreateAction":create},
+                            **tag_keys_condition(),
+                        })
+                        if create=="RunInstances":
+                            for kind in ("volume","network-interface"):
+                                emit(action,ec(kind,"*"),{
+                                    "StringEquals":{"ec2:CreateAction":create},
+                                    **tag_keys_condition(),
+                                })
+                # Post-creation tag changes are limited to existing tagged
+                # resources and only Terraform-declared tag keys.
+                emit(action,own,{**existing_tag_condition(),**tag_keys_condition()})
+            elif own and (op!="create") and not isinstance(own,tuple):
                 emit(action,own)
             elif isinstance(own,tuple) and op!="create":
                 # Creation tags are authorized independently. On existing objects,

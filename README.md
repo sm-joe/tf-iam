@@ -205,6 +205,20 @@ tfiam generate ./infra \
 
 Generation Rejects Unmapped Resources And Unresolved Grants By Default. The Explicit `--allow-partial` Override Permits Candidate Output For Review, But Does Not Disable Configured Security Gates Or Definite Metadata Compatibility Failures. Do Not Treat Partial Output As Deployment-Ready.
 
+### EC2 Tagging And Destructive Resource Scopes
+
+For EC2 Resources With Statically Declared `tfiam:scope` Or `Name` Tags, Source-Only Generation Limits Supported Destructive Operations To That Existing Resource Tag. It Separates Creation-Time `ec2:CreateTags` Using `ec2:CreateAction` From Existing-Resource Tag Changes, And Restricts Tag Changes With `aws:TagKeys` And A Non-Null Tag-Key Requirement.
+
+A `Name` Tag Is **Not Unique Or Immutable**. An ARN Ending In `/*` With `ec2:ResourceTag/Name` Can Match Other Resources Sharing That Name. A Saved Terraform Plan Can Narrow Existing Resource IDs And Operations. When A Resource Has No Trustworthy Static Tag Anchor, The Generator Does Not Invent One. Review Broader Grants And Provider-Level Default Tags Before Attaching The Policy. Changing Or Removing An Anchor Tag May Require Regenerating The Policy.
+
+Validate The IAM Document Against AWS Access Analyzer When Authorized AWS Credentials Are Available:
+
+~~~bash
+tfiam validate-policy policy.json --aws-region ap-south-1 --strict
+~~~
+
+AWS Access Analyzer Checks Policy Syntax And Security Findings, **Not Whether Terraform Can Successfully Create, Update And Destroy The Resources**. Actual Lifecycle Authorization Requires An Isolated AWS Acceptance Run Using The Intended Deployment Role, Its Permissions Boundary And Organizational Controls. Refer To [Mixed Infrastructure Lifecycle Acceptance](docs/mixed-lifecycle.md). This Existing Acceptance Fixture Does Not Cover Every Networking Service And Should Not Be Presented As Evidence That All 18 Networking Resources Are Live-Verified.
+
 ### Policy Size Management
 
 Optimize A Generated Allow Policy Without Changing Its Action, Resource Or Condition Grants:
