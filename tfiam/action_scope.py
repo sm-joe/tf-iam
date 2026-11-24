@@ -181,20 +181,27 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             else: omit(action)
             continue
         if short=="CreateVpcPeeringConnection" and typ=="aws_vpc_peering_connection":
-            # AWS requires authorization on the requester VPC and the
-            # prospective peering connection. Cross-account acceptance
-            # belongs to the peer identity and is never guessed here.
+            # AWS VPC peering IAM documentation explicitly supports a
+            # requester VPC ARN and an AccepterVpc condition that identifies
+            # the other account and region. The accepter account separately
+            # authorizes acceptance; never grant that role implicitly.
             requester=dep("vpc_id","vpc","vpc")
-            accepter=dep("peer_vpc_id","vpc","vpc")
-            peer_account=val("peer_owner_id")
-            peer_region=val("peer_region")
-            if ("peer_owner_id" in body and not peer_account) or ("peer_region" in body and not peer_region) or (peer_account and peer_account!=account) or (peer_region and peer_region!=region):
-                diagnose("Cross-account or cross-region peering requires peer-specific authorization evidence")
-                omit(action); continue
+            peer_account=val("peer_owner_id") if "peer_owner_id" in body else account
+            peer_region=val("peer_region") if "peer_region" in body else region
+            peer_id=ident("peer_vpc_id","vpc")
+            accepter=(
+                f"arn:{partition}:ec2:{peer_region}:{peer_account}:vpc/{peer_id}"
+                if peer_id and isinstance(peer_account,str)
+                and re.fullmatch(r"[0-9]{12}",peer_account)
+                and isinstance(peer_region,str)
+                and re.fullmatch(r"[a-z]{2}(?:-gov)?-[a-z]+-[0-9]",peer_region)
+                else dep("peer_vpc_id","vpc","vpc")
+                if peer_account==account and peer_region==region else None
+            )
             target=ec("vpc-peering-connection","*")
             if requester and accepter and target:
                 emit(action,requester)
-                emit(action,target,{"ArnEquals":{"ec2:AccepterVpc":accepter,"ec2:RequesterVpc":requester}})
+                emit(action,target,{"ArnEquals":{"ec2:AccepterVpc":accepter}})
                 creates.add(short)
             else:
                 omit(action)
