@@ -42,6 +42,14 @@ Generated Policies Are Candidates For Independent Review, Not Guarantees Of Leas
 
 Use A Dedicated Audit Identity For Live Integrations, Separate Policy Approval From Deployment, And Never Attach Break-Glass Policies Automatically. Do Not Suppress Unresolved Or Risk Findings Solely To Make A Pipeline Pass. Treat Runtime Observations As Supporting Evidence, Not Proof That Unobserved Permissions Are Unnecessary.
 
+## IAM Tag Boundaries
+
+Where Terraform Declares A Resolvable `tfiam:scope` Or `Name` Tag, The Generator Can Restrict Certain EC2 Tagging And Destructive Operations With AWS Resource-Tag Conditions. `ec2:CreateAction` Limits Creation-Time Tagging, And `aws:TagKeys` Limits Existing-Resource Tag Operations To Declared Keys.
+
+A `Name` Tag Is Neither A Unique Resource Identifier Nor An Immutable Security Boundary. A Principal With Separate Broad Tag Permissions Can Potentially Change The Resource Set Matching A Tag Condition. Require Dedicated Ownership Tags, Controlled Tag Mutation, Resource-Specific ARNs From Saved Plans, Or Additional IAM Guardrails Where Strong Isolation Is Necessary.
+
+Offline Generation Does Not Verify That AWS Will Authorize A Particular Terraform Apply. Use The Existing AWS Access Analyzer Validation Command For Policy Findings And A Separately Authorized, Isolated AWS Lifecycle Test For Create/Update/Destroy. Neither A Green CLI Test Nor A Successful Policy File Write Is Equivalent To Live Authorization Evidence.
+
 ## Protecting Sensitive Data
 
 Terraform State, Saved Plan JSON, Reports And Candidate Policies May Expose Credentials, Account Identifiers, Resource Names Or Confidential Architecture. Sensitive And Unknown Fields Are Withheld From Inference Where Supported, But Unmarked Data May Still Appear In Output.
