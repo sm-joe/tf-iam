@@ -145,7 +145,7 @@ def test_vpn_without_vpc_does_not_require_attach(tmp_path):
     assert not any(x["action"]=="ec2:AttachVpnGateway" for x in report["unresolved_permissions"])
 
 
-def test_cross_account_peer_unknown_owner_fails_closed(tmp_path):
+def test_cross_account_peer_unknown_owner_uses_requester_scope(tmp_path):
     report=source(tmp_path,{"aws_vpc_peering_connection":{"main":{
         "vpc_id":"vpc-aabbccdd","peer_vpc_id":"vpc-11223344",
         "peer_owner_id":"${var.owner}",
@@ -257,16 +257,17 @@ def test_cross_account_computed_peer_vpc_is_account_region_bound(tmp_path):
     assert not any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
 
 
-def test_computed_cross_account_peer_with_unknown_owner_stays_unresolved(tmp_path):
+def test_computed_cross_account_peer_with_unknown_owner_requester_scoped(tmp_path):
     report=source(tmp_path,{"aws_vpc_peering_connection":{"peer":{
         "vpc_id":"vpc-aabbccdd",
         "peer_vpc_id":"${var.remote_vpc_id}",
         "peer_owner_id":"${var.remote_account_id}",
         "peer_region":"us-west-2",
     }}})
-    assert not grants(report,"ec2:CreateVpcPeeringConnection")
-    assert any(x["action"]=="ec2:CreateVpcPeeringConnection" and
-        "peer AWS account" in x["reason"] for x in report["unresolved_permissions"])
+    rows=grants(report,"ec2:CreateVpcPeeringConnection")
+    assert len(rows)==2,report["unresolved_permissions"]
+    assert all("condition" not in x for x in rows)
+    assert not any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
 
 
 def test_peer_vpc_missing_is_not_inferred(tmp_path):
