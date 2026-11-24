@@ -20,7 +20,7 @@ LT_DESCRIBE={
     "ec2:DescribeLaunchTemplateVersions",
 }
 
-def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,diagnose=lambda message: None):
+def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,diagnose=lambda message: None,phase="apply"):
     def value(field):
         return resolve(body.get(field))
     if not account or not region:
@@ -39,7 +39,9 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
         # EC2 validates RunInstances for ASG launch-template requests.
         # Use the documented ec2:LaunchTemplate condition and restrict all
         # grants to AWS EC2 regional resource classes, never Resource:"*".
-        if body.get("mixed_instances_policy"):
+        if phase!="apply" or task and task.get("operation") in ("read","no-op","delete"):
+            pass
+        elif body.get("mixed_instances_policy"):
             omit("ec2:RunInstances","Mixed instances policy requires exact override-specific launch evidence")
         elif body.get("launch_template"):
             template=body.get("launch_template")
