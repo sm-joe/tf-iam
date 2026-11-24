@@ -92,3 +92,34 @@ def test_vpc_peering_cross_account_does_not_invent_peer_permission(tmp_path):
     }}})
     assert not grants(report,"ec2:CreateVpcPeeringConnection")
     assert any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
+
+
+def test_all_fifteen_networking_declarations_are_discovered(tmp_path):
+    resources={
+        "aws_vpc":{"main":{"cidr_block":"10.60.0.0/16"}},
+        "aws_subnet":{"main":{"vpc_id":"vpc-aabbccdd","cidr_block":"10.60.1.0/24"}},
+        "aws_internet_gateway":{"main":{"vpc_id":"vpc-aabbccdd"}},
+        "aws_nat_gateway":{"main":{"subnet_id":"subnet-aabbccdd","allocation_id":"eipalloc-aabbccdd"}},
+        "aws_route_table":{"main":{"vpc_id":"vpc-aabbccdd"}},
+        "aws_route_table_association":{"main":{"subnet_id":"subnet-aabbccdd","route_table_id":"rtb-aabbccdd"}},
+        "aws_security_group":{"main":{"vpc_id":"vpc-aabbccdd","name":"network-sg"}},
+        "aws_network_acl":{"main":{"vpc_id":"vpc-aabbccdd"}},
+        "aws_eip":{"main":{"domain":"vpc"}},
+        "aws_vpc_peering_connection":{"main":{"vpc_id":"vpc-aabbccdd","peer_vpc_id":"vpc-11223344"}},
+        "aws_ec2_transit_gateway":{"main":{"description":"transit"}},
+        "aws_vpc_endpoint":{"main":{"vpc_id":"vpc-aabbccdd","service_name":"com.amazonaws.us-east-1.s3","vpc_endpoint_type":"Gateway"}},
+        "aws_route53_zone":{"main":{"name":"sample.example.com"}},
+        "aws_route53_record":{"main":{"zone_id":"Z123456789ABC","name":"app.sample.example.com","type":"A","ttl":60,"records":["192.0.2.2"]}},
+        "aws_vpn_gateway":{"main":{"vpc_id":"vpc-aabbccdd"}},
+    }
+    report=source(tmp_path,resources)
+    assert report["mapping_coverage"]=={
+        "eligible_resources":15,
+        "mapped_resources":15,
+        "unmapped_resources":0,
+        "mapping_percent":100.0,
+    }
+    assert {row["type"] for row in report["resources"] if row["status"]=="MAPPED"}==set(NETWORKING)
+    assert grants(report,"ec2:CreateTransitGateway")
+    assert grants(report,"ec2:CreateVpnGateway")
+    assert grants(report,"route53:ChangeResourceRecordSets")
