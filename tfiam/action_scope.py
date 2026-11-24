@@ -151,14 +151,6 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
         "DeleteNetworkAcl","DeleteRouteTable","DeleteSecurityGroup",
         "DeleteTransitGateway","DeleteVpnGateway",
     }
-    # Only narrow source-only wildcard resource scopes; an exact saved-plan
-    # ARN already identifies the target and should retain its semantics.
-    anchor_wildcard=(
-        task is None and isinstance(own,str) and own.endswith("/*")
-        and anchor is not None and bool(tag_keys)
-    )
-    if anchor_wildcard and anchor[0]=="Name":
-        diagnose("Name-tag resource binding is not unique or immutable; generated ARN wildcard plus ec2:ResourceTag/Name matches other resources with the same Name. Supply a saved plan for exact existing IDs.")
     # Only documented EC2 resource-tag authorization paths are eligible.
     dynamic_actions={"CreateSubnet","CreateRouteTable","CreateSecurityGroup","CreateNetworkAcl","CreateNatGateway","CreateVpcEndpoint","AttachInternetGateway","DetachInternetGateway","AssociateRouteTable","ReplaceRouteTableAssociation","DisassociateRouteTable","CreateRoute","ReplaceRoute","DeleteRoute","AuthorizeSecurityGroupIngress","AuthorizeSecurityGroupEgress","RevokeSecurityGroupIngress","RevokeSecurityGroupEgress","ModifyVpcAttribute","DeleteVpc","ModifySubnetAttribute","DeleteSubnet","DeleteRouteTable","DeleteSecurityGroup","DeleteNetworkAcl","DeleteNatGateway","DeleteInternetGateway","RunInstances","ModifyInstanceAttribute","DescribeInstanceAttribute","DescribeVpcAttribute"}
     def grant(action,targets,condition=None):
@@ -191,6 +183,14 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     if typ=="aws_security_group_rule": own=dep("security_group_id","security-group","sg")
     if typ=="aws_network_acl_rule": own=dep("network_acl_id","network-acl","acl")
     if typ.startswith("aws_vpc_endpoint_"): own=dep("vpc_endpoint_id","vpc-endpoint","vpce")
+    # Only narrow source-only wildcard resource scopes; an exact saved-plan
+    # ARN already identifies the target and should retain its semantics.
+    anchor_wildcard=(
+        task is None and isinstance(own,str) and own.endswith("/*")
+        and anchor is not None and bool(tag_keys)
+    )
+    if anchor_wildcard and anchor[0]=="Name":
+        diagnose("Name-tag resource binding is not unique or immutable; generated ARN wildcard plus ec2:ResourceTag/Name matches other resources with the same Name. Supply a saved plan for exact existing IDs.")
     op=task.get("operation") if task else None
     # Optional Terraform lifecycle branches must not force unrelated
     # privileges or unresolved findings when the feature is not configured.
