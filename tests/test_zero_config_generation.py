@@ -238,3 +238,25 @@ def test_missing_context_has_explicit_root_cause(tmp_path):
         "AWS target account unknown" in row["reason"]
         for row in report["unresolved_permissions"]
     )
+
+
+def test_full_networking_generation_with_unexpanded_peer_missing_destination(tmp_path,monkeypatch):
+    # Reproduces the reported 18/18 mapped, 1 unresolved peering blocker.
+    from pathlib import Path
+    fixture=Path(__file__).resolve().parents[1]/"examples"/"networking-18"/"main.tf.json"
+    project=json.loads(fixture.read_text())
+    peer=project["resource"]["aws_vpc_peering_connection"]["peer"]
+    peer.pop("peer_vpc_id")
+    peer["for_each"]="${var.remote_peers}"
+    project["variable"]["remote_peers"]={"type":"map(string)"}
+    (tmp_path/"main.tf.json").write_text(json.dumps(project))
+    monkeypatch.setenv("AWS_ACCOUNT_ID","123456789012")
+    monkeypatch.setenv("AWS_REGION","us-east-1")
+    monkeypatch.chdir(tmp_path)
+    assert main(["generate",".","--output","policy.json"])==0
+    policy=json.loads((tmp_path/"policy.json").read_text())
+    actions={action for statement in policy["Statement"] for action in statement["Action"]}
+    assert "ec2:CreateVpcPeeringConnection" in actions
+    assert "ec2:CreateVpc" in actions
+    assert "ec2:CreateNatGateway" in actions
+    assert "route53:ChangeResourceRecordSets" in actions

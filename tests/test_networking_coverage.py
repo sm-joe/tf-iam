@@ -277,9 +277,26 @@ def test_computed_cross_account_peer_with_unknown_owner_requester_scoped(tmp_pat
     assert not any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
 
 
-def test_peer_vpc_missing_is_not_inferred(tmp_path):
+def test_peer_vpc_missing_still_generates_requester_side_iam_with_warning(tmp_path):
     report=source(tmp_path,{"aws_vpc_peering_connection":{"peer":{
         "vpc_id":"vpc-aabbccdd",
+        "peer_owner_id":"999999999999",
+        "peer_region":"us-west-2",
+    }}})
+    rows=grants(report,"ec2:CreateVpcPeeringConnection")
+    assert len(rows)==2,report["unresolved_permissions"]
+    assert {row["scope"] for row in rows}=={
+        "arn:aws:ec2:us-east-1:123456789012:vpc/vpc-aabbccdd",
+        "arn:aws:ec2:us-east-1:123456789012:vpc-peering-connection/*",
+    }
+    assert all("condition" not in row for row in rows)
+    assert not any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
+    assert any("Terraform may reject creation" in warning for warning in report["warnings"])
+
+
+def test_missing_requester_vpc_does_not_emit_peering_grant(tmp_path):
+    report=source(tmp_path,{"aws_vpc_peering_connection":{"peer":{
+        "peer_vpc_id":"vpc-11223344",
         "peer_owner_id":"999999999999",
         "peer_region":"us-west-2",
     }}})

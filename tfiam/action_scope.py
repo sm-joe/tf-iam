@@ -225,25 +225,22 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                     "ArnLike" if prospective_accepter else "ArnEquals":{"ec2:AccepterVpc":accepter}
                 })
                 creates.add(short)
-            elif requester and target and "peer_vpc_id" in body and (
-                peer_id or "peer_vpc_id" in body.get("_tfiam_unknown_fields",[])
-                or body.get("peer_vpc_id") is not None
-                or (task is not None and "peer_vpc_id" in task.get("unknown_fields",[]))
-            ):
-                # AWS explicitly supports CreateVpcPeeringConnection on the
-                # requester VPC and peering-connection ARNs without an
-                # ec2:AccepterVpc condition. Do not turn an optional *extra*
-                # restriction into a mandatory permission-resolution failure.
-                # Requester scope stays bounded; no cross-account Accept grant.
+            elif requester and target:
+                # The accepter identity is NOT a required resource for AWS
+                # requester-side IAM authorization. The optional AccepterVpc
+                # condition must not prevent generating the two required
+                # requester-side grants when a for_each instance could not be
+                # statically expanded (or peer_vpc_id is absent).
+                # Do not claim this is restricted to a particular peer.
                 emit(action,requester)
                 emit(action,target)
+                declared=body.get("_tfiam_declared_fields",[])
+                if "peer_vpc_id" not in declared and "peer_vpc_id" not in body:
+                    diagnose("peer_vpc_id absent from statically evaluated peering declaration; Terraform may reject creation. IAM requester-side grant is still valid without an accepter constraint.")
                 diagnose("Peer account/region or peer VPC identity unresolved; ec2:CreateVpcPeeringConnection scoped to requester VPC and local peering resource, without optional ec2:AccepterVpc restriction. This permits requests to other accepter VPCs; use a saved plan or exact peer values to constrain it.")
                 creates.add(short)
             else:
-                if not requester:
-                    omit(action,"requester VPC identity unresolved; provide a managed VPC reference or known VPC ID")
-                else:
-                    omit(action,"peer_vpc_id missing; peering destination must be declared")
+                omit(action,"requester VPC identity unresolved; provide a managed VPC reference or known VPC ID")
             continue
         if short=="CreateNatGateway" and typ=="aws_nat_gateway":
             # Zonal NAT only; regional NAT uses different request dependencies.
