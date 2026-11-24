@@ -7,41 +7,65 @@
   "resource": {
     "aws_vpc": {
       "main": {
-        "cidr_block": "10.60.0.0/16"
+        "cidr_block": "10.60.0.0/16",
+        "tags": {
+          "Name": "dev-vpc"
+        }
       }
     },
     "aws_subnet": {
       "public": {
         "vpc_id": "${aws_vpc.main.id}",
-        "cidr_block": "10.60.1.0/24"
+        "cidr_block": "10.60.1.0/24",
+        "tags": {
+          "Name": "dev-public-subnet"
+        }
       },
       "private": {
         "vpc_id": "${aws_vpc.main.id}",
-        "cidr_block": "10.60.2.0/24"
+        "cidr_block": "10.60.2.0/24",
+        "tags": {
+          "Name": "dev-private-subnet"
+        }
       }
     },
     "aws_internet_gateway": {
       "main": {
-        "vpc_id": "${aws_vpc.main.id}"
+        "vpc_id": "${aws_vpc.main.id}",
+        "tags": {
+          "Name": "dev-igw"
+        }
       }
     },
     "aws_eip": {
       "nat": {
-        "domain": "vpc"
+        "domain": "vpc",
+        "tags": {
+          "Name": "dev-nat-eip"
+        }
       }
     },
     "aws_nat_gateway": {
       "main": {
         "subnet_id": "${aws_subnet.public.id}",
-        "allocation_id": "${aws_eip.nat.id}"
+        "allocation_id": "${aws_eip.nat.id}",
+        "tags": {
+          "Name": "dev-nat"
+        }
       }
     },
     "aws_route_table": {
       "public": {
-        "vpc_id": "${aws_vpc.main.id}"
+        "vpc_id": "${aws_vpc.main.id}",
+        "tags": {
+          "Name": "dev-public-rt"
+        }
       },
       "private": {
-        "vpc_id": "${aws_vpc.main.id}"
+        "vpc_id": "${aws_vpc.main.id}",
+        "tags": {
+          "Name": "dev-private-rt"
+        }
       }
     },
     "aws_route_table_association": {
@@ -57,17 +81,26 @@
     "aws_security_group": {
       "main": {
         "vpc_id": "${aws_vpc.main.id}",
-        "name": "network-main"
+        "name": "network-main",
+        "tags": {
+          "Name": "dev-sg"
+        }
       }
     },
     "aws_network_acl": {
       "main": {
-        "vpc_id": "${aws_vpc.main.id}"
+        "vpc_id": "${aws_vpc.main.id}",
+        "tags": {
+          "Name": "dev-nacl"
+        }
       }
     },
     "aws_ec2_transit_gateway": {
       "main": {
-        "description": "transit"
+        "description": "transit",
+        "tags": {
+          "Name": "dev-tgw"
+        }
       }
     },
     "aws_vpc_endpoint": {
@@ -78,7 +111,10 @@
         "route_table_ids": [
           "${aws_route_table.public.id}",
           "${aws_route_table.private.id}"
-        ]
+        ],
+        "tags": {
+          "Name": "dev-s3-endpoint"
+        }
       }
     },
     "aws_route53_zone": {
@@ -102,12 +138,18 @@
         "vpc_id": "${aws_vpc.main.id}",
         "peer_vpc_id": "${var.peer_vpc_id}",
         "peer_owner_id": "${var.peer_account_id}",
-        "peer_region": "us-east-1"
+        "peer_region": "us-east-1",
+        "tags": {
+          "Name": "dev-peering"
+        }
       }
     },
     "aws_vpn_gateway": {
       "main": {
-        "vpc_id": "${aws_vpc.main.id}"
+        "vpc_id": "${aws_vpc.main.id}",
+        "tags": {
+          "Name": "dev-vpn-gateway"
+        }
       }
     }
   },
