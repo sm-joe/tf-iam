@@ -185,7 +185,14 @@ def main(argv=None, *, maintainer=False):
             key,sep,value=item.partition('=')
             if not sep or not key: raise ValueError('--var requires NAME=VALUE')
             variables.append((key,value))
-        report=scan(args.directory,args.phase,args.aws_account,args.aws_region,args.aws_partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags,scope_generated_names=args.scope_generated_names,provider_version=args.aws_provider_version,authorization_metadata=args.authorization_metadata,provider_contexts=json.loads(args.provider_contexts.read_text()) if args.provider_contexts else None)
+        account,region,partition=args.aws_account,args.aws_region,args.aws_partition
+        contexts=json.loads(args.provider_contexts.read_text()) if args.provider_contexts else None
+        if args.command in ('generate','split') and not args.allow_partial:
+            from .provider_context import discover_aws_identity, discover_profile_contexts
+            if (account is None or region is None) and not (contexts and "aws" in contexts):
+                account,region,partition=discover_aws_identity(account,region,partition)
+            contexts=discover_profile_contexts(args.directory,contexts)
+        report=scan(args.directory,args.phase,account,region,partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags,scope_generated_names=args.scope_generated_names,provider_version=args.aws_provider_version,authorization_metadata=args.authorization_metadata,provider_contexts=contexts)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
         require_complete_mapping=args.command in ('generate','split') and not args.allow_partial
         report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved or require_complete_mapping,args.fail_on_unmapped or require_complete_mapping,args.require_compatible_metadata,args.require_lifecycle_verified)

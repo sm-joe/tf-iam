@@ -10,9 +10,11 @@ def write(tmp_path,doc):
 
 def test_provider_contexts(tmp_path):
     write(tmp_path,{"provider":{"aws":[{"region":R},{"alias":"west","region":"us-west-2","assume_role":{"role_arn":"arn:aws:iam::999999999999:role/deploy"}}]},"resource":{"aws_sqs_queue":{"east":{"name":"east"},"west":{"provider":"aws.west","name":"west"}}}})
-    blocked=scan(tmp_path,account=A,region=R)
-    assert any(p["action"]=="AWS provider context" for p in blocked["unresolved_permissions"])
-    result=scan(tmp_path,account=A,region=R,provider_contexts={"aws.west":{"account":"999999999999","region":"us-west-2"}})
+    # Constant assumed-role ARN and provider region are authoritative.
+    result=scan(tmp_path,account=A,region=R)
+    assert not result["unresolved_permissions"]
+    explicit=scan(tmp_path,account=A,region=R,provider_contexts={"aws.west":{"account":"999999999999","region":"us-west-2"}})
+    assert explicit["permissions"]==result["permissions"]
     assert not result["unresolved_permissions"]
     assert {x["scope"] for x in result["permissions"]}=={f"arn:aws:sqs:{R}:{A}:east","arn:aws:sqs:us-west-2:999999999999:west"}
 
