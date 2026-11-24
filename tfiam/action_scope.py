@@ -126,13 +126,13 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     # proof of Terraform ownership. Prefer a dedicated tfiam:scope anchor.
     declared_tags=body.get("tags")
     tag_keys=sorted(declared_tags) if isinstance(declared_tags,dict) and declared_tags and all(
-        isinstance(k,str) and re.fullmatch(r"[\\w .:/=+@-]{1,128}",k)
+        isinstance(k,str) and re.fullmatch(r"[\w .:/=+@-]{1,128}",k)
         and not k.lower().startswith("aws:") for k in declared_tags
     ) else []
     anchor=None
     for key in ("tfiam:scope","Name"):
         candidate=declared_tags.get(key) if isinstance(declared_tags,dict) else None
-        if isinstance(candidate,str) and candidate and "\\x00" not in candidate and "${" not in candidate:
+        if isinstance(candidate,str) and candidate and "\x00" not in candidate and "${" not in candidate:
             anchor=(key,candidate)
             break
     def existing_tag_condition():
