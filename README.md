@@ -105,25 +105,20 @@ A Raw Source Checkout May Lack The Build-Generated Authorization Metadata Snapsh
 
 ## Quick Start
 
-Set The Target Account And Region Explicitly. Replace The Example Account With Your Actual Deployment Account.
+From A Terraform Project Directory, Generate The IAM Policy With Your Configured AWS Identity:
 
 ~~~bash
-export AWS_ACCOUNT_ID=123456789012
-export AWS_REGION=us-east-1
-
-tfiam scan ./infra \
-  --aws-account "$AWS_ACCOUNT_ID" \
-  --aws-region "$AWS_REGION"
+cd /path/to/terraform/project
+umask 077
+tfiam generate . --output policy.json
 ~~~
 
-Generate A Candidate Policy:
+The Generator Uses Read-Only AWS STS Caller Discovery (AWS CLI Or Bundled AWS SDK) And The Terraform Provider's Region And Explicit Assumed-Role Target. It Reads Standard Terraform Variable Files Automatically. No Separate Account, Region Or Provider Context File Is Needed For A Resolvable Default Provider.
+
+For Cross-Account Providers With Dynamic Role Identity, Or For External Dependencies That Terraform Cannot Resolve, Supply The Relevant Provider Context Or A Saved Terraform Plan. The Tool Will Not Invent External AWS Identities Or Silently Generate Broader Permissions.
 
 ~~~bash
-umask 077
-tfiam generate ./infra \
-  --aws-account "$AWS_ACCOUNT_ID" \
-  --aws-region "$AWS_REGION" \
-  --output policy.json
+tfiam scan . --format table
 ~~~
 
 Review The Decision Table, Unresolved Permissions And Validation Status Before Using The Output. The Generated Document Is Not Attached To Any Identity.
