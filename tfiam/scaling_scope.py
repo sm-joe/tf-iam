@@ -20,7 +20,7 @@ LT_DESCRIBE={
     "ec2:DescribeLaunchTemplateVersions",
 }
 
-def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None):
+def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None,diagnose=lambda message: None,phase="apply"):
     def value(field):
         return resolve(body.get(field))
     if not account or not region:
@@ -36,10 +36,42 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
             if action in ASG_DESCRIBE: emit(action,"*")
             elif action.startswith("autoscaling:"): emit(action,arn)
             else: omit(action)
-        # An ASG launch template can require multi-resource ec2:RunInstances
-        # permissions; a group ARN alone does not justify these grants.
-        if body.get("launch_template") or body.get("mixed_instances_policy"):
-            omit("ec2:RunInstances","Auto Scaling launch-template RunInstances requires AMI, subnet, security group, launch-template, instance/volume/network-interface scopes and optional instance-profile PassRole; exact dependencies not proven from static configuration")
+        # EC2 validates RunInstances for ASG launch-template requests.
+        # Use the documented ec2:LaunchTemplate condition and restrict all
+        # grants to AWS EC2 regional resource classes, never Resource:"*".
+        if phase!="apply" or task and task.get("operation") in ("read","no-op","delete"):
+            pass
+        elif body.get("mixed_instances_policy"):
+            omit("ec2:RunInstances","Mixed instances policy requires exact override-specific launch evidence")
+        elif body.get("launch_template"):
+            template=body.get("launch_template")
+            if isinstance(template,list) and len(template)==1: template=template[0]
+            if not isinstance(template,dict):
+                omit("ec2:RunInstances","Unable to resolve Auto Scaling launch template configuration")
+            else:
+                raw=template.get("id")
+                if isinstance(raw,str) and LT_ID.fullmatch(raw):
+                    launch=f"arn:{partition}:ec2:{region}:{account}:launch-template/{raw}"
+                elif raw is None:
+                    launch=f"arn:{partition}:ec2:{region}:{account}:launch-template/*"
+                else:
+                    launch=None
+                if launch:
+                    condition={"ArnLike":{"ec2:LaunchTemplate":launch}}
+                    prefix=f"arn:{partition}:ec2:{region}:{account}:"
+                    scopes=[
+                        f"arn:{partition}:ec2:{region}::image/*",
+                        prefix+"instance/*",
+                        prefix+"volume/*",
+                        prefix+"network-interface/*",
+                        prefix+"subnet/*",
+                        prefix+"security-group/*",
+                        launch,
+                    ]
+                    for target in scopes: emit("ec2:RunInstances",target,condition)
+                    diagnose("EC2 RunInstances restricted to a regional launch template and EC2 resource classes; uncomputed IDs require wildcard scopes and manual security review. Instance-profile PassRole, encryption and optional launch parameters require independent evidence.")
+                else:
+                    omit("ec2:RunInstances","Launch template ID is not a verified EC2 ID")
         if body.get("service_linked_role_arn"):
             role=value("service_linked_role_arn")
             if role and re.fullmatch(rf"arn:{partition}:iam::{account}:role/aws-service-role/autoscaling.amazonaws.com/[A-Za-z0-9_+=,.@-]+",role):
