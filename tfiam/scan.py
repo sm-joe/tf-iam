@@ -13,6 +13,7 @@ from .expanded_scope import expand
 from .dependencies import dependencies, object_dependencies
 from .service_scope import TYPES as SERVICE_TYPES, scoped
 from .scaling_scope import scoped as scaling_scoped
+from .glue_scope import scoped as glue_scoped
 from .action_scope import network, elb, EC2_TYPES, ELB_TYPES, EC2_GLOBAL
 
 def blocks(doc, key):
@@ -272,6 +273,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     targets=current_role_targets.get((account,partition,resolve(body.get('role'))),set())
                                 if len(targets)==1:
                                     body['_tfiam_profile_role_arn']=next(iter(targets))
+                            if typ in ('aws_glue_catalog_database','aws_glue_job') and category=='resource':
+                                glue_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
+                                continue
                             if typ in ('aws_autoscaling_group','aws_launch_template') and category=='resource':
                                 scaling_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
