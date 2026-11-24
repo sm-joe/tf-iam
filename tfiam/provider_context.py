@@ -68,6 +68,8 @@ def discover_aws_identity(account=None,region=None,partition="aws",profile=None)
         env_account=os.environ.get("AWS_ACCOUNT_ID") or os.environ.get("TFIAM_AWS_ACCOUNT_ID")
         if isinstance(env_account,str) and re.fullmatch(r"[0-9]{12}",env_account):
             account=env_account
+    if account is not None and region is not None:
+        return account,region,partition
     def sdk_identity():
         # SDK credentials can work even if AWS CLI is installed but its profile
         # or binary fails. A failed CLI call must never silently mask SDK identity.
