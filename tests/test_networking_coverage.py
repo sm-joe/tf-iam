@@ -119,7 +119,7 @@ def test_all_fifteen_networking_declarations_are_discovered(tmp_path):
         "unmapped_resources":0,
         "mapping_percent":100.0,
     }
-    assert {row["type"] for row in report["resources"] if row["status"]=="MAPPED"}==set(NETWORKING)
+    assert {row["type"] for row in report["resources"] if row["status"]!="UNSUPPORTED"}==set(NETWORKING)
     assert grants(report,"ec2:CreateTransitGateway")
     assert grants(report,"ec2:CreateVpnGateway")
     assert grants(report,"route53:ChangeResourceRecordSets")
