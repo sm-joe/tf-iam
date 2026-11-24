@@ -185,6 +185,19 @@ tfiam generate ./SNS-Topic \
   --output sns-policy.json
 ~~~
 
+For Modules With `count` Or `for_each`, Prefer An Exact Saved Plan So Terraform Evaluates Instance Expansion And Resource References. For Example:
+
+~~~bash
+terraform -chdir=./SNS-Topic init
+terraform -chdir=./SNS-Topic plan -out=tfplan
+terraform -chdir=./SNS-Topic show -json tfplan > sns-plan.json
+tfiam generate ./SNS-Topic --plan-json sns-plan.json \
+  --aws-account "$AWS_ACCOUNT_ID" --aws-region us-east-1 \
+  --output sns-policy.json
+~~~
+
+Run These Commands From The Workspace Parent And Replace The Relative Paths With Your Real Terraform Root. Sensitive Plan JSON Must Be Kept Private. A Plan Can Still Contain Unknown Future Resource ARNs; The CLI Will Report Those As Unresolved Rather Than Guess A Scope. `--allow-partial` Is Not A Production Authorization Fix.
+
 The Example Provider Version Must Match The Version Actually Selected For Your Terraform Configuration. A `required_providers` Version Range Does Not Establish The Exact Installed Version. For A Real S3 Backend With DynamoDB Locking, The Account And Region Are Necessary To Scope Locking Actions. Backend Workspace And Bucket-Policy Warnings Still Require Review.
 
 ## Analyze A Saved Terraform Plan
