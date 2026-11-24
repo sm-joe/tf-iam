@@ -87,11 +87,14 @@ def test_launch_template_creation_request_tag_and_scope(tmp_path):
     check(report,"ec2:DescribeLaunchTemplates","*")
 
 
-def test_launch_template_no_tag_or_id_fails_closed(tmp_path):
+def test_launch_template_without_custom_tags_uses_prospective_scope(tmp_path):
     write(tmp_path,{"aws_launch_template":{"main":{"name":"worker"}}})
     report=scan(tmp_path,account=ACCOUNT,region=REGION)
-    assert any(x["action"]=="ec2:CreateLaunchTemplate" for x in report["unresolved_permissions"])
-    assert not any(x["action"]=="ec2:DeleteLaunchTemplate" for x in report["permissions"])
+    arn="arn:aws:ec2:us-east-1:123456789012:launch-template/*"
+    check(report,"ec2:CreateLaunchTemplate",arn)
+    check(report,"ec2:DeleteLaunchTemplate",arn)
+    check(report,"ec2:CreateLaunchTemplateVersion",arn)
+    assert not report["unresolved_permissions"]
 
 
 def test_scaling_account_and_region_required(tmp_path):
@@ -113,3 +116,11 @@ def test_launch_template_creation_tags_are_create_only(tmp_path):
     report=scan(tmp_path,account=ACCOUNT,region=REGION)
     target="arn:aws:ec2:us-east-1:123456789012:launch-template/*"
     check(report,"ec2:CreateTags",target,{"StringEquals":{"ec2:CreateAction":"CreateLaunchTemplate"}})
+
+
+def test_launch_template_untagged_terraform_policy_generation(tmp_path):
+    write(tmp_path,{"aws_launch_template":{"main":{"name":"regular-project-launch-template","image_id":"ami-0123456789abcdef0","instance_type":"t3.micro"}}})
+    output=tmp_path/"policy.json"
+    assert main(["generate",str(tmp_path),"--aws-account",ACCOUNT,"--aws-region",REGION,"--output",str(output)])==0
+    policy=json.loads(output.read_text())
+    assert any("ec2:CreateLaunchTemplate" in statement["Action"] and "arn:aws:ec2:us-east-1:123456789012:launch-template/*" in statement["Resource"] for statement in policy["Statement"])
