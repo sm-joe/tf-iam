@@ -1,0 +1,114 @@
+{
+  "provider": {
+    "aws": {
+      "region": "us-east-1"
+    }
+  },
+  "resource": {
+    "aws_vpc": {
+      "main": {
+        "cidr_block": "10.60.0.0/16"
+      }
+    },
+    "aws_subnet": {
+      "public": {
+        "vpc_id": "${aws_vpc.main.id}",
+        "cidr_block": "10.60.1.0/24"
+      },
+      "private": {
+        "vpc_id": "${aws_vpc.main.id}",
+        "cidr_block": "10.60.2.0/24"
+      }
+    },
+    "aws_internet_gateway": {
+      "main": {
+        "vpc_id": "${aws_vpc.main.id}"
+      }
+    },
+    "aws_eip": {
+      "nat": {
+        "domain": "vpc"
+      }
+    },
+    "aws_nat_gateway": {
+      "main": {
+        "subnet_id": "${aws_subnet.public.id}",
+        "allocation_id": "${aws_eip.nat.id}"
+      }
+    },
+    "aws_route_table": {
+      "public": {
+        "vpc_id": "${aws_vpc.main.id}"
+      },
+      "private": {
+        "vpc_id": "${aws_vpc.main.id}"
+      }
+    },
+    "aws_route_table_association": {
+      "public": {
+        "route_table_id": "${aws_route_table.public.id}",
+        "subnet_id": "${aws_subnet.public.id}"
+      },
+      "private": {
+        "route_table_id": "${aws_route_table.private.id}",
+        "subnet_id": "${aws_subnet.private.id}"
+      }
+    },
+    "aws_security_group": {
+      "main": {
+        "vpc_id": "${aws_vpc.main.id}",
+        "name": "network-main"
+      }
+    },
+    "aws_network_acl": {
+      "main": {
+        "vpc_id": "${aws_vpc.main.id}"
+      }
+    },
+    "aws_ec2_transit_gateway": {
+      "main": {
+        "description": "transit"
+      }
+    },
+    "aws_vpc_endpoint": {
+      "s3": {
+        "vpc_id": "${aws_vpc.main.id}",
+        "service_name": "com.amazonaws.us-east-1.s3",
+        "vpc_endpoint_type": "Gateway",
+        "route_table_ids": [
+          "${aws_route_table.public.id}",
+          "${aws_route_table.private.id}"
+        ]
+      }
+    },
+    "aws_route53_zone": {
+      "main": {
+        "name": "example.com"
+      }
+    },
+    "aws_route53_record": {
+      "app": {
+        "zone_id": "${aws_route53_zone.main.zone_id}",
+        "name": "app.example.com",
+        "type": "A",
+        "ttl": 60,
+        "records": [
+          "192.0.2.10"
+        ]
+      }
+    },
+    "aws_vpc_peering_connection": {
+      "peer": {
+        "vpc_id": "${aws_vpc.main.id}",
+        "peer_vpc_id": "vpc-aabbccdd",
+        "peer_owner_id": "999999999999",
+        "peer_region": "us-east-1"
+      }
+    },
+    "aws_vpn_gateway": {
+      "main": {
+        "vpc_id": "${aws_vpc.main.id}"
+      }
+    }
+  }
+}
