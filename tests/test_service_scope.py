@@ -124,3 +124,11 @@ def test_launch_template_untagged_terraform_policy_generation(tmp_path):
     assert main(["generate",str(tmp_path),"--aws-account",ACCOUNT,"--aws-region",REGION,"--output",str(output)])==0
     policy=json.loads(output.read_text())
     assert any("ec2:CreateLaunchTemplate" in statement["Action"] and "arn:aws:ec2:us-east-1:123456789012:launch-template/*" in statement["Resource"] for statement in policy["Statement"])
+
+
+def test_aws_caller_identity_needs_no_iam_grant(tmp_path):
+    (tmp_path/"main.tf.json").write_text(json.dumps({"data":{"aws_caller_identity":{"current":{}}}}))
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    assert report["mapping_coverage"]["mapped_resources"]==1
+    assert not any(x["action"]=="sts:GetCallerIdentity" for x in report["permissions"])
+    assert not report["unresolved_permissions"]
