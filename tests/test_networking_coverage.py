@@ -149,3 +149,38 @@ def test_cross_account_peer_unknown_owner_fails_closed(tmp_path):
     }}})
     assert not grants(report,"ec2:CreateVpcPeeringConnection")
     assert any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
+
+
+def test_computed_networking_references_generate_prospective_scopes(tmp_path):
+    resources={
+        "aws_vpc":{"main":{"cidr_block":"10.60.0.0/16"}},
+        "aws_subnet":{"private":{"vpc_id":"${aws_vpc.main.id}","cidr_block":"10.60.1.0/24"}},
+        "aws_route_table":{"private":{"vpc_id":"${aws_vpc.main.id}"}},
+        "aws_route_table_association":{"private":{
+            "route_table_id":"${aws_route_table.private.id}",
+            "subnet_id":"${aws_subnet.private.id}",
+        }},
+        "aws_internet_gateway":{"main":{"vpc_id":"${aws_vpc.main.id}"}},
+        "aws_nat_gateway":{"main":{
+            "subnet_id":"${aws_subnet.private.id}",
+            "allocation_id":"${aws_eip.nat.id}",
+        }},
+        "aws_eip":{"nat":{"domain":"vpc"}},
+    }
+    report=source(tmp_path,resources)
+    assert not report["unresolved_permissions"],report["unresolved_permissions"]
+    checks={
+        "ec2:CreateSubnet":"arn:aws:ec2:us-east-1:123456789012:vpc/*",
+        "ec2:DeleteVpc":"arn:aws:ec2:us-east-1:123456789012:vpc/*",
+        "ec2:CreateNatGateway":"arn:aws:ec2:us-east-1:123456789012:natgateway/*",
+        "ec2:AssociateRouteTable":"arn:aws:ec2:us-east-1:123456789012:route-table/*",
+        "ec2:ReleaseAddress":"arn:aws:ec2:us-east-1:123456789012:elastic-ip/*",
+    }
+    for action,scope in checks.items():
+        assert any(p["scope"]==scope for p in grants(report,action)),(action,grants(report,action))
+
+
+def test_unknown_external_dependency_remains_unresolved(tmp_path):
+    report=source(tmp_path,{"aws_subnet":{"main":{"vpc_id":"${var.external_vpc}","cidr_block":"10.0.1.0/24"}}})
+    assert not grants(report,"ec2:CreateSubnet")
+    assert any(x["action"]=="ec2:CreateSubnet" for x in report["unresolved_permissions"])
