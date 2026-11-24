@@ -133,3 +133,19 @@ def test_route53_wildcard_record_name_uses_aws_octal_condition(tmp_path):
     assert row["condition"]["ForAllValues:StringEquals"][
         "route53:ChangeResourceRecordSetsNormalizedRecordNames"
     ]==[chr(92)+"052.example.com"]
+
+
+def test_vpn_without_vpc_does_not_require_attach(tmp_path):
+    report=source(tmp_path,{"aws_vpn_gateway":{"main":{"amazon_side_asn":"64512"}}})
+    assert grants(report,"ec2:CreateVpnGateway")
+    assert not grants(report,"ec2:AttachVpnGateway")
+    assert not any(x["action"]=="ec2:AttachVpnGateway" for x in report["unresolved_permissions"])
+
+
+def test_cross_account_peer_unknown_owner_fails_closed(tmp_path):
+    report=source(tmp_path,{"aws_vpc_peering_connection":{"main":{
+        "vpc_id":"vpc-aabbccdd","peer_vpc_id":"vpc-11223344",
+        "peer_owner_id":"${var.owner}",
+    }}})
+    assert not grants(report,"ec2:CreateVpcPeeringConnection")
+    assert any(x["action"]=="ec2:CreateVpcPeeringConnection" for x in report["unresolved_permissions"])
