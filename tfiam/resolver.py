@@ -231,7 +231,7 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
             warn("Installed module manifest invalid; remote module discovery disabled")
     inventory=[]; contexts=[]; edges=[]
     def collect(folder,path,parent_inputs,stack,root_call=False,inherited=None):
-        folder=folder.resolve()
+        folder=Path(os.path.abspath(folder))
         if folder in stack or len(stack)>=64:
             warn((path or "root")+": module cycle or depth limit; skipped")
             return None
