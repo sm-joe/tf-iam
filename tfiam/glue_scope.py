@@ -12,11 +12,18 @@ def scoped(typ,body,actions,account,region,partition,resolve,emit,omit,task=None
     val=lambda key: resolve(body.get(key))
     name=val("name")
     if typ=="aws_glue_catalog_database":
-        if not isinstance(name,str) or not DB_NAME.fullmatch(name):
-            for action in actions: omit(action)
-            return
         catalog=base+"catalog"
-        database=base+"database/"+name
+        if isinstance(name,str) and DB_NAME.fullmatch(name):
+            database=base+"database/"+name
+        elif name is None:
+            # Unknown Terraform expressions cannot establish one exact name.
+            # Scope to the database resource class in this account and region.
+            # This is broader than a named database and must be disclosed.
+            database=base+"database/*"
+        else:
+            for action in actions:
+                omit(action,"Glue database name violates known IAM ARN naming constraints")
+            return
         # Glue Data Catalog resource hierarchy requires the catalog and
         # the named database in the same authorization policy.
         for action in actions:
