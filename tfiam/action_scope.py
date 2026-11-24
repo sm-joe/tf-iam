@@ -15,6 +15,8 @@ EC2_TYPES={
     "aws_network_interface":("network-interface","eni"),
     "aws_vpc_peering_connection":("vpc-peering-connection","pcx"),
     "aws_vpc_peering_connection_accepter":("vpc-peering-connection","pcx"),
+    "aws_ec2_transit_gateway":("transit-gateway","tgw"),
+    "aws_vpn_gateway":("vpn-gateway","vgw"),
     "aws_vpc_security_group_ingress_rule":("security-group-rule","sgr"),
     "aws_vpc_security_group_egress_rule":("security-group-rule","sgr"),
 }
@@ -23,7 +25,7 @@ EC2_GLOBAL={"ec2:"+s for s in (
     "DescribeVpcs DescribeVpcAttribute DescribeTags DescribeSubnets DescribeInstances DescribeInstanceAttribute "
     "DescribeVolumes DescribeInstanceStatus DescribeImages DescribeSecurityGroups DescribeSecurityGroupRules "
     "DescribeInternetGateways DescribeNatGateways DescribeRouteTables DescribeVpcEndpoints DescribeNetworkAcls "
-    "DescribeAddresses DescribeLaunchTemplates DescribeLaunchTemplateVersions DescribeNetworkInterfaces DescribeVpcPeeringConnections"
+    "DescribeAddresses DescribeLaunchTemplates DescribeLaunchTemplateVersions DescribeNetworkInterfaces DescribeVpcPeeringConnections DescribeTransitGateways DescribeVpnGateways"
 ).split()}
 ELB_GLOBAL={"elasticloadbalancing:"+s for s in "DescribeLoadBalancers DescribeTargetGroups DescribeListeners DescribeRules DescribeTags".split()}
 # Create request authorization includes the allocated resource and listed parent dependencies.
@@ -36,9 +38,11 @@ CREATE={
     "AllocateAddress":("elastic-ip",()),
     "CreateLaunchTemplate":("launch-template",()),
     "CreateVolume":("volume",()),
+    "CreateTransitGateway":("transit-gateway",()),
+    "CreateVpnGateway":("vpn-gateway",()),
 }
 # Only actions whose resource types have been selected explicitly are emitted.
-SELF_ACTIONS=set("ModifyVpcAttribute DeleteVpc ModifySubnetAttribute DeleteSubnet ModifyInstanceAttribute StartInstances StopInstances TerminateInstances DeleteInternetGateway DeleteNatGateway DeleteRouteTable DeleteSecurityGroup DeleteVpcEndpoints DeleteNetworkAcl ReleaseAddress CreateLaunchTemplateVersion ModifyLaunchTemplate DeleteLaunchTemplateVersions DeleteLaunchTemplate ModifyVolume DeleteVolume ModifyNetworkInterfaceAttribute DeleteNetworkInterface AcceptVpcPeeringConnection ModifyVpcPeeringConnectionOptions DeleteVpcPeeringConnection".split())
+SELF_ACTIONS=set("ModifyVpcAttribute DeleteVpc ModifySubnetAttribute DeleteSubnet ModifyInstanceAttribute StartInstances StopInstances TerminateInstances DeleteInternetGateway DeleteNatGateway DeleteRouteTable DeleteSecurityGroup DeleteVpcEndpoints DeleteNetworkAcl ReleaseAddress CreateLaunchTemplateVersion ModifyLaunchTemplate DeleteLaunchTemplateVersions DeleteLaunchTemplate ModifyVolume DeleteVolume ModifyNetworkInterfaceAttribute DeleteNetworkInterface AcceptVpcPeeringConnection ModifyVpcPeeringConnectionOptions DeleteVpcPeeringConnection ModifyTransitGateway DeleteTransitGateway DeleteVpnGateway".split())
 def tag_conditions(body,prefix):
     tags=body.get("tags")
     if not isinstance(tags,dict) or not tags: return {}
@@ -105,11 +109,23 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     if not own and scope_resource_tags and spec and body.get("_tfiam_self_tags") and ec(spec[0],"*"):
         own=(ec(spec[0],"*"),body["_tfiam_self_tags"])
     if typ=="aws_eip": own=dep("allocation_id","elastic-ip","eipalloc") or own
+    # AWS allocates IDs for new gateways. Scope unknown current identity to
+    # the verified regional resource class without inventing an exact ID.
+    if not own and typ in ("aws_ec2_transit_gateway","aws_vpn_gateway","aws_vpc_peering_connection"):
+        own=ec(spec[0],"*")
+        if own: diagnose(typ+": generated gateway ID unavailable; prospective resource-class wildcard requires review")
     if typ in ("aws_route","aws_route_table_association"): own=dep("route_table_id","route-table","rtb")
     if typ=="aws_security_group_rule": own=dep("security_group_id","security-group","sg")
     if typ=="aws_network_acl_rule": own=dep("network_acl_id","network-acl","acl")
     if typ.startswith("aws_vpc_endpoint_"): own=dep("vpc_endpoint_id","vpc-endpoint","vpce")
     op=task.get("operation") if task else None
+    # Optional Terraform lifecycle branches must not force unrelated
+    # privileges or unresolved findings when the feature is not configured.
+    uncertain=set(task.get("unknown_fields",[])) if task else set(body.get("_tfiam_unknown_fields",[]))
+    if typ=="aws_vpn_gateway" and not body.get("vpc_id") and "vpc_id" not in uncertain:
+        actions=[action for action in actions if action not in ("ec2:AttachVpnGateway","ec2:DetachVpnGateway")]
+    if typ=="aws_vpc_peering_connection" and body.get("auto_accept") is not True and "auto_accept" not in uncertain:
+        actions=[action for action in actions if action!="ec2:AcceptVpcPeeringConnection"]
     creates=set()
     for action in sorted(actions,key=lambda a:(a in ("ec2:CreateTags","ec2:DeleteTags"),a)):
         short=action.split(":")[1]
@@ -131,6 +147,25 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 emit(action,target,request_tags() or None)
                 creates.add(short)
             else: omit(action)
+            continue
+        if short=="CreateVpcPeeringConnection" and typ=="aws_vpc_peering_connection":
+            # AWS requires authorization on the requester VPC and the
+            # prospective peering connection. Cross-account acceptance
+            # belongs to the peer identity and is never guessed here.
+            requester=dep("vpc_id","vpc","vpc")
+            accepter=dep("peer_vpc_id","vpc","vpc")
+            peer_account=val("peer_owner_id")
+            peer_region=val("peer_region")
+            if ("peer_owner_id" in body and not peer_account) or ("peer_region" in body and not peer_region) or (peer_account and peer_account!=account) or (peer_region and peer_region!=region):
+                diagnose("Cross-account or cross-region peering requires peer-specific authorization evidence")
+                omit(action); continue
+            target=ec("vpc-peering-connection","*")
+            if requester and accepter and target:
+                emit(action,requester)
+                emit(action,target,{"ArnEquals":{"ec2:AccepterVpc":accepter,"ec2:RequesterVpc":requester}})
+                creates.add(short)
+            else:
+                omit(action)
             continue
         if short=="CreateNatGateway" and typ=="aws_nat_gateway":
             # Zonal NAT only; regional NAT uses different request dependencies.
@@ -179,7 +214,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             continue
         if short in ("AttachVolume","DetachVolume"):
             grant(action,[dep("instance_id","instance","i"),dep("volume_id","volume","vol")]); continue
-        if short in ("AttachInternetGateway","DetachInternetGateway"):
+        if short in ("AttachInternetGateway","DetachInternetGateway","AttachVpnGateway","DetachVpnGateway"):
             grant(action,[own,dep("vpc_id","vpc","vpc")]); continue
         if short in ("CreateRoute","ReplaceRoute","DeleteRoute"):
             grant(action,[own]); continue
