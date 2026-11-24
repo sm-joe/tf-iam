@@ -218,6 +218,30 @@ def sanitize(value):
     if isinstance(value,list): return [sanitize(v) for v in value]
     return value
 
+def expand_known_peering_instances(ctx,name,body):
+    """Expand statically known peering maps without evaluating arbitrary HCL."""
+    if "for_each" not in body: return [(name,body)]
+    values=ctx.evaluate(body["for_each"])
+    if not isinstance(values,dict) or len(values)>256 or not all(
+        isinstance(key,str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,128}",key)
+        and isinstance(value,dict) for key,value in values.items()
+    ):
+        return None
+    def substitute(item,key,value):
+        if isinstance(item,str):
+            match=re.fullmatch(r"\$\{each\.(key|value)(?:\.([a-zA-Z_][a-zA-Z0-9_]*))?\}",item)
+            if match:
+                if match.group(1)=="key": return key if match.group(2) is None else UNKNOWN
+                return value.get(match.group(2),UNKNOWN) if match.group(2) else value
+            return item
+        if isinstance(item,list): return [substitute(v,key,value) for v in item]
+        if isinstance(item,dict): return {k:substitute(v,key,value) for k,v in item.items()}
+        return item
+    return [(name+'["'+key+'"]',substitute(
+        {k:v for k,v in body.items() if k!="for_each"},key,value))
+        for key,value in sorted(values.items())]
+
+
 def dependencies(value):
     refs=set()
     if isinstance(value,str):
@@ -337,6 +361,13 @@ def discover(root,account,region,partition,var_files,overrides,warn,environ=None
                 mapped={}
                 for group in groups(doc,category):
                     for kind,instances in group.items():
+                        if category=="resource" and kind=="aws_vpc_peering_connection":
+                            expanded={}
+                            for initial_name,initial_body in instances.items():
+                                candidates=expand_known_peering_instances(ctx,initial_name,initial_body)
+                                for instance_name,instance_body in (candidates if candidates is not None else [(initial_name,initial_body)]):
+                                    expanded[instance_name]=instance_body
+                            instances=expanded
                         for name,body in instances.items():
                             addr=(ctx.path+"." if ctx.path else "")+("data." if category=="data" else "")+kind+"."+name
                             if "count" in body or "for_each" in body:
