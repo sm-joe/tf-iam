@@ -161,8 +161,17 @@ def test_glue_job_unknown_role_fails_closed(tmp_path):
     assert not any(p["action"]=="iam:PassRole" for p in report["permissions"])
 
 
-def test_glue_catalog_unknown_database_name_fails_closed(tmp_path):
+def test_glue_catalog_unknown_database_name_uses_bounded_prospective_scope(tmp_path):
     write(tmp_path,{"aws_glue_catalog_database":{"main":{"name":"${var.missing}"}}})
+    report=scan(tmp_path,account=ACCOUNT,region=REGION)
+    check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:catalog")
+    check(report,"glue:CreateDatabase","arn:aws:glue:us-east-1:123456789012:database/*")
+    assert not report["unresolved_permissions"]
+    assert any("prospective database/*" in x for x in report["information"])
+
+
+def test_glue_catalog_literal_invalid_name_rejects_scope(tmp_path):
+    write(tmp_path,{"aws_glue_catalog_database":{"main":{"name":"invalid database spaces"}}})
     report=scan(tmp_path,account=ACCOUNT,region=REGION)
     assert any(x["action"]=="glue:CreateDatabase" for x in report["unresolved_permissions"])
     assert not any(x["action"]=="glue:CreateDatabase" for x in report["permissions"])
