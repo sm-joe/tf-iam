@@ -129,6 +129,19 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
     if expected and known and re.fullmatch(expected,known): target=known
 
     for action in actions:
+        if strategy=="ecs-service" and action=="iam:PassRole":
+            # ECS service-linked roles are managed by ECS. An explicit legacy
+            # service IAM role requires PassRole; an omitted optional iam_role
+            # does not. Task execution/task roles belong to RegisterTaskDefinition.
+            iam_role=value("iam_role")
+            unknown_role="iam_role" in (task.get("unknown_fields",[]) if task else body.get("_tfiam_unknown_fields",[]))
+            if not iam_role and not unknown_role:
+                continue
+            if iam_role and ROLE.fullmatch(iam_role):
+                emit(action,iam_role,{"StringEquals":{"iam:PassedToService":"ecs.amazonaws.com"}})
+            else:
+                omit(action)
+            continue
         if action in GLOBAL:
             if action=="kms:CreateKey":
                 warn(source+": CreateKey requires wildcard scope; review request conditions")

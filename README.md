@@ -369,6 +369,14 @@ Use `--fail-on-risk HIGH` For Stricter Review. The `--strict` Option Rejects Par
 
 A Nonzero Exit Should Block The Corresponding CI Approval Stage. Keep Reports Private If They Contain Infrastructure Identifiers.
 
+### ECS, ELBv2 And VPC Endpoint Authorization
+
+For Planned ECS Services, `iam:PassRole` Is Emitted Only For An Explicit Legacy Service IAM Role Or When Its Presence Remains Unresolved. ECS Task Roles Are Authorized Separately When The Task Definition Is Registered.
+
+AWS Documents That `DescribeListenerAttributes`, `DescribeLoadBalancerAttributes` And `DescribeTargetGroupAttributes` Have No Resource Types. These Reads Correctly Use `Resource: "*"`, Not An Unresolved Resource Mapping. Listener Creation-Time `AddTags` Uses A Prospective Listener ARN With `elasticloadbalancing:CreateAction`.
+
+VPC Endpoint Creation Authorizes The Endpoint And Its Applicable VPC, Subnet, Security Group And Route Table Resource Classes. Computed Planned Collections Use Bounded Account/Region Resource Class Wildcards, Not Fabricated IDs. A Missing Service Name Or Unverified VPC Still Remains Unresolved. See [AWS PrivateLink IAM Examples](https://docs.aws.amazon.com/vpc/latest/privatelink/security_iam_id-based-policy-examples.html) And [ELBv2 Actions](https://docs.aws.amazon.com/service-authorization/latest/reference/list_elbv2.html).
+
 ### Saved-Plan Reference Resolution
 
 tf-iam Inspects Terraform's Saved-Plan `configuration.root_module.resources[].expressions[].references` And The Planned Resource Changes To Resolve Computed IDs. It Uses Account/Region-Bounded Prospective Resource ARNs For Newly Created EC2 Parents. A Source Checkout Is Not Required For Direct Root-Module Edges. ECS Service Cluster And Task Definition Relationships, Explicit ECS Task/Execution IAM Roles, And ALB Listener Parent References Are Inferred Only When Their References And Non-Sensitive Names Agree With The Selected Provider Context. Unknown IDs Are Not Invented.
