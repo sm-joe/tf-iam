@@ -13,7 +13,12 @@ def policy(report,provider,name,scope):
     if provider=='aws':
         groups={}
         for r in rows: groups.setdefault((r['scope'],json.dumps(r.get('condition'),sort_keys=True)),set()).add(r['action'])
-        return {'Version':'2012-10-17','Statement':[{'Effect':'Allow','Action':sorted(a),'Resource':s, **({'Condition':json.loads(c)} if c!='null' else {})} for (s,c),a in sorted(groups.items())]}
+        raw={'Version':'2012-10-17','Statement':[{'Effect':'Allow','Action':sorted(a),'Resource':s, **({'Condition':json.loads(c)} if c!='null' else {})} for (s,c),a in sorted(groups.items())]}
+        from .policy_size import optimize, grants
+        compact=optimize(raw)
+        if grants(compact)!=grants(raw):
+            raise ValueError('Generated policy optimization changed effective action/resource/condition grants')
+        return compact
     raise ValueError('Only AWS is supported')
 
 def terraform(p,provider,name,scope):
