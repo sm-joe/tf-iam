@@ -445,6 +445,13 @@ def elb(typ,body,actions,account,region,partition,resolve,emit,omit,task=None):
     valid_name=name and re.fullmatch(r"[A-Za-z0-9-]{1,32}",name)
     own=exact("arn","loadbalancer|targetgroup|listener|listener-rule") if task else None
     lb=exact("load_balancer_arn","loadbalancer")
+    # A graph-proven, newly created load balancer has an unallocated AWS ID.
+    # Its prospective ARN is valid as a scoped CreateListener authorization.
+    prospective_lb=body.get("_tfiam_parent_lb_arn")
+    if not lb and prefix and isinstance(prospective_lb,str) and re.fullmatch(
+        re.escape(prefix)+r"loadbalancer/(?:app|net|gwy)/[A-Za-z0-9-]{1,32}/\\*",prospective_lb
+    ):
+        lb=prospective_lb
     listener=exact("listener_arn","listener")
     target=exact("target_group_arn","targetgroup")
     prospective=None
