@@ -371,13 +371,13 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     # Inline policies authorize against their owning
                                     # IAM role, even when Terraform uses the role ID.
                                     ref=re.fullmatch(
-                                        r'\\$\\{(aws_iam_role\\.[\\w-]+)\\.(?:id|name|arn)\\}',
+                                        r'\$\{(aws_iam_role\.[\w-]+)\.(?:id|name|arn)\}',
                                         str(body.get('role')))
                                     if ref:
                                         owner=definitions.get(ref.group(1),{})
                                         known=role_arn(owner) if owner else None
                                         if known and re.fullmatch(
-                                                rf'arn:{partition}:iam::{account}:role/[^\\s*?]+',known):
+                                                rf'arn:{partition}:iam::{account}:role/[^\s*?]+',known):
                                             body={**body,'_tfiam_identity_arn':known}
                                 expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task,unresolved=omit)
                                 continue
