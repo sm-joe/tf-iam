@@ -122,12 +122,13 @@ def include_unresolved(report):
         if isinstance(row, dict) and isinstance(row.get("source"), str)
         and isinstance(row.get("action"), str)
     }
+    unconditional = {(p['source'],p['action']) for p in report['permissions'] if p.get('provider') == 'aws' and not p.get('condition')}
     fallbacks = []
     for missing in report.get("unresolved_permissions", []):
         source, action = missing.get("source"), missing.get("action")
         if not isinstance(source, str) or not isinstance(action, str) or not IAM_ACTION.fullmatch(action):
             continue
-        if (source, action) in excluded:
+        if (source, action) in excluded or (source, action) in unconditional:
             continue
         scope, condition = _fallback_scope(source, action, contexts)
         replacement = None
