@@ -13,6 +13,7 @@ from .expanded_scope import expand
 from .dependencies import dependencies, object_dependencies
 from .service_scope import TYPES as SERVICE_TYPES, scoped
 from .scaling_scope import scoped as scaling_scoped
+from .storage_scope import TYPES as STORAGE_TYPES, scoped as storage_scoped
 from .glue_scope import scoped as glue_scoped
 from .route53_scope import scoped as route53_scoped
 from .action_scope import network, elb, EC2_TYPES, ELB_TYPES, EC2_GLOBAL
@@ -339,6 +340,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     info(address+': database name not statically resolved; using prospective database/* ARN in the selected account and region. This grants access to other databases in the same resource class; inspect scan coverage before deployment.')
                                 glue_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
+                            if typ in STORAGE_TYPES and category=='resource':
+                                storage_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
+                                continue
                             if typ in ('aws_autoscaling_group','aws_launch_template') and category=='resource':
                                 scaling_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task,diagnose=lambda message: info(address+': '+message),phase=resource_phase)
                                 continue
@@ -363,6 +367,27 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     for action in blocked: omit(action)
                                 dependencies(typ,body,acts,account,region,partition,resolve,emit,omit,task,resource_phase)
                             if rule.get('scope_strategy'):
+                                if typ=='aws_iam_role_policy' and not task:
+                                    # Inline policies authorize against their owning
+                                    # IAM role, even when Terraform uses the role ID.
+                                    ref=re.fullmatch(
+                                        r'\$\{(aws_iam_role\.[\w-]+)\.(?:id|name|arn)\}',
+                                        str(definitions.get(f'{typ}.{name}',{}).get(
+                                            'role',body.get('role'))))
+                                    if ref:
+                                        owner=definitions.get(ref.group(1),{})
+                                        known=role_arn(owner) if owner else None
+                                        if known and re.fullmatch(
+                                                rf'arn:{partition}:iam::{account}:role/[^\s*?]+',known):
+                                            body={**body,'_tfiam_identity_arn':known}
+                                if typ=='aws_iam_role_policy' and not task:
+                                    owner_arn=resolve(body.get('_tfiam_identity_arn'))
+                                    if owner_arn and re.fullmatch(
+                                            rf'arn:{partition}:iam::{account}:role/[^\\s*?]+',
+                                            owner_arn):
+                                        for action in acts:
+                                            add('aws',[action],owner_arn,address)
+                                        continue
                                 expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task,unresolved=omit)
                                 continue
                             if typ=='aws_dynamodb_table' and task:
