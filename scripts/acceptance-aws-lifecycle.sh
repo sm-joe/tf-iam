@@ -54,6 +54,14 @@ if [[ ${TFIAM_VALIDATE_WITH_AWS:-no} == yes ]]; then
   tfiam validate-policy "$policy_path" --aws-region "$TFIAM_AWS_REGION" --strict
 fi
 
+bundle_dir="$evidence_dir/$phase-policy-bundle"
+if [[ -e "$bundle_dir" ]]; then
+  echo "ERROR: Bundle output already exists; remove old test evidence deliberately before rerunning" >&2
+  exit 2
+fi
+tfiam pack-policy "$policy_path" --output-dir "$bundle_dir"
+
+echo "Managed Policy Bundle: $bundle_dir"
 echo "Candidate: $policy_path"
 echo "Plan: $plan_path"
 echo "Review the generated grants and confirm the active identity has exactly the candidate policies."
