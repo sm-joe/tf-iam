@@ -210,7 +210,10 @@ def main(argv=None, *, maintainer=False):
             variables.append((key,value))
         account,region,partition=args.aws_account,args.aws_region,args.aws_partition
         contexts=json.loads(args.provider_contexts.read_text()) if args.provider_contexts else None
-        if args.command in ('generate','split') and not args.allow_partial:
+        if args.command=='generate' or (args.command=='split' and not args.allow_partial):
+            # --allow-partial is a compatibility alias for non-blocking
+            # generation, not permission to skip automatic AWS context
+            # discovery or silently weaken resource ARN scope.
             from .provider_context import discover_aws_identity, discover_profile_contexts
             if (account is None or region is None) and not (contexts and "aws" in contexts):
                 account,region,partition=discover_aws_identity(account,region,partition)
