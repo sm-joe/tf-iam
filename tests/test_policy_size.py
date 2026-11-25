@@ -41,7 +41,7 @@ def test_cli_pack_policy(tmp_path):
     manifest=json.loads((target/"manifest.json").read_text())
     packed_text=(target/manifest["policies"][0]["file"]).read_text()
     packed=json.loads(packed_text)
-    assert packed_text.count("\\n") > 2
+    assert len(packed_text.splitlines()) > 5
     assert grants(packed)==grants(original)
     bundle=json.loads((target/"bundle.json").read_text())
     assert bundle["schema_version"]==1
@@ -110,7 +110,7 @@ def test_cli_pack_policy_emits_one_readable_bundle_and_no_policy_dump(tmp_path,c
     assert summary["bundle_file"]==str(directory/"bundle.json")
     assert "Statement" not in summary
     bundle_text=(directory/"bundle.json").read_text()
-    assert bundle_text.count("\\n") > 2
+    assert len(bundle_text.splitlines()) > 5
     bundle=json.loads(bundle_text)
     assert bundle["policy_count"]==1
     assert grants(bundle["policies"][0]["document"])==grants(original)
