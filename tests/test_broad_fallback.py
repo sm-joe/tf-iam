@@ -72,3 +72,23 @@ def test_strict_complete_mode_still_blocks_partial_generation(tmp_path):
     assert main(["generate",str(tmp_path),"--allow-partial","--require-complete",
                  "--aws-region","ap-south-1","--output",str(out)])==4
     assert not out.exists()
+
+
+def test_conditional_global_grant_does_not_mask_unresolved_fallback():
+    from tfiam.candidate_fallback import include_unresolved
+    report={
+        "permissions":[{
+            "provider":"aws","source":"x","action":"iam:PassRole",
+            "scope":"*","plane":"management",
+            "condition":{"StringEquals":{"iam:PassedToService":"ecs-tasks.amazonaws.com"}},
+        }],
+        "unresolved_permissions":[{
+            "source":"x","action":"iam:PassRole","reason":"different role context unknown",
+        }],
+        "warnings":[],"scope_summary":{},"risks":[],
+    }
+    include_unresolved(report)
+    assert len(report["permissions"])==2
+    assert report["fallback_permissions"][0]["action"]=="iam:PassRole"
+    assert any(p["action"]=="iam:PassRole" and "condition" not in p
+               for p in report["permissions"])
