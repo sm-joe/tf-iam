@@ -13,6 +13,7 @@ from .expanded_scope import expand
 from .dependencies import dependencies, object_dependencies
 from .service_scope import TYPES as SERVICE_TYPES, scoped
 from .scaling_scope import scoped as scaling_scoped
+from .storage_scope import TYPES as STORAGE_TYPES, scoped as storage_scoped
 from .glue_scope import scoped as glue_scoped
 from .route53_scope import scoped as route53_scoped
 from .action_scope import network, elb, EC2_TYPES, ELB_TYPES, EC2_GLOBAL
@@ -338,6 +339,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 if typ=='aws_glue_catalog_database' and body.get('name') is None and account and region:
                                     info(address+': database name not statically resolved; using prospective database/* ARN in the selected account and region. This grants access to other databases in the same resource class; inspect scan coverage before deployment.')
                                 glue_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
+                                continue
+                            if typ in STORAGE_TYPES and category=='resource':
+                                storage_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task)
                                 continue
                             if typ in ('aws_autoscaling_group','aws_launch_template') and category=='resource':
                                 scaling_scoped(typ,body,acts,account,region,partition,resolve,emit,omit,task,diagnose=lambda message: info(address+': '+message),phase=resource_phase)
