@@ -379,16 +379,15 @@ def test_source_tagged_networking_restricts_create_and_delete_tag_permissions(tm
         creates=[p for p in rows if p["action"]=="ec2:CreateTags"]
         assert any(p["scope"]==target and p.get("condition",{}).get("StringEquals",{}).get("ec2:CreateAction")==create
                    for p in creates)
-        for tag_action in ("ec2:CreateTags","ec2:DeleteTags"):
-            matching=[p for p in rows if p["action"]==tag_action]
-            assert matching,tag_action
-            assert all(p.get("condition") for p in matching)
-            for p in matching:
-                condition=p["condition"]
-                assert condition["Null"]=={"aws:TagKeys":"false"}
-                assert condition["ForAllValues:StringEquals"]["aws:TagKeys"]==["Environment","Name"]
+        for p in creates:
+            assert p["condition"]["Null"]=={"aws:TagKeys":"false"}
+            expected=["Environment","Name"] if "ec2:CreateAction" in p["condition"].get("StringEquals",{}) else ["Environment"]
+            assert p["condition"]["ForAllValues:StringEquals"]["aws:TagKeys"]==expected
         updates=[p for p in creates if "ec2:ResourceTag/Name" in p.get("condition",{}).get("StringEquals",{})]
         assert any(p["condition"]["StringEquals"]["ec2:ResourceTag/Name"]==name for p in updates)
+        assert grants(report,"ec2:DeleteTags")
+        for p in (row for row in rows if row["action"]=="ec2:DeleteTags"):
+            assert p["condition"]["ForAllValues:StringEquals"]["aws:TagKeys"]==["Environment"]
         deletes=[p for p in rows if p["action"]==delete]
         assert deletes and all(p.get("condition")=={"StringEquals":{"ec2:ResourceTag/Name":name}} for p in deletes)
 
@@ -398,11 +397,29 @@ def test_source_tagging_restrictions_reject_unlisted_keys_and_missing_key_contex
         "cidr_block":"10.0.0.0/16","tags":{"Name":"team-vpc"}
     }}})
     assert not report["unresolved_permissions"]
+    creation=[p for p in grants(report,"ec2:CreateTags")
+              if p.get("condition",{}).get("StringEquals",{}).get("ec2:CreateAction")=="CreateVpc"]
+    assert creation
+    assert creation[0]["condition"]["ForAllValues:StringEquals"]["aws:TagKeys"]==["Name"]
+    # Name is the resource selection boundary, so post-creation mutation of
+    # Name cannot be authorized by Name itself.
+    assert not grants(report,"ec2:DeleteTags")
+    assert all(p.get("condition",{}).get("StringEquals",{}).get("ec2:CreateAction")=="CreateVpc"
+               for p in grants(report,"ec2:CreateTags"))
+
+
+def test_scope_anchor_is_never_mutable_through_its_own_resource_tag_condition(tmp_path):
+    report=source(tmp_path,{"aws_vpc":{"main":{
+        "cidr_block":"10.0.0.0/16",
+        "tags":{"Name":"dev","tfiam:scope":"network-ownership","Environment":"dev"},
+    }}})
+    assert not report["unresolved_permissions"]
     for action in ("ec2:CreateTags","ec2:DeleteTags"):
-        rows=grants(report,action)
-        assert rows
-        assert all(p["condition"].get("Null")=={"aws:TagKeys":"false"} for p in rows)
-        assert all(p["condition"]["ForAllValues:StringEquals"]["aws:TagKeys"]==["Name"] for p in rows)
+        for row in grants(report,action):
+            cond=row.get("condition",{})
+            if "ec2:ResourceTag/tfiam:scope" in cond.get("StringEquals",{}):
+                assert "tfiam:scope" not in cond["ForAllValues:StringEquals"]["aws:TagKeys"]
+                assert cond["Null"]=={"aws:TagKeys":"false"}
 
 
 def test_untagged_networking_keeps_existing_policy_compatibility(tmp_path):

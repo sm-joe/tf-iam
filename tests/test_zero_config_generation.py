@@ -44,7 +44,8 @@ def test_generate_from_current_directory_without_context_flags(tmp_path,monkeypa
     assert policy["Version"]=="2012-10-17"
     actions={a for statement in policy["Statement"] for a in statement["Action"]}
     assert {"ec2:CreateVpc","ec2:CreateSubnet","ec2:CreateNatGateway"}<=actions
-    assert any(statement["Resource"]=="arn:aws:ec2:us-east-1:123456789012:vpc/*"
+    assert any("arn:aws:ec2:us-east-1:123456789012:vpc/*" in
+               (statement["Resource"] if isinstance(statement["Resource"],list) else [statement["Resource"]])
                for statement in policy["Statement"])
     assert any(x[:3]==["aws","sts","get-caller-identity"] for x in calls)
 
@@ -95,7 +96,8 @@ def test_named_profile_alias_generates_without_manual_context(tmp_path,monkeypat
     monkeypatch.setattr("subprocess.run",fake_run)
     assert main(["generate",".","--output","policy.json"])==0
     policy=json.loads((tmp_path/"policy.json").read_text())
-    scopes={s["Resource"] for s in policy["Statement"]}
+    scopes={resource for statement in policy["Statement"] for resource in
+            (statement["Resource"] if isinstance(statement["Resource"],list) else [statement["Resource"]])}
     assert "arn:aws:sqs:us-east-1:123456789012:main" in scopes
     assert "arn:aws:sqs:us-west-2:999999999999:west" in scopes
 

@@ -34,7 +34,10 @@ jobs:
 
           policy=json.load(open(sys.argv[1]))
           actions={a for row in policy["Statement"] for a in row["Action"]}
-          assert "ec2:CreateTags" in actions and "ec2:DeleteTags" in actions
+          assert "ec2:CreateTags" in actions
+          # All fixture resource tags are the Name authorization anchor:
+          # post-create DeleteTags must not be granted on that anchor.
+          assert "ec2:DeleteTags" not in actions
           destructive={
               "ec2:DeleteVpc","ec2:DeleteSubnet","ec2:DeleteNatGateway",
               "ec2:DeleteNetworkAcl","ec2:DeleteRouteTable",
@@ -50,6 +53,17 @@ jobs:
                   assert "ec2:CreateAction" in strings or "ec2:ResourceTag/Name" in strings,statement
                   assert condition["ForAllValues:StringEquals"]["aws:TagKeys"],statement
                   assert condition["Null"]=={"aws:TagKeys":"false"},statement
+          # Existing-resource tag operations must not mutate the key that
+          # authorizes their own resource selection.
+          for statement in policy["Statement"]:
+              cond=statement.get("Condition",{})
+              strings=cond.get("StringEquals",{})
+              keys=cond.get("ForAllValues:StringEquals",{}).get("aws:TagKeys",[])
+              for key in ("tfiam:scope","Name"):
+                  if "ec2:ResourceTag/"+key in strings and (
+                      {"ec2:CreateTags","ec2:DeleteTags"} & set(statement["Action"])):
+                      assert key not in keys, statement
+          print("PASS: source-only IAM cannot retag its own authorization anchor")
           print("PASS: packaged IAM policy retains bounded EC2 tagging and destruction")
           PY
       - uses: actions/upload-artifact@v4

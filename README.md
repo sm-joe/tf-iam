@@ -203,7 +203,11 @@ tfiam generate ./infra \
   --format terraform --output policy.tf.json
 ~~~
 
-Generation Rejects Unmapped Resources And Unresolved Grants By Default. The Explicit `--allow-partial` Override Permits Candidate Output For Review, But Does Not Disable Configured Security Gates Or Definite Metadata Compatibility Failures. Do Not Treat Partial Output As Deployment-Ready.
+Generation Rejects Unmapped Resources And Unresolved Grants By Default. The Generated Policy Is Automatically Compacted Without Adding Any Action/Resource/Condition Grants. It Retains The Existing `Action` Array Output; IAM `Resource` May Be A String Or An Array When Identical Grants Can Be Safely Grouped. If A Candidate Exceeds AWS's 6,144-Character Customer-Managed Policy Limit, The CLI Explicitly Reports That It Cannot Be Attached As One Managed Policy. Run `tfiam pack-policy policy.json --output-dir policy-bundle` For Verified Quota-Bounded Documents. Packing Preserves The Exact Grant Union; It Does Not Make Unverified AWS Privileges Least-Privilege.
+
+For Source-Only IAM Scopes Using A `tfiam:scope` Or `Name` Tag To Restrict Existing Resources, Post-Creation Tagging Can Modify Other Declared Tags But Cannot Modify The Authorization Anchor Itself. Intentional Ownership-Tag Rotation Requires An Exact Existing-Resource ARN From A Saved Terraform Plan And Independent Review. This Is Not A Substitute For Verifying Resource Ownership In AWS.
+
+The Explicit `--allow-partial` Override Permits Candidate Output For Review, But Does Not Disable Configured Security Gates Or Definite Metadata Compatibility Failures. Do Not Treat Partial Output As Deployment-Ready.
 
 ### EC2 Tagging And Destructive Resource Scopes
 

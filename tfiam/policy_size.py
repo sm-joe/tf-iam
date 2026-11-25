@@ -38,7 +38,10 @@ def grants(doc):
 
 def statement(actions,resources,c):
     actions=sorted(actions); resources=sorted(resources)
-    row={"Effect":"Allow","Action":actions[0] if len(actions)==1 else actions,"Resource":resources[0] if len(resources)==1 else resources}
+    # Keep the generator's stable Action-array contract. IAM accepts both
+    # scalar and list syntax, but changing this shape breaks existing users
+    # who consume generated policies programmatically.
+    row={"Effect":"Allow","Action":actions,"Resource":resources[0] if len(resources)==1 else resources}
     if c!="null": row["Condition"]=json.loads(c)
     return row
 

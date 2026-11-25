@@ -44,3 +44,49 @@ def test_cli_pack_policy(tmp_path):
     assert main(args)!=0
     assert main(["pack-policy",str(source),"--output-dir",str(tmp_path/"bad"),"--max-chars","1"])!=0
     assert not (tmp_path/"bad").exists()
+
+
+def test_generate_default_is_grant_equivalent_and_groups_compatible_resources():
+    from tfiam.cli import policy
+    source={
+        "permissions":[
+            {"provider":"aws","action":action,"scope":resource,"source":"test"}
+            for action in ("ec2:CreateTags","ec2:DeleteTags")
+            for resource in (
+                "arn:aws:ec2:ap-south-1:123456789012:vpc/vpc-aabbccdd",
+                "arn:aws:ec2:ap-south-1:123456789012:vpc/vpc-11223344",
+            )
+        ],
+    }
+    generated=policy(source,"aws","test",None)
+    unoptimized=doc([
+        row(["ec2:CreateTags","ec2:DeleteTags"],r)
+        for r in (
+            "arn:aws:ec2:ap-south-1:123456789012:vpc/vpc-aabbccdd",
+            "arn:aws:ec2:ap-south-1:123456789012:vpc/vpc-11223344",
+        )
+    ])
+    assert grants(generated)==grants(unoptimized)
+    assert len(generated["Statement"])==1
+    assert size(generated)<size(unoptimized)
+
+
+def test_optimized_generation_preserves_peer_and_tag_conditions_exactly():
+    from tfiam.cli import policy
+    records=[
+        {"provider":"aws","action":"ec2:CreateVpcPeeringConnection",
+         "scope":"arn:aws:ec2:ap-south-1:123456789012:vpc-peering-connection/*",
+         "condition":{"ArnEquals":{"ec2:AccepterVpc":"arn:aws:ec2:us-west-2:999999999999:vpc/vpc-aabbccdd"}},
+         "source":"peer"},
+        {"provider":"aws","action":"ec2:CreateTags",
+         "scope":"arn:aws:ec2:ap-south-1:123456789012:vpc/*",
+         "condition":{"StringEquals":{"ec2:CreateAction":"CreateVpc"},
+                      "ForAllValues:StringEquals":{"aws:TagKeys":["Name"]},
+                      "Null":{"aws:TagKeys":"false"}},
+         "source":"vpc"}
+    ]
+    result=policy({"permissions":records},"aws","test",None)
+    assert grants(result)=={
+        (p["action"],p["scope"],json.dumps(p["condition"],sort_keys=True,separators=(",",":"),ensure_ascii=True))
+        for p in records
+    }

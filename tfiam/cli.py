@@ -13,7 +13,12 @@ def policy(report,provider,name,scope):
     if provider=='aws':
         groups={}
         for r in rows: groups.setdefault((r['scope'],json.dumps(r.get('condition'),sort_keys=True)),set()).add(r['action'])
-        return {'Version':'2012-10-17','Statement':[{'Effect':'Allow','Action':sorted(a),'Resource':s, **({'Condition':json.loads(c)} if c!='null' else {})} for (s,c),a in sorted(groups.items())]}
+        raw={'Version':'2012-10-17','Statement':[{'Effect':'Allow','Action':sorted(a),'Resource':s, **({'Condition':json.loads(c)} if c!='null' else {})} for (s,c),a in sorted(groups.items())]}
+        from .policy_size import optimize, grants
+        compact=optimize(raw)
+        if grants(compact)!=grants(raw):
+            raise ValueError('Generated policy optimization changed effective action/resource/condition grants')
+        return compact
     raise ValueError('Only AWS is supported')
 
 def terraform(p,provider,name,scope):
@@ -228,6 +233,16 @@ def main(argv=None, *, maintainer=False):
         elif args.command=='scan': result=report; output=json.dumps(report,indent=2)
         elif args.command=='generate':
             result=policy(report,args.provider,args.name,args.scope)
+            from .policy_size import size as policy_characters, LIMITS
+            candidate_size=policy_characters(result)
+            if candidate_size>LIMITS['managed']:
+                print(
+                    f'NOTICE: Generated policy contains {candidate_size} IAM characters, '
+                    f'exceeding the {LIMITS["managed"]}-character customer-managed policy limit. '
+                    'The candidate is not attachable as one managed policy. '
+                    'Run: tfiam pack-policy policy.json --output-dir policy-bundle',
+                    file=sys.stderr,
+                )
             if args.format=='terraform': output=json.dumps(terraform(result,args.provider,args.name,args.scope),indent=2)
             else: output=json.dumps(result,indent=2)
         else:
