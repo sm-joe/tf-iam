@@ -151,6 +151,20 @@ jobs:
               x["action"] for x in report["fallback_permissions"]}
           print("PASS: packaged IAM generator retains broad lifecycle permissions when account scope is unknown")
           PY
+          dist/tfiam generate "$RUNNER_TEMP/broad-iam-fixture" \
+            --allow-partial --aws-account 638631156706 --aws-region ap-south-1 \
+            --output "$RUNNER_TEMP/scoped-iam-policy.json"
+          python - "$RUNNER_TEMP/scoped-iam-policy.json" <<'PY'
+          import json,sys
+          from pathlib import Path
+          policy=json.loads(Path(sys.argv[1]).read_text())
+          report=json.loads(Path(sys.argv[1]+".report.json").read_text())
+          assert "fallback_permissions" in report
+          assert any(x["action"]=="iam:CreateRole" for x in report["fallback_permissions"])
+          assert all(x["scope_status"] in ("BROAD_FALLBACK","SCOPED_FALLBACK")
+                     for x in report["fallback_permissions"])
+          print("PASS: packaged binary includes scoped/broad fallback provenance")
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: tfiam-linux-x86_64
