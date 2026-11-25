@@ -57,9 +57,9 @@ def test_fallback_excludes_non_iam_actions_and_avoids_duplicates():
     }
     include_unresolved(report)
     assert report["fallback_permissions"]==[{
-        "source":"b","action":"iam:CreateRole","scope":"<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_RESOURCE>",
+        "source":"b","action":"iam:CreateRole","scope":"arn:aws:iam::<AWS_ACCOUNT_ID>:role/<REPLACE_WITH_IAM_ROLE_PATH_AND_NAME>",
         "reason":"unknown account","scope_status":"REQUIRES_REPLACEMENT",
-        "replacement_instruction":"Replace placeholder with actual resource ARN before use"
+        "replacement_instruction":"Replace placeholder with actual IAM role ARN before use"
     }]
     assert len(report["permissions"])==2
 
@@ -117,13 +117,13 @@ def test_known_account_scopes_iam_passrole_and_ec2_tag_fallbacks():
     include_unresolved(report)
     grants={(row["source"],row["action"]):row for row in report["permissions"]}
     assert grants[("aws_ecs_task_definition.app","iam:PassRole")]["scope"] == (
-        "<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_ECS_TASK_DEFINITION>")
+        "arn:aws:iam::<AWS_ACCOUNT_ID>:role/<REPLACE_WITH_IAM_ROLE_PATH_AND_NAME>")
     assert grants[('module.compute.aws_subnet.public[0]',"ec2:CreateTags")]["scope"] == (
-        "<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_SUBNET>")
+        "arn:aws:ec2:<AWS_REGION>:<AWS_ACCOUNT_ID>:subnet/<REPLACE_WITH_SUBNET_ID>")
     assert grants[("aws_security_group.ecs","ec2:DeleteTags")]["scope"] == (
-        "<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_SECURITY_GROUP>")
+        "arn:aws:ec2:<AWS_REGION>:<AWS_ACCOUNT_ID>:security-group/<REPLACE_WITH_SECURITY_GROUP_ID>")
     assert grants[("aws_ecs_service.app","iam:PassRole")]["scope"] == (
-        "<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_ECS_SERVICE>")
+        "arn:aws:iam::<AWS_ACCOUNT_ID>:role/<REPLACE_WITH_IAM_ROLE_PATH_AND_NAME>")
     assert sum(x["scope_status"]=="REQUIRES_REPLACEMENT"
                for x in report["fallback_permissions"]) == 5
     assert report["scope_summary"]["global"]==0
@@ -153,8 +153,8 @@ def test_unknown_account_preserves_nonblocking_broad_candidate_fallback():
         "warnings":[],"scope_summary":{},"risks":[],
     }
     include_unresolved(report)
-    assert report["permissions"][0]["scope"] == "<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_ECS_TASK_DEFINITION>"
-    assert "condition" not in report["permissions"][0]
+    assert report["permissions"][0]["scope"] == "arn:aws:iam::<AWS_ACCOUNT_ID>:role/<REPLACE_WITH_IAM_ROLE_PATH_AND_NAME>"
+    assert report["permissions"][0]["condition"] == {"StringEquals":{"iam:PassedToService":"ecs-tasks.amazonaws.com"}}
 
 
 def test_known_account_ecs_elb_and_network_single_resource_fallbacks():
@@ -200,7 +200,7 @@ def test_known_account_ecs_elb_and_network_single_resource_fallbacks():
     actual = {(x["source"], x["action"]): x["scope"]
               for x in report["fallback_permissions"]}
     assert set(actual)==set(cases)
-    assert all("REPLACE_WITH_RESOURCE_ARN" in scope for scope in actual.values())
+    assert all("REPLACE_WITH_" in scope for scope in actual.values())
     assert all(x["scope_status"]=="REQUIRES_REPLACEMENT" for x in report["fallback_permissions"])
     assert report["scope_summary"]["global"]==0
 
@@ -222,7 +222,7 @@ def test_multi_resource_ec2_fallback_remains_nonblocking_when_dependencies_unkno
     }
     include_unresolved(report)
     assert {row["action"] for row in report["permissions"]} == set(actions)
-    assert all("REPLACE_WITH_RESOURCE_ARN" in row["scope"] for row in report["permissions"])
+    assert all("REPLACE_WITH_" in row["scope"] for row in report["permissions"])
 
 
 def test_generated_fallback_warnings_do_not_claim_action_omitted():
@@ -244,3 +244,23 @@ def test_generated_fallback_warnings_do_not_claim_action_omitted():
     assert report["warnings"][0]==(
         "aws_ecs_service.app: iam:PassRole included as unverified fallback; unresolved role reference")
     assert len(report["unresolved_permissions"])==1
+
+def test_action_specific_iam_resource_types():
+    from tfiam.fallback_resource import template
+    cases = [
+        ("aws_ecs_task_definition.app", "iam:PassRole", ":role/"),
+        ("aws_ecs_service.app", "iam:CreateServiceLinkedRole", ":role/aws-service-role/"),
+        ("aws_iam_role_policy_attachment.app", "iam:AttachRolePolicy", ":role/"),
+        ("aws_iam_instance_profile.ecs", "iam:CreateInstanceProfile", ":instance-profile/"),
+        ("aws_ecr_lifecycle_policy.app", "ecr:PutLifecyclePolicy", ":repository/"),
+        ("aws_route.public", "ec2:CreateRoute", ":route-table/"),
+        ("aws_route_table_association.public", "ec2:AssociateRouteTable", ":route-table/"),
+    ]
+    for source, action, marker in cases:
+        scope, replacement, condition = template(source, action, {})
+        assert marker in scope, (source, action, scope)
+        assert replacement and "<AWS_ACCOUNT_ID>" in scope
+
+def test_describe_autoscaling_tags_is_global():
+    from tfiam.fallback_resource import template
+    assert template("aws_autoscaling_group.main", "autoscaling:DescribeTags", {}) == ("*", None, None)

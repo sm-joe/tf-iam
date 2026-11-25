@@ -5,6 +5,7 @@ lifecycle action names instead of silently outputting only Describe permissions.
 """
 import re
 from .risk import assess
+from .fallback_resource import template
 
 IAM_ACTION = re.compile(r"^[a-z][a-z0-9-]*:[A-Za-z][A-Za-z0-9]*$")
 
@@ -130,11 +131,7 @@ def include_unresolved(report):
             continue
         if (source, action) in excluded or (source, action) in unconditional:
             continue
-        scope, condition = _fallback_scope(source, action, contexts)
-        replacement = None
-        if action not in GLOBAL_FALLBACK_ACTIONS:
-            scope, replacement = _placeholder(source, action, contexts)
-            condition = None
+        scope, replacement, condition = template(source, action, contexts)
         key = (source, action, scope, "management")
         if key in existing and condition is None:
             continue
@@ -178,6 +175,11 @@ def include_unresolved(report):
         )
         report["scope_summary"]["exact"] = sum(
             "*" not in row["scope"] and "?" not in row["scope"]
+            and "<" not in row["scope"] and ">" not in row["scope"]
+            for row in report["permissions"]
+        )
+        report["scope_summary"]["placeholder"] = sum(
+            "<" in row["scope"] or ">" in row["scope"]
             for row in report["permissions"]
         )
         report["scope_summary"]["conditional"] = sum(bool(row.get("condition")) for row in report["permissions"])
