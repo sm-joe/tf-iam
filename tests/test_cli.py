@@ -6,8 +6,9 @@ from tfiam.cli import policy,compare,terraform,main
 ROOT=Path(__file__).resolve().parents[1]/'examples'
 def test_backend_and_scope():
     r=scan(ROOT/'aws'); p=policy(r,'aws','test',None)
-    assert any(s['Resource'].endswith('.tflock') and 's3:DeleteObject' in s['Action'] for s in p['Statement'])
-    assert not any(s['Resource'].endswith('.tfstate') and 's3:DeleteObject' in s['Action'] for s in p['Statement'])
+    resources=lambda row: row['Resource'] if isinstance(row['Resource'],list) else [row['Resource']]
+    assert any(any(resource.endswith('.tflock') for resource in resources(s)) and 's3:DeleteObject' in s['Action'] for s in p['Statement'])
+    assert not any(any(resource.endswith('.tfstate') for resource in resources(s)) and 's3:DeleteObject' in s['Action'] for s in p['Statement'])
     assert any(x['status']=='UNSUPPORTED' for x in r['resources'])
     assert r['coverage']=='PARTIAL'
 def test_plan():
