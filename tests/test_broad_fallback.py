@@ -145,3 +145,72 @@ def test_unknown_account_preserves_nonblocking_broad_candidate_fallback():
     include_unresolved(report)
     assert report["permissions"][0]["scope"] == "*"
     assert "condition" not in report["permissions"][0]
+
+
+def test_known_account_ecs_elb_and_network_single_resource_fallbacks():
+    from tfiam.candidate_fallback import include_unresolved
+    cases = {
+        ("aws_ecs_service.app", "ecs:CreateService"):
+            "arn:aws:ecs:us-east-1:638631156706:service/*/*",
+        ("aws_ecs_service.app", "ecs:TagResource"):
+            "arn:aws:ecs:us-east-1:638631156706:service/*/*",
+        ("aws_lb_listener.http", "elasticloadbalancing:CreateListener"):
+            "arn:aws:elasticloadbalancing:us-east-1:638631156706:loadbalancer/*/*/*",
+        ("aws_lb_listener.http", "elasticloadbalancing:AddTags"):
+            "arn:aws:elasticloadbalancing:us-east-1:638631156706:listener/*/*/*/*",
+        ("aws_lb_target_group.app", "elasticloadbalancing:DescribeTargetGroupAttributes"):
+            "arn:aws:elasticloadbalancing:us-east-1:638631156706:targetgroup/*/*",
+        ("aws_lb.main", "elasticloadbalancing:DescribeLoadBalancerAttributes"):
+            "arn:aws:elasticloadbalancing:us-east-1:638631156706:loadbalancer/*/*/*",
+        ("aws_security_group.ecs", "ec2:AuthorizeSecurityGroupIngress"):
+            "arn:aws:ec2:us-east-1:638631156706:security-group/*",
+        ("aws_subnet.public[0]", "ec2:ModifySubnetAttribute"):
+            "arn:aws:ec2:us-east-1:638631156706:subnet/*",
+        ("aws_route.public", "ec2:CreateRoute"):
+            "arn:aws:ec2:us-east-1:638631156706:route-table/*",
+        ("aws_vpc.main", "ec2:ModifyVpcAttribute"):
+            "arn:aws:ec2:us-east-1:638631156706:vpc/*",
+    }
+    report = {
+        "resources": [{
+            "address": source,
+            "provider_context": {
+                "account": "638631156706", "region": "us-east-1",
+                "partition": "aws",
+            },
+        } for source, _ in cases],
+        "permissions": [],
+        "unresolved_permissions": [
+            {"source": source, "action": action, "reason": "computed reference"}
+            for source, action in cases
+        ],
+        "warnings": [], "scope_summary": {}, "risks": [],
+    }
+    include_unresolved(report)
+    actual = {(x["source"], x["action"]): x["scope"]
+              for x in report["fallback_permissions"]}
+    assert actual == cases
+    assert all(x["scope_status"] == "SCOPED_FALLBACK"
+               for x in report["fallback_permissions"])
+    assert report["scope_summary"]["global"] == 0
+
+
+def test_multi_resource_ec2_fallback_remains_nonblocking_when_dependencies_unknown():
+    from tfiam.candidate_fallback import include_unresolved
+    actions = ["ec2:CreateSubnet", "ec2:CreateRouteTable",
+               "ec2:AssociateRouteTable", "ec2:AttachInternetGateway",
+               "ec2:CreateVpcEndpoint"]
+    report = {
+        "resources": [{"address": "aws_subnet.public[0]",
+                       "provider_context": {
+                           "account": "638631156706", "region": "us-east-1",
+                           "partition": "aws"}}],
+        "permissions": [],
+        "unresolved_permissions": [
+            {"source": "aws_subnet.public[0]", "action": action, "reason": "unknown"}
+            for action in actions],
+        "warnings": [], "scope_summary": {}, "risks": [],
+    }
+    include_unresolved(report)
+    assert {row["action"] for row in report["permissions"]} == set(actions)
+    assert all(row["scope"] == "*" for row in report["permissions"])
