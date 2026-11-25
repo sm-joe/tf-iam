@@ -27,7 +27,7 @@ EC2_GLOBAL={"ec2:"+s for s in (
     "DescribeInternetGateways DescribeNatGateways DescribeRouteTables DescribeVpcEndpoints DescribeNetworkAcls "
     "DescribeAddresses DescribeLaunchTemplates DescribeLaunchTemplateVersions DescribeNetworkInterfaces DescribeVpcPeeringConnections DescribeTransitGateways DescribeVpnGateways"
 ).split()}
-ELB_GLOBAL={"elasticloadbalancing:"+s for s in "DescribeLoadBalancers DescribeTargetGroups DescribeListeners DescribeRules DescribeTags".split()}
+ELB_GLOBAL={"elasticloadbalancing:"+s for s in "DescribeLoadBalancers DescribeTargetGroups DescribeListeners DescribeRules DescribeTags DescribeListenerAttributes DescribeLoadBalancerAttributes DescribeTargetGroupAttributes".split()}
 # Create request authorization includes the allocated resource and listed parent dependencies.
 CREATE={
     "CreateVpc":("vpc",()),"CreateSubnet":("subnet",(("vpc_id","vpc","vpc"),)),
@@ -351,15 +351,35 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
         if short=="CreateVpcEndpoint" and typ=="aws_vpc_endpoint":
             vpc=dep("vpc_id","vpc","vpc")
             endpoint=ec("vpc-endpoint","*")
-            optional=[]
+            dependent=[]
             for field,kind,prefix in (("subnet_ids","subnet","subnet"),("security_group_ids","security-group","sg"),("route_table_ids","route-table","rtb")):
-                if field in body and body[field]!=[]: optional.extend(many(field,kind,prefix) or [None])
+                if field not in body or body[field]==[]:
+                    continue
+                refs=many(field,kind,prefix)
+                if refs:
+                    dependent.extend(refs)
+                elif (task and op=="create" and field in uncertain
+                      and ec(kind,"*")):
+                    # Terraform has not allocated the referenced IDs; AWS
+                    # authorizes the corresponding regional resource class.
+                    # The wildcard is explicit and is not an exact identity.
+                    dependent.append(ec(kind,"*"))
+                    diagnose("CreateVpcEndpoint: computed "+field+
+                             " scoped to account/region resource class "+
+                             ec(kind,"*"))
+                else:
+                    dependent.append(None)
             service=val("service_name")
-            if vpc and endpoint and service and all(optional):
-                if not grant(action,[vpc]+optional): continue
-                emit(action,endpoint,{"StringEquals":{**request_tags().get("StringEquals",{}),"ec2:VpceServiceName":service}})
+            if vpc and endpoint and all(dependent):
+                if not grant(action,[vpc]+dependent):
+                    continue
+                conditions=request_tags().get("StringEquals",{}).copy()
+                if service and re.fullmatch(r"[A-Za-z0-9_.-]+",service):
+                    conditions["ec2:VpceServiceName"]=service
+                emit(action,endpoint,{"StringEquals":conditions} if conditions else None)
                 creates.add(short)
-            else: omit(action)
+            else:
+                omit(action)
             continue
         if short=="ModifyVpcEndpoint":
             targets=[own]
@@ -464,6 +484,13 @@ def elb(typ,body,actions,account,region,partition,resolve,emit,omit,task=None):
         scope=None; condition=None
         if short in ("CreateLoadBalancer","CreateTargetGroup"): scope=prospective; condition=tag_conditions(body,"aws:RequestTag/") or None
         elif short=="CreateListener": scope=lb
+        elif short=="AddTags" and typ=="aws_lb_listener" and task and task.get("operation")=="create" and lb:
+            # Listener IDs do not exist until the create API returns; parent
+            # load balancer identity still bounds the prospective listener.
+            suffix=lb.split("loadbalancer/",1)[-1]
+            if re.fullmatch(r"(?:app|net|gwy)/[A-Za-z0-9-]+/(?:[A-Za-z0-9]+|\\*)",suffix):
+                scope=prefix+"listener/"+suffix+"/*"
+                condition={"StringEquals":{"elasticloadbalancing:CreateAction":"CreateListener"}}
         elif short=="CreateRule": scope=listener
         elif short in ("RegisterTargets","DeregisterTargets","DescribeTargetHealth"): scope=target or own
         elif short=="AddTags" and not own and prospective:
