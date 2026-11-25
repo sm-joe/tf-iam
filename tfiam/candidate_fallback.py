@@ -46,6 +46,42 @@ def _fallback_scope(source, action, contexts):
         if service:
             return (f"arn:{partition}:iam::{account}:role/*",
                     {"StringEquals": {"iam:PassedToService": service}})
+    # Only single-resource authorization paths confirmed in AWS's
+    # Service Authorization Reference. Multi-resource EC2 operations
+    # (e.g. CreateSubnet, CreateRouteTable, AssociateRouteTable) retain
+    # the original non-blocking '*' fallback until all dependencies can
+    # be authorized together.
+    valid_region = isinstance(region, str) and re.fullmatch(
+        r"[a-z]{2}(?:-gov)?-[a-z]+-[0-9]", region)
+    if valid_region:
+        ec2_single = {
+            ("aws_vpc", "ec2:ModifyVpcAttribute"): "vpc",
+            ("aws_subnet", "ec2:ModifySubnetAttribute"): "subnet",
+            ("aws_security_group", "ec2:AuthorizeSecurityGroupIngress"): "security-group",
+            ("aws_security_group", "ec2:AuthorizeSecurityGroupEgress"): "security-group",
+            ("aws_security_group", "ec2:RevokeSecurityGroupIngress"): "security-group",
+            ("aws_security_group", "ec2:RevokeSecurityGroupEgress"): "security-group",
+            ("aws_route", "ec2:CreateRoute"): "route-table",
+            ("aws_route_table", "ec2:CreateRoute"): "route-table",
+        }
+        resource_class = ec2_single.get((kind, action))
+        if resource_class:
+            return f"arn:{partition}:ec2:{region}:{account}:{resource_class}/*", None
+        if kind == "aws_ecs_service" and action in (
+            "ecs:CreateService", "ecs:DescribeServices",
+            "ecs:ListTagsForResource", "ecs:TagResource"
+        ):
+            return f"arn:{partition}:ecs:{region}:{account}:service/*/*", None
+        elbv2_resources = {
+            ("aws_lb_listener", "elasticloadbalancing:CreateListener"): "loadbalancer/*/*/*",
+            ("aws_lb_listener", "elasticloadbalancing:AddTags"): "listener/*/*/*/*",
+            ("aws_lb_listener", "elasticloadbalancing:DescribeListenerAttributes"): "listener/*/*/*/*",
+            ("aws_lb_target_group", "elasticloadbalancing:DescribeTargetGroupAttributes"): "targetgroup/*/*",
+            ("aws_lb", "elasticloadbalancing:DescribeLoadBalancerAttributes"): "loadbalancer/*/*/*",
+        }
+        suffix = elbv2_resources.get((kind, action))
+        if suffix:
+            return f"arn:{partition}:elasticloadbalancing:{region}:{account}:{suffix}", None
     if action in ("ec2:CreateTags", "ec2:DeleteTags"):
         resource_class = EC2_TAG_CLASSES.get(kind)
         if resource_class and isinstance(region, str) and re.fullmatch(r"[a-z]{2}(?:-gov)?-[a-z]+-[0-9]", region):
