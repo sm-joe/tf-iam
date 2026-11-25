@@ -279,6 +279,33 @@ def main(argv=None, *, maintainer=False):
     except (ValueError,OSError,TypeError,AttributeError,KeyError) as e:
         print('ERROR: '+str(e),file=sys.stderr); return 1
     except Exception as e:
-        # AWS SDK errors can contain request or identity details; avoid echoing them.
+        # Print only the structured AWS error code, never the untrusted raw
+        # SDK exception message (which may contain request or identity data).
+        response=getattr(e,'response',None)
+        if isinstance(response,dict) and isinstance(response.get('Error'),dict):
+            code=response['Error'].get('Code')
+            if isinstance(code,str) and code in (
+                'AccessDenied','AccessDeniedException','UnauthorizedOperation',
+                'UnrecognizedClientException','InvalidClientTokenId',
+                'ExpiredToken','ExpiredTokenException','SignatureDoesNotMatch',
+                'ValidationException','InvalidParameterException',
+                'ThrottlingException','TooManyRequestsException',
+            ):
+                hints={
+                    'AccessDenied':'Check accessanalyzer:ValidatePolicy permission for the active AWS identity.',
+                    'AccessDeniedException':'Check accessanalyzer:ValidatePolicy permission for the active AWS identity.',
+                    'UnauthorizedOperation':'The active AWS identity is not authorized for this operation.',
+                    'UnrecognizedClientException':'Check the selected AWS profile and credentials.',
+                    'InvalidClientTokenId':'Check the selected AWS profile and credentials.',
+                    'ExpiredToken':'Refresh the active AWS credentials.',
+                    'ExpiredTokenException':'Refresh the active AWS credentials.',
+                    'SignatureDoesNotMatch':'Check AWS credential validity and clock synchronization.',
+                    'ValidationException':'AWS rejected the request; verify input policy size and JSON format.',
+                    'InvalidParameterException':'AWS rejected a request parameter; verify the IAM document.',
+                    'ThrottlingException':'AWS rate limit reached; retry with bounded backoff.',
+                    'TooManyRequestsException':'AWS rate limit reached; retry with bounded backoff.',
+                }
+                print('ERROR: AWS '+code+'. '+hints[code],file=sys.stderr)
+                return 1
         print('ERROR: operation failed ('+type(e).__name__+')',file=sys.stderr); return 1
 if __name__=='__main__': sys.exit(main())
