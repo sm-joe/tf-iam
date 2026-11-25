@@ -9,35 +9,90 @@ from .risk import assess
 IAM_ACTION = re.compile(r"^[a-z][a-z0-9-]*:[A-Za-z][A-Za-z0-9]*$")
 
 
+EC2_TAG_CLASSES = {
+    "aws_vpc": "vpc", "aws_subnet": "subnet",
+    "aws_security_group": "security-group", "aws_route_table": "route-table",
+    "aws_internet_gateway": "internet-gateway",
+    "aws_vpc_endpoint": "vpc-endpoint",
+    "aws_launch_template": "launch-template",
+    "aws_nat_gateway": "natgateway", "aws_network_acl": "network-acl",
+    "aws_eip": "elastic-ip", "aws_vpn_gateway": "vpn-gateway",
+    "aws_vpc_peering_connection": "vpc-peering-connection",
+    "aws_ec2_transit_gateway": "transit-gateway",
+}
+
+
+def _typed_source(source):
+    for part in source.split("."):
+        if part.startswith("aws_"):
+            return part.split("[", 1)[0]
+    return None
+
+
+def _fallback_scope(source, action, contexts):
+    context = contexts.get(source, {})
+    account, region, partition = (
+        context.get("account"), context.get("region"), context.get("partition")
+    )
+    if not (isinstance(account, str) and re.fullmatch(r"[0-9]{12}", account)
+            and isinstance(partition, str) and partition in ("aws", "aws-us-gov", "aws-cn")):
+        return "*", None
+    kind = _typed_source(source)
+    if action == "iam:PassRole":
+        service = {
+            "aws_ecs_task_definition": "ecs-tasks.amazonaws.com",
+            "aws_iam_instance_profile": "ec2.amazonaws.com",
+        }.get(kind)
+        if service:
+            return (f"arn:{partition}:iam::{account}:role/*",
+                    {"StringEquals": {"iam:PassedToService": service}})
+    if action in ("ec2:CreateTags", "ec2:DeleteTags"):
+        resource_class = EC2_TAG_CLASSES.get(kind)
+        if resource_class and isinstance(region, str) and re.fullmatch(r"[a-z]{2}(?:-gov)?-[a-z]+-[0-9]", region):
+            return f"arn:{partition}:ec2:{region}:{account}:{resource_class}/*", None
+    return "*", None
+
+
 def include_unresolved(report):
     existing = {
         (row["source"], row["action"], row["scope"], row.get("plane", "management"))
         for row in report["permissions"] if row["provider"] == "aws" and not row.get("condition")
+    }
+    contexts = {
+        row["address"]: row.get("provider_context", {})
+        for row in report.get("resources", [])
+        if isinstance(row, dict) and isinstance(row.get("address"), str)
     }
     fallbacks = []
     for missing in report.get("unresolved_permissions", []):
         source, action = missing.get("source"), missing.get("action")
         if not isinstance(source, str) or not isinstance(action, str) or not IAM_ACTION.fullmatch(action):
             continue
-        key = (source, action, "*", "management")
-        if key in existing:
+        scope, condition = _fallback_scope(source, action, contexts)
+        key = (source, action, scope, "management")
+        if key in existing and condition is None:
             continue
         existing.add(key)
-        report["permissions"].append({
-            "provider": "aws", "action": action, "scope": "*",
+        permission = {
+            "provider": "aws", "action": action, "scope": scope,
             "source": source, "plane": "management"
-        })
+        }
+        if condition:
+            permission["condition"] = condition
+        report["permissions"].append(permission)
         fallbacks.append({
-            "source": source, "action": action, "scope": "*",
+            "source": source, "action": action, "scope": scope,
             "reason": missing["reason"],
-            "scope_status": "BROAD_FALLBACK",
+            "scope_status": "BROAD_FALLBACK" if scope == "*" else "SCOPED_FALLBACK",
+            **({"condition": condition} if condition else {}),
         })
     report["fallback_permissions"] = sorted(fallbacks, key=lambda row: (row["source"], row["action"]))
     if fallbacks:
         report["warnings"].append(
-            f"{len(fallbacks)} unresolved IAM grants included with Resource '*' "
-            "as broad generation fallbacks; verify the action/resource requirements "
-            "and expected Terraform lifecycle behavior before attachment."
+            f"{len(fallbacks)} unresolved IAM grants included as candidate fallbacks "
+            f"({sum(x['scope'] == '*' for x in fallbacks)} with Resource '*'); "
+            "verify the action/resource requirements and expected Terraform "
+            "lifecycle behavior before attachment."
         )
         report["permissions"].sort(key=lambda row: (row["provider"], row["action"], row["scope"], row["source"]))
         report["scope_summary"]["global"] = sum(row["scope"] == "*" for row in report["permissions"])
