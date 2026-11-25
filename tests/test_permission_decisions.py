@@ -67,13 +67,29 @@ def test_explicit_legacy_ecs_role_is_scoped_to_exact_role(tmp_path):
 
 
 def test_unknown_legacy_ecs_role_is_not_silently_classified_as_absent():
-    from tests.test_ecs_43_resource_acceptance import fixture
-    data = fixture()
-    for row in data["resource_changes"]:
-        if row["address"] == SOURCE:
-            row["change"]["after"]["iam_role"] = None
-            row["change"]["after_unknown"]["iam_role"] = True
-            break
+    data = {
+        "format_version": "1.2",
+        "terraform_version": "1.17.1",
+        "resource_changes": [{
+            "address": SOURCE,
+            "type": "aws_ecs_service",
+            "mode": "managed",
+            "provider_name": "registry.terraform.io/hashicorp/aws",
+            "change": {
+                "actions": ["create"],
+                "before": None,
+                "after": {"name": "app", "cluster": "demo", "iam_role": None},
+                "after_unknown": {"id": True, "iam_role": True},
+            },
+        }],
+        "configuration": {"root_module": {"resources": [{
+            "address": SOURCE,
+            "type": "aws_ecs_service",
+            "mode": "managed",
+            "provider_config_key": "aws",
+            "expressions": {"iam_role": {"references": ["aws_iam_role.legacy.arn"]}},
+        }]}},
+    }
     report = scan(plan=data, account=ACCOUNT, region=REGION)
     assert not any(x["source"] == SOURCE and x["action"] == "iam:PassRole"
                    for x in report["not_required_permissions"])
