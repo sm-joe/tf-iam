@@ -94,7 +94,7 @@ GLOBAL_FALLBACK_ACTIONS = {"kms:CreateKey", "kms:ListAliases", "ec2:DescribeVpcs
 
 def _placeholder(source, action, contexts):
     context = contexts.get(source, {})
-    account = context.get("account") if re.fullmatch(r"[0-9]{12}", str(context.get("account", ""))) else "<AWS_ACCOUNT_ID>"
+    account = "<AWS_ACCOUNT_ID>"
     partition = context.get("partition") or "aws"
     kind = _typed_source(source) or "aws_resource"
     if action.startswith("s3:") and kind.startswith("aws_s3_"):
