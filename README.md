@@ -209,6 +209,39 @@ For Source-Only IAM Scopes Using A `tfiam:scope` Or `Name` Tag To Restrict Exist
 
 The Existing `--allow-partial` Flag Is Retained For Compatibility; Partial Candidate Generation Is Already The Default. A Generated Candidate, Including An Empty Policy For Completely Unsupported Inputs, Is Not Proof Of Effective AWS Authorization. Review The Companion Report Before Deployment.
 
+### Terraform IAM Mapping And Observed Permissions
+
+tf-iam Uses Its Version-Aware AWS Resource Mapping Catalog To Derive Candidate Permissions From Terraform, Similar In Purpose To <https://github.com/JamesWoolfenden/pike>. A Static Mapping Is Only A Starting Point. For Permissions Observed During A Real Terraform Lifecycle, <https://github.com/iann0036/iamlive> Can Capture AWS SDK Calls And Export An IAM Policy.
+
+To Reconcile Both Sources Without Blocking Generation, First Generate The Terraform Candidate:
+
+~~~bash
+tfiam generate . --output policy.json
+~~~
+
+Then Independently Capture The Actual Terraform Operations With IAM Live (In An Isolated AWS Account And A Dedicated Short-Lived Role) And Export Its IAM Policy JSON. After Stopping IAM Live And Saving `iamlive-policy.json`, Run:
+
+~~~bash
+tfiam reconcile-observed \
+  --generated policy.json \
+  --observed iamlive-policy.json \
+  --output observed-diff.json
+~~~
+
+The Report Shows Exact Action/Resource/Condition Grants Present In Only One Policy. To **Explicitly** Produce A Union Candidate, While Preserving All Original Grants And Their Conditions:
+
+~~~bash
+tfiam reconcile-observed \
+  --generated policy.json \
+  --observed iamlive-policy.json \
+  --output observed-diff.json \
+  --merged-policy merged-policy.json
+
+tfiam pack-policy merged-policy.json --output-dir merged-bundle
+~~~
+
+This Does Not Contact AWS, Attach Policies, Remove Existing Grants, Or Guarantee A Terraform Apply. IAM Live CSM Captures Actions But May Lack Resource Context, So Its Observed JSON May Include `Resource: "*"`. The Merge Preserves Those Broad Grants Exactly Rather Than Silently Narrowing Them Or Claiming They Are Least-Privilege. Review The Merge And Repeat Capture Across Terraform Plan, Apply, Refresh, Update And Destroy Workflows Before Deployment. The Pike And IAM Live Projects Are Independent Reference Tools, Not Bundled Dependencies Of tf-iam.
+
 ### EC2 Tagging And Destructive Resource Scopes
 
 For EC2 Resources With Statically Declared `tfiam:scope` Or `Name` Tags, Source-Only Generation Limits Supported Destructive Operations To That Existing Resource Tag. It Separates Creation-Time `ec2:CreateTags` Using `ec2:CreateAction` From Existing-Resource Tag Changes, And Restricts Tag Changes With `aws:TagKeys` And A Non-Null Tag-Key Requirement.
