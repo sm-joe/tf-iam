@@ -64,6 +64,14 @@ def main(argv=None, *, maintainer=False):
     catalog.add_argument('--strict',action='store_true')
     validate=sub.add_parser('validate-policy',help='AWS IAM Access Analyzer identity policy validation')
     validate.add_argument('policy',type=Path); validate.add_argument('--aws-profile'); validate.add_argument('--aws-region'); validate.add_argument('--strict',action='store_true'); validate.add_argument('--output',type=Path)
+    live=sub.add_parser('validate-live',help='Read-only AWS Access Analyzer and optional IAM simulation with configured AWS CLI credentials')
+    live.add_argument('policy',type=Path)
+    live.add_argument('--aws-profile'); live.add_argument('--aws-region')
+    live.add_argument('--simulate',action='store_true',help='Also run IAM custom policy simulation on exact action/resource pairs')
+    live.add_argument('--max-tests',type=int,default=200)
+    live.add_argument('--strict',action='store_true'); live.add_argument('--output',type=Path)
+    live.add_argument('--format',choices=['json','table'],default='json')
+    live.add_argument('--show-table',action='store_true')
     pack=sub.add_parser('pack-policy',help='Optimize and partition generated AWS policies without changing grants')
     pack.add_argument('policy',type=Path); pack.add_argument('--policy-type',choices=['managed','inline-role','inline-user','inline-group'],default='managed'); pack.add_argument('--max-chars',type=int); pack.add_argument('--max-policies',type=int,default=10); pack.add_argument('--name',default='TerraformPipeline'); pack.add_argument('--output-dir',type=Path,required=True)
     observed=sub.add_parser('reconcile-observed',help='Compare an IAM Live policy to generated IAM and optionally emit reviewed grant union')
@@ -180,6 +188,13 @@ def main(argv=None, *, maintainer=False):
             result=audit_provider(args.source_dir,args.aws_provider_version,args.metadata_dir,args.resource)
             write_result(result)
             return 2 if args.strict and result['status']!='direct-calls-matched' else 0
+        if args.command=='validate-live':
+            from .live_validation import validate
+            if args.max_tests < 1: raise ValueError('--max-tests must be positive')
+            result=validate(json.loads(args.policy.read_bytes()),region=args.aws_region,
+                            profile=args.aws_profile,simulate=args.simulate,max_tests=args.max_tests)
+            write_result(result)
+            return 2 if args.strict and result['status'] not in ('validated',) else 0
         if args.command in ('validate-policy','runtime-audit'):
             if args.command=='validate-policy':
                 result=cloud.validate_policy(cloud.client('accessanalyzer',args.aws_profile,args.aws_region),json.loads(args.policy.read_bytes()))
