@@ -15,6 +15,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -e '.[test,aws,packaging]'
+      - run: bash -n scripts/acceptance-aws-lifecycle.sh
       - run: python -m pytest -q
       - run: python scripts/prepare-metadata.py
       - run: bash scripts/build-linux.sh
