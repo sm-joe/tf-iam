@@ -108,7 +108,13 @@ def test_generation_default_decision_grid(tmp_path,capsys):
 def test_generation_blocked_decision_grid(tmp_path,capsys):
     (tmp_path/"main.tf.json").write_text(json.dumps({"resource":{"aws_unknown_fixture":{"x":{}}}}))
     dest=tmp_path/"policy.json"
-    assert main(["generate",str(tmp_path),"--output",str(dest)])==4
-    assert not dest.exists()
+    assert main(["generate",str(tmp_path),"--output",str(dest)])==0
+    assert json.loads(dest.read_text())=={"Version":"2012-10-17","Statement":[]}
+    report=json.loads((tmp_path/"policy.json.report.json").read_text())
+    assert report["candidate_status"]=="INCOMPLETE"
+    assert report["mapping_coverage"]["unmapped_resources"]==1
     out=capsys.readouterr().err
-    assert "BLOCKED" in out and "BLOCKING CHECKS" in out and "DO NOT DEPLOY" in out
+    assert "POLICY SUMMARY" in out and "INCOMPLETE" in out and "BLOCKED" not in out
+    dest.unlink()
+    assert main(["generate",str(tmp_path),"--require-complete","--output",str(dest)])==4
+    assert not dest.exists()

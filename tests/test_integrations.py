@@ -129,9 +129,13 @@ def test_generate_simple_default_and_unmapped_gate(tmp_path):
     assert main(["generate",str(tmp_path),"--output",str(output)])==0
     output.unlink()
     config.write_text(json.dumps({"resource":{"aws_s3_bucket":{"b":{"bucket":"fixture-bucket"}},"aws_fake_resource":{"x":{}}}}))
-    assert main(["generate",str(tmp_path),"--output",str(output)])==4
+    assert main(["generate",str(tmp_path),"--output",str(output)])==0
+    assert output.exists()
+    companion=json.loads((tmp_path/"policy.json.report.json").read_text())
+    assert companion["candidate_status"]=="INCOMPLETE"
+    output.unlink()
+    assert main(["generate",str(tmp_path),"--require-complete","--output",str(output)])==4
     assert not output.exists()
-    assert main(["generate",str(tmp_path),"--allow-partial","--output",str(output)])==0
 
 def test_eks_bootstrap_encryption_and_region(tmp_path):
     from tfiam.scan import scan

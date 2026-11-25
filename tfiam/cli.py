@@ -9,7 +9,8 @@ from .table_output import render
 
 def policy(report,provider,name,scope):
     rows=[r for r in report['permissions'] if r['provider']==provider]
-    if not rows: raise ValueError('No mapped permissions for '+provider)
+    if not rows:
+        return {'Version':'2012-10-17','Statement':[]}
     if provider=='aws':
         groups={}
         for r in rows: groups.setdefault((r['scope'],json.dumps(r.get('condition'),sort_keys=True)),set()).add(r['action'])
@@ -74,7 +75,7 @@ def main(argv=None, *, maintainer=False):
         elif cmd in ('compare','split'): p.add_argument('--format',choices=['json','table'],default='json'); p.add_argument('--provider',default='aws',choices=['aws'])
         else: p.add_argument('--provider',default='aws',choices=['aws'])
         if cmd=='generate':
-            p.add_argument('--format',choices=['json','terraform','table'],default='json'); p.add_argument('--name',default='TerraformPipeline'); p.add_argument('--scope'); p.add_argument('--allow-partial',action='store_true',help='Permit generation despite unresolved permissions or unmapped resources; review before use')
+            p.add_argument('--format',choices=['json','terraform','table'],default='json'); p.add_argument('--name',default='TerraformPipeline'); p.add_argument('--scope'); p.add_argument('--allow-partial',action='store_true',help='Compatibility option; candidate generation is already the default'); p.add_argument('--require-complete',action='store_true',help='Opt in to blocking incomplete, unresolved, or unsupported resource coverage')
         if cmd=='compare':
             source=p.add_mutually_exclusive_group(required=True); source.add_argument('--existing',type=Path); source.add_argument('--role-name'); p.add_argument('--aws-profile'); p.add_argument('--fail-on-missing',action='store_true')
         if cmd=='split': p.add_argument('--allow-partial',action='store_true'); p.add_argument('--acknowledge-break-glass',action='store_true',help='Include destructive/delegation grants in a separately gated policy')
@@ -210,21 +211,23 @@ def main(argv=None, *, maintainer=False):
         account,region,partition=args.aws_account,args.aws_region,args.aws_partition
         contexts=json.loads(args.provider_contexts.read_text()) if args.provider_contexts else None
         if args.command in ('generate','split') and not args.allow_partial:
+            # Preserve --allow-partial as an explicit offline/no-discovery
+            # compatibility mode. Normal generate remains non-blocking.
             from .provider_context import discover_aws_identity, discover_profile_contexts
             if (account is None or region is None) and not (contexts and "aws" in contexts):
                 account,region,partition=discover_aws_identity(account,region,partition)
             contexts=discover_profile_contexts(args.directory,contexts)
         report=scan(args.directory,args.phase,account,region,partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags,scope_generated_names=args.scope_generated_names,provider_version=args.aws_provider_version,authorization_metadata=args.authorization_metadata,provider_contexts=contexts)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
-        require_complete_mapping=args.command in ('generate','split') and not args.allow_partial
+        require_complete_mapping=(args.command=='generate' and args.require_complete) or (args.command=='split' and not args.allow_partial)
         report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved or require_complete_mapping,args.fail_on_unmapped or require_complete_mapping,args.require_compatible_metadata,args.require_lifecycle_verified)
         if report['gate_failures']: status=4
         if args.command in ('generate','split') and (report['gate_failures'] or (args.strict and report['coverage']!='COMPLETE')):
             print(render('generate',{**report,'generation_status':'BLOCKED','policy_output':'Not written'},compact=True),file=sys.stderr); return status
-        if args.command in ('generate','split') and report.get('source_only_resources'):
+        if args.command in ('generate','split') and report.get('source_only_resources') and (args.command=='split' or getattr(args,'require_complete',False)):
             report['gate_failures'].append({'kind':'stale-plan','count':len(report['source_only_resources'])})
             print(render('generate',{**report,'generation_status':'BLOCKED','policy_output':'Not written'},compact=True),file=sys.stderr); return 4
-        if args.command in ('generate','split') and report['authorization_metadata']['status']=='issues':
+        if args.command in ('generate','split') and report['authorization_metadata']['status']=='issues' and (args.command=='split' or getattr(args,'require_complete',False) or args.require_compatible_metadata):
             report['gate_failures'].append({'kind':'metadata','status':'issues'})
             print(render('generate',{**report,'generation_status':'BLOCKED','policy_output':'Not written'},compact=True),file=sys.stderr); return 1
         if args.command=='split':
@@ -267,11 +270,23 @@ def main(argv=None, *, maintainer=False):
             result=compare(report,args.provider,existing); result['identity']=identity; result['gate_failures']=report['gate_failures']; result['scan_warnings']=report['warnings']; result['information']=report['information']; result['resolved_dependencies']=report['resolved_dependencies']; result['unresolved_permissions']=report['unresolved_permissions']; result['scope_summary']=report['scope_summary']; result['mapping_coverage']=report['mapping_coverage']; result['authorization_confidence']=report['authorization_confidence']; result['authorization_metadata']=report['authorization_metadata']; result['input']=report['input']; result['plan']=report.get('plan'); result['risks']=[r for r in report['risks'] if r['provider']==args.provider]; output=json.dumps(result,indent=2)
             if args.fail_on_missing and (result['missing_or_unverified'] or result['explicitly_denied']) and status!=4: status=3
         if args.command=='generate':
+            incomplete=bool(
+                report['coverage']!='COMPLETE'
+                or report.get('unresolved_permissions')
+                or report.get('source_only_resources')
+                or report['authorization_metadata']['status']=='issues'
+            )
+            report['candidate_status']='INCOMPLETE' if incomplete else 'COMPLETE'
             display={**report,**result,'policy_output':str(args.output) if args.output else 'stdout','generation_status':'GENERATED'}
             if args.format=='table':
                 write_result(display)
             else:
-                if args.output: args.output.write_text(output+'\n',encoding='utf-8')
+                if args.output:
+                    args.output.write_text(output+'\n',encoding='utf-8')
+                    if incomplete:
+                        companion=args.output.with_name(args.output.name+'.report.json')
+                        companion.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
+                        print('NOTICE: Incomplete policy candidate; review '+str(companion),file=sys.stderr)
                 else: print(output)
                 print(render('generate',display,compact=not args.show_table),file=sys.stderr)
         else: write_result(result,output)

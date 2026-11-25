@@ -198,7 +198,15 @@ def test_s3_fresh_plan_and_stale_configuration(tmp_path):
     assert not grants(report,names[1])
     p=tmp_path/"plan.json"; p.write_text(json.dumps(doc))
     out=tmp_path/"policy.json"
-    assert main(["generate",str(tmp_path),"--plan-json",str(p),"--allow-partial","--output",str(out)])==4
+    assert main(["generate",str(tmp_path),"--plan-json",str(p),"--allow-partial","--output",str(out)])==0
+    assert out.exists()
+    candidate=json.loads(out.read_text())
+    assert any("s3:CreateBucket" in row["Action"] for row in candidate["Statement"])
+    companion=json.loads((tmp_path/"policy.json.report.json").read_text())
+    assert companion["candidate_status"]=="INCOMPLETE"
+    assert companion["source_only_resources"]==sorted(names[1:])
+    out.unlink()
+    assert main(["generate",str(tmp_path),"--plan-json",str(p),"--require-complete","--output",str(out)])==4
     assert not out.exists()
 
 def test_s3_plan_dependency_rejects_masked_identity(tmp_path):
