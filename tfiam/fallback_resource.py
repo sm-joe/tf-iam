@@ -61,8 +61,6 @@ def template(source, action, contexts):
     if action.startswith("ecr:") and kind.startswith("aws_ecr_"):
         return arn("ecr", "repository/<REPLACE_WITH_ECR_REPOSITORY_NAME>"), "ECR repository ARN", None
     if action.startswith("ecs:") and kind.startswith("aws_ecs_"):
-        if action == "ecs:RegisterTaskDefinition":
-            return "*", None, None
         if kind == "aws_ecs_cluster":
             return arn("ecs", "cluster/<REPLACE_WITH_CLUSTER_NAME>"), "ECS cluster ARN", None
         if kind == "aws_ecs_service":
@@ -74,6 +72,8 @@ def template(source, action, contexts):
         suffix = cls + "/<REPLACE_WITH_" + cls.upper().replace("-", "_") + "_ID>"
         return arn("ec2", suffix), "EC2 " + cls + " ARN", None
     if action.startswith("elasticloadbalancing:"):
+        if action == "elasticloadbalancing:CreateListener":
+            return arn("elasticloadbalancing", "loadbalancer/<REPLACE_WITH_LB_TYPE>/<REPLACE_WITH_LB_NAME>/<REPLACE_WITH_LB_ID>"), "parent load balancer ARN", None
         if kind == "aws_lb":
             return arn("elasticloadbalancing", "loadbalancer/<REPLACE_WITH_LB_TYPE>/<REPLACE_WITH_LB_NAME>/<REPLACE_WITH_LB_ID>"), "load balancer ARN", None
         if kind == "aws_lb_listener":
