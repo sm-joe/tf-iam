@@ -278,7 +278,8 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                 from .plan_network import recover, anchor
                                 body={**body,'_tfiam_dynamic_ec2':recover(
                                     plan,address,definitions,select_context,body,task,
-                                    network_sources,allow_name=scope_generated_names)}
+                                    network_sources,allow_name=scope_generated_names,
+                                    allow_broad=not scope_resource_tags)}
                                 if scope_resource_tags and operation=='create' and typ in EC2_TYPES and not body.get('id'):
                                     body['_tfiam_self_tags']=anchor(body,scope_generated_names)
                                     if scope_generated_names and 'ec2:ResourceTag/Name' in body['_tfiam_self_tags'].get('StringEquals',{}):
