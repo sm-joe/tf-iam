@@ -3388,6 +3388,164 @@
         "sns:SetSubscriptionAttributes",
         "iam:PassRole"
       ]
+    },
+    "aws_efs_file_system": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_efs.html",
+      "read": [
+        "elasticfilesystem:DescribeFileSystems",
+        "elasticfilesystem:ListTagsForResource"
+      ],
+      "write": [
+        "elasticfilesystem:CreateFileSystem",
+        "elasticfilesystem:TagResource",
+        "elasticfilesystem:UpdateFileSystem"
+      ],
+      "delete": [
+        "elasticfilesystem:DeleteFileSystem"
+      ],
+      "attributes": [],
+      "create": [
+        "elasticfilesystem:CreateFileSystem",
+        "elasticfilesystem:TagResource"
+      ],
+      "update": [
+        "elasticfilesystem:UpdateFileSystem",
+        "elasticfilesystem:TagResource"
+      ]
+    },
+    "aws_efs_backup_policy": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_efs.html",
+      "read": [
+        "elasticfilesystem:DescribeBackupPolicy"
+      ],
+      "write": [
+        "elasticfilesystem:PutBackupPolicy"
+      ],
+      "delete": [
+        "elasticfilesystem:PutBackupPolicy"
+      ],
+      "attributes": [],
+      "create": [
+        "elasticfilesystem:PutBackupPolicy"
+      ],
+      "update": [
+        "elasticfilesystem:PutBackupPolicy"
+      ]
+    },
+    "aws_efs_mount_target": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_efs.html",
+      "read": [
+        "elasticfilesystem:DescribeMountTargets",
+        "elasticfilesystem:DescribeMountTargetSecurityGroups"
+      ],
+      "write": [
+        "elasticfilesystem:CreateMountTarget",
+        "elasticfilesystem:ModifyMountTargetSecurityGroups"
+      ],
+      "delete": [
+        "elasticfilesystem:DeleteMountTarget"
+      ],
+      "attributes": [],
+      "create": [
+        "elasticfilesystem:CreateMountTarget"
+      ],
+      "update": [
+        "elasticfilesystem:ModifyMountTargetSecurityGroups"
+      ]
+    },
+    "aws_fsx_lustre_file_system": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_fsx.html",
+      "read": [
+        "fsx:DescribeFileSystems"
+      ],
+      "write": [
+        "fsx:CreateFileSystem",
+        "fsx:UpdateFileSystem"
+      ],
+      "delete": [
+        "fsx:DeleteFileSystem"
+      ],
+      "attributes": [],
+      "create": [
+        "fsx:CreateFileSystem"
+      ],
+      "update": [
+        "fsx:UpdateFileSystem"
+      ]
+    },
+    "aws_fsx_data_repository_association": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_fsx.html",
+      "read": [
+        "fsx:DescribeDataRepositoryAssociations"
+      ],
+      "write": [
+        "fsx:CreateDataRepositoryAssociation",
+        "fsx:UpdateDataRepositoryAssociation"
+      ],
+      "delete": [
+        "fsx:DeleteDataRepositoryAssociation"
+      ],
+      "attributes": [],
+      "create": [
+        "fsx:CreateDataRepositoryAssociation"
+      ],
+      "update": [
+        "fsx:UpdateDataRepositoryAssociation"
+      ]
+    },
+    "aws_storagegateway_gateway": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_storagegateway.html",
+      "read": [
+        "storagegateway:DescribeGatewayInformation"
+      ],
+      "write": [
+        "storagegateway:ActivateGateway",
+        "storagegateway:UpdateGatewayInformation"
+      ],
+      "delete": [
+        "storagegateway:DeleteGateway"
+      ],
+      "attributes": [],
+      "create": [
+        "storagegateway:ActivateGateway"
+      ],
+      "update": [
+        "storagegateway:UpdateGatewayInformation"
+      ]
+    },
+    "aws_storagegateway_nfs_file_share": {
+      "validation": "candidate",
+      "provider_versions": [],
+      "reference": "https://docs.aws.amazon.com/service-authorization/latest/reference/list_storagegateway.html",
+      "read": [
+        "storagegateway:DescribeNFSFileShares"
+      ],
+      "write": [
+        "storagegateway:CreateNFSFileShare",
+        "storagegateway:UpdateNFSFileShare"
+      ],
+      "delete": [
+        "storagegateway:DeleteFileShare"
+      ],
+      "attributes": [],
+      "create": [
+        "storagegateway:CreateNFSFileShare"
+      ],
+      "update": [
+        "storagegateway:UpdateNFSFileShare"
+      ]
     }
   },
   "data": {
