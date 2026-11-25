@@ -91,6 +91,16 @@ def enrich(plan, address, body, task, select):
         role("execution_role_arn")
         role("task_role_arn")
     if typ == "aws_ecs_service":
+        # Terraform may mark a provider-computed optional iam_role as unknown
+        # even when it was not configured. Only a configured expression or
+        # a concrete planned value establishes caller-supplied role intent.
+        config = _config(plan, address)
+        if isinstance(config, dict):
+            expressions = config.get("expressions", {})
+            if isinstance(expressions, dict):
+                result["_tfiam_ecs_role_configured"] = (
+                    "iam_role" in expressions or bool(body.get("iam_role"))
+                )
         role("iam_role")
         cluster = _parent(plan, address, "cluster", "aws_ecs_cluster", select)
         if cluster:
