@@ -135,6 +135,12 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
             # does not. Task execution/task roles belong to RegisterTaskDefinition.
             iam_role=value("iam_role")
             unknown_role="iam_role" in (task.get("unknown_fields",[]) if task else body.get("_tfiam_unknown_fields",[]))
+            # The provider may return an unknown optional iam_role during
+            # creation despite no role configured in Terraform. Do not infer
+            # iam:PassRole from that computed schema field alone.
+            configured=body.get("_tfiam_ecs_role_configured")
+            if not iam_role and configured is False:
+                continue
             if not iam_role and not unknown_role:
                 continue
             if iam_role and ROLE.fullmatch(iam_role):
