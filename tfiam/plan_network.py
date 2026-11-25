@@ -231,12 +231,12 @@ def recover_plan_config(plan,address,select,body,task):
     return result
 
 
-def recover(plan,address,definitions,select,body,task,sources=None,allow_name=False):
+def recover(plan,address,definitions,select,body,task,sources=None,allow_name=False,allow_broad=True):
     out={}
     parsed=split_address(address)
     if not parsed or task.get("operation")!="create" or task.get("all_fields_masked"): return out
     prefix,base,index=parsed
-    from_plan=recover_plan_config(plan,address,select,body,task)
+    from_plan=recover_plan_config(plan,address,select,body,task) if allow_broad else {}
     if sources is None:
         sources={"":(definitions,{}, {},{},plan.get("configuration",{}).get("root_module",{}))}
     row=sources.get(clean(prefix))
@@ -261,7 +261,7 @@ def recover(plan,address,definitions,select,body,task,sources=None,allow_name=Fa
         # A direct reference to a resource being created proves its prospective
         # AWS resource class and provider context even when it has no tags.
         # The exact ID is not invented; the class ARN remains a wildcard.
-        return {"kind":EC2_TYPES[kind][0],"prospective":True}
+        return {"kind":EC2_TYPES[kind][0],"prospective":True} if allow_broad else None
     for field,raw in row[0].get(base,{}).items():
         if isinstance(sensitive,dict) and marked(sensitive.get(field)): continue
         meta=consumer.get("expressions",{}).get(field,{})
