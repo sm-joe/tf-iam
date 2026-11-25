@@ -26,7 +26,7 @@ def plan(*rows):
             "configuration":{"root_module":{"resources":[x[1] for x in rows]}}}
 
 
-def test_iam_ecs_elb_plan_references_no_unscoped_passrole():
+def test_iam_ecs_elb_plan_references_no_unscoped_passrole(monkeypatch):
     roles=[
         resource("aws_iam_role","task",{"name":"ecs-task-role","path":"/"}),
         resource("aws_iam_role","execution",{"name":"ecs-execution-role","path":"/"}),
@@ -55,7 +55,17 @@ def test_iam_ecs_elb_plan_references_no_unscoped_passrole():
     )
     assert direct.get("_tfiam_parent_lb_arn")==(
         f"arn:aws:elasticloadbalancing:{REGION}:{ACCOUNT}:loadbalancer/app/ecs-demo-alb/*")
+    import importlib
+    module=importlib.import_module("tfiam.scan")
+    original=module.elb
+    seen=[]
+    def capture(typ,body,*args,**kwargs):
+        if typ=="aws_lb_listener":
+            seen.append(body.get("_tfiam_parent_lb_arn"))
+        return original(typ,body,*args,**kwargs)
+    monkeypatch.setattr(module,"elb",capture)
     report=scan(plan=p,account=ACCOUNT,region=REGION)
+    assert seen==[f"arn:aws:elasticloadbalancing:{REGION}:{ACCOUNT}:loadbalancer/app/ecs-demo-alb/*"]
     def rows(source,action):
         return [row for row in report["permissions"]
                 if row["source"]==source and row["action"]==action]
