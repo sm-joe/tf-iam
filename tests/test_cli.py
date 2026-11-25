@@ -114,7 +114,7 @@ def test_generation_blocked_decision_grid(tmp_path,capsys):
     assert report["candidate_status"]=="INCOMPLETE"
     assert report["mapping_coverage"]["unmapped_resources"]==1
     out=capsys.readouterr().err
-    assert "GENERATED" in out and "BLOCKED" not in out
+    assert "POLICY SUMMARY" in out and "INCOMPLETE" in out and "BLOCKED" not in out
     dest.unlink()
     assert main(["generate",str(tmp_path),"--require-complete","--output",str(dest)])==4
     assert not dest.exists()
