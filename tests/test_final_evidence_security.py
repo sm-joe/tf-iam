@@ -31,7 +31,7 @@ def test_release_gate_rejects_symlink(tmp_path,monkeypatch):
     proof.write_text("test")
     alias=tmp_path/"alias"
     try:
-    alias.symlink_to(proof)
+        alias.symlink_to(proof)
     except OSError as exc:
         if getattr(exc, "winerror", None) == 1314:
             pytest.skip("Windows symlink creation requires Developer Mode or SeCreateSymbolicLinkPrivilege")
