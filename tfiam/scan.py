@@ -146,7 +146,9 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
             path=resolve(body.get('path','/'),seen)
             return f'arn:{partition}:iam::{account}:role{path}{name}' if account and name and path else None
         network_sources=None
-        if plan is not None and has_root and scope_resource_tags:
+        if plan is not None and has_root:
+            # Terraform's plan references are authorization evidence even when
+            # callers have not opted in to resource-tag restrictions.
             from .plan_network import source_index
             network_sources=source_index(root,plan,definitions)
         task_lookup={}
@@ -266,10 +268,16 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     elif not region:
                                         reason='AWS target region unknown; set a Terraform provider region or AWS_REGION'
                                 unresolved(address,action,reason)
-                            if task and scope_resource_tags and has_root:
+                            if task and has_root and typ in EC2_TYPES | {
+                                'aws_route','aws_route_table_association',
+                                'aws_vpc_endpoint_route_table_association',
+                                'aws_vpc_endpoint_subnet_association',
+                            }:
                                 from .plan_network import recover, anchor
-                                body={**body,'_tfiam_dynamic_ec2':recover(plan,address,definitions,select_context,body,task,network_sources,allow_name=scope_generated_names)}
-                                if operation=='create' and typ in EC2_TYPES and not body.get('id'):
+                                body={**body,'_tfiam_dynamic_ec2':recover(
+                                    plan,address,definitions,select_context,body,task,
+                                    network_sources,allow_name=scope_generated_names)}
+                                if scope_resource_tags and operation=='create' and typ in EC2_TYPES and not body.get('id'):
                                     body['_tfiam_self_tags']=anchor(body,scope_generated_names)
                                     if scope_generated_names and 'ec2:ResourceTag/Name' in body['_tfiam_self_tags'].get('StringEquals',{}):
                                         info(address+': opt-in EC2 Name tag scope; names are not unique and tag mutation must be controlled independently.')
