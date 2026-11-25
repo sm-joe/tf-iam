@@ -369,6 +369,41 @@ Use `--fail-on-risk HIGH` For Stricter Review. The `--strict` Option Rejects Par
 
 A Nonzero Exit Should Block The Corresponding CI Approval Stage. Keep Reports Private If They Contain Infrastructure Identifiers.
 
+### Saved-Plan Reference Resolution
+
+tf-iam Inspects Terraform's Saved-Plan `configuration.root_module.resources[].expressions[].references` And The Planned Resource Changes To Resolve Computed IDs. It Uses Account/Region-Bounded Prospective Resource ARNs For Newly Created EC2 Parents. A Source Checkout Is Not Required For Direct Root-Module Edges. ECS Service Cluster And Task Definition Relationships, Explicit ECS Task/Execution IAM Roles, And ALB Listener Parent References Are Inferred Only When Their References And Non-Sensitive Names Agree With The Selected Provider Context. Unknown IDs Are Not Invented.
+
+This Complements `terraform graph -plan=tfplan`: The Graph Explains Dependency Ordering, While The JSON Plan Provides Attribute References For IAM Resource Resolution. Explicit `depends_on` Ordering Alone Is Not Authorization Evidence. Complex Indexed Module Outputs, Ambiguous Or Sensitive Values May Still Require A Typed Candidate Fallback. Generated Broad Grants Are Never Silently Dropped And Unresolved Scopes Are Preserved In The Companion Report.
+
+### AWS Lifecycle Acceptance
+
+For A Disposable AWS Account And Terraform Workspace, The Bash-Only Acceptance Harness Produces A Saved Plan, Generates The Matching IAM Candidate, And Can Exercise Real Create, Update And Destroy Operations Under The Active AWS Identity.
+
+~~~bash
+export TFIAM_EXPECTED_ACCOUNT=123456789012
+export TFIAM_AWS_REGION=us-east-1
+
+# Inspect The Role Identity Before A Live Test
+aws sts get-caller-identity
+
+# Generate The Create Candidate Without Mutating AWS
+bash scripts/acceptance-aws-lifecycle.sh create ./terraform-demo
+
+# After Reviewing The Candidate And Attaching Its Managed Policies
+# To A Dedicated Test Role, Explicitly Opt In To Live Execution:
+TFIAM_ACCEPT_EXECUTE=YES bash scripts/acceptance-aws-lifecycle.sh create ./terraform-demo
+
+# Modify The Disposable Terraform Configuration For A Genuine Update
+TFIAM_ACCEPT_EXECUTE=YES bash scripts/acceptance-aws-lifecycle.sh update ./terraform-demo
+
+# Explicitly Destroy The Test Infrastructure
+TFIAM_ACCEPT_EXECUTE=YES bash scripts/acceptance-aws-lifecycle.sh destroy ./terraform-demo
+~~~
+
+The Active Credentials Must Be For The Intended **Dedicated IAM Test Role**, With Only The Reviewed Generated Managed Policies Attached When Measuring Authorization Completeness. The Script Does Not Attach IAM Policies, Change Credentials, Or Execute Mutations Without `TFIAM_ACCEPT_EXECUTE=YES`. Evidence Is Stored In `.tfiam-acceptance/`, Including Sensitive Terraform Plan Values: Do Not Commit Or Publish That Directory. `TFIAM_VALIDATE_WITH_AWS=yes` Additionally Runs AWS IAM Access Analyzer Validation When Authorized.
+
+A Successful Plan, Policy JSON Validation, And CI Build Do Not Replace A Successful Create/Update/Destroy Lifecycle. Final Release Acceptance Must Record The Role Identity, The Actual Terraform Fixture, All Three Phases, The Matched Candidate Bundle, And Any AWS AccessDenied Findings.
+
 ## AWS Validation And Runtime Evidence
 
 ### Authorization Metadata

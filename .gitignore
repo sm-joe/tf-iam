@@ -20,3 +20,6 @@ dist/
 
 # Build-generated public authorization snapshots (included in distributions)
 /tfiam/catalog/authorization/
+
+# Local AWS Lifecycle Acceptance Plans May Contain Secrets
+.tfiam-acceptance/

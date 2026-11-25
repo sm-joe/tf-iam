@@ -15,6 +15,7 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -e '.[test,aws,packaging]'
+      - run: bash -n scripts/acceptance-aws-lifecycle.sh
       - run: python -m pytest -q
       - run: python scripts/prepare-metadata.py
       - run: bash scripts/build-linux.sh
@@ -165,6 +166,27 @@ jobs:
           assert all(x["scope"] != "*" for x in report["permissions"]
                      if x["action"] in ("iam:CreateRole","ecs:CreateCluster","ecr:CreateRepository"))
           print("PASS: packaged IAM generator scopes known-account roles, ECS and ECR resource grants")
+          PY
+          python - "$RUNNER_TEMP/ecs-43.plan.json" <<'PY'
+          import json,runpy,sys
+          fixture=runpy.run_path("tests/test_ecs_43_resource_acceptance.py")["fixture"]()
+          with open(sys.argv[1],"w",encoding="utf-8") as handle: json.dump(fixture,handle)
+          PY
+          dist/tfiam generate --plan-json "$RUNNER_TEMP/ecs-43.plan.json" \
+            --allow-partial --aws-account 638631156706 --aws-region us-east-1 \
+            --output "$RUNNER_TEMP/ecs-43.policy.json"
+          python - "$RUNNER_TEMP/ecs-43.policy.json" <<'PY'
+          import json,sys
+          from pathlib import Path
+          policy_file=Path(sys.argv[1])
+          policy=json.loads(policy_file.read_text())
+          actions={a for row in policy["Statement"] for a in row["Action"]}
+          assert {"ec2:CreateSubnet","ecs:CreateService","elasticloadbalancing:CreateListener",
+                  "iam:CreateRole","ec2:CreateVpcEndpoint"} <= actions
+          report=json.loads(Path(str(policy_file)+".report.json").read_text())
+          assert report["mapping_coverage"]["mapped_resources"]==43
+          assert report["authorization_metadata"]["metadata_source"]=="packaged"
+          print("PASS: standalone Linux binary and official AWS metadata on 43-resource ECS plan")
           PY
       - uses: actions/upload-artifact@v4
         with:
