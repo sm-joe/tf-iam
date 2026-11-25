@@ -372,7 +372,8 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     # IAM role, even when Terraform uses the role ID.
                                     ref=re.fullmatch(
                                         r'\$\{(aws_iam_role\.[\w-]+)\.(?:id|name|arn)\}',
-                                        str(body.get('role')))
+                                        str(definitions.get(f'{typ}.{name}',{}).get(
+                                            'role',body.get('role'))))
                                     if ref:
                                         owner=definitions.get(ref.group(1),{})
                                         known=role_arn(owner) if owner else None
