@@ -30,7 +30,12 @@ def test_release_gate_rejects_symlink(tmp_path,monkeypatch):
     proof=tmp_path/"proof"
     proof.write_text("test")
     alias=tmp_path/"alias"
+    try:
     alias.symlink_to(proof)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink creation requires Developer Mode or SeCreateSymbolicLinkPrivilege")
+        raise
     import hashlib
     row={"status":"passed","artifact":"alias","sha256":hashlib.sha256(proof.read_bytes()).hexdigest()}
     path=tmp_path/"manifest.json"
