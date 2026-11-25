@@ -12,7 +12,7 @@ IAM_ACTION = re.compile(r"^[a-z][a-z0-9-]*:[A-Za-z][A-Za-z0-9]*$")
 def include_unresolved(report):
     existing = {
         (row["source"], row["action"], row["scope"], row.get("plane", "management"))
-        for row in report["permissions"] if row["provider"] == "aws"
+        for row in report["permissions"] if row["provider"] == "aws" and not row.get("condition")
     }
     fallbacks = []
     for missing in report.get("unresolved_permissions", []):
