@@ -113,7 +113,7 @@ def scoped(typ, body, actions, account, region, partition, resolve, emit, omit, 
                 omit(action)
         role = val("role")
         if "storagegateway:CreateNFSFileShare" in actions:
-            if role and re.fullmatch(rf"arn:{partition}:iam::[0-9]{{12}}:role/[^\\s*?]+", role):
+            if role and re.fullmatch(rf"arn:{partition}:iam::[0-9]{{12}}:role/[^\s*?]+", role):
                 emit("iam:PassRole", role, {
                     "StringEquals": {"iam:PassedToService": "storagegateway.amazonaws.com"}
                 })
