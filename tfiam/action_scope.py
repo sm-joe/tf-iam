@@ -488,7 +488,7 @@ def elb(typ,body,actions,account,region,partition,resolve,emit,omit,task=None):
             # Listener IDs do not exist until the create API returns; parent
             # load balancer identity still bounds the prospective listener.
             suffix=lb.split("loadbalancer/",1)[-1]
-            if re.fullmatch(r"(?:app|net|gwy)/[A-Za-z0-9-]+/(?:[A-Za-z0-9]+|\\*)",suffix):
+            if re.fullmatch(r"(?:app|net|gwy)/[A-Za-z0-9-]+/(?:[A-Za-z0-9]+|\*)",suffix):
                 scope=prefix+"listener/"+suffix+"/*"
                 condition={"StringEquals":{"elasticloadbalancing:CreateAction":"CreateListener"}}
         elif short=="CreateRule": scope=listener
