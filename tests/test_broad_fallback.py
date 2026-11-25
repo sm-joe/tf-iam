@@ -214,3 +214,24 @@ def test_multi_resource_ec2_fallback_remains_nonblocking_when_dependencies_unkno
     include_unresolved(report)
     assert {row["action"] for row in report["permissions"]} == set(actions)
     assert all(row["scope"] == "*" for row in report["permissions"])
+
+
+def test_generated_fallback_warnings_do_not_claim_action_omitted():
+    from tfiam.candidate_fallback import include_unresolved
+    report={
+        "resources":[],
+        "permissions":[],
+        "unresolved_permissions":[
+            {"source":"aws_ecs_service.app","action":"iam:PassRole",
+             "reason":"unresolved role reference"}
+        ],
+        "warnings":[
+            "aws_ecs_service.app: iam:PassRole omitted; unresolved role reference"
+        ],
+        "scope_summary":{},"risks":[],
+    }
+    include_unresolved(report)
+    assert report["permissions"][0]["action"]=="iam:PassRole"
+    assert report["warnings"][0]==(
+        "aws_ecs_service.app: iam:PassRole included as unverified fallback; unresolved role reference")
+    assert len(report["unresolved_permissions"])==1
