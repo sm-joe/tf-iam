@@ -255,6 +255,8 @@ def test_action_specific_iam_resource_types():
         ("aws_ecr_lifecycle_policy.app", "ecr:PutLifecyclePolicy", ":repository/"),
         ("aws_route.public", "ec2:CreateRoute", ":route-table/"),
         ("aws_route_table_association.public", "ec2:AssociateRouteTable", ":route-table/"),
+        ("aws_lb_listener.http", "elasticloadbalancing:CreateListener", ":loadbalancer/"),
+        ("aws_ecs_task_definition.app", "ecs:RegisterTaskDefinition", ":task-definition/"),
     ]
     for source, action, marker in cases:
         scope, replacement, condition = template(source, action, {})
