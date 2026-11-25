@@ -124,6 +124,16 @@ def include_unresolved(report):
         })
     report["fallback_permissions"] = sorted(fallbacks, key=lambda row: (row["source"], row["action"]))
     if fallbacks:
+        # Scan diagnostics remain unresolved (no proven scope), but a
+        # generated grant must not also be described as omitted.
+        recovered={(item["source"],item["action"]) for item in fallbacks}
+        for i,message in enumerate(report["warnings"]):
+            for source,action in recovered:
+                prefix=source+": "+action+" omitted;"
+                if message.startswith(prefix):
+                    report["warnings"][i]=message.replace(
+                        " omitted;", " included as unverified fallback;", 1)
+                    break
         report["warnings"].append(
             f"{len(fallbacks)} unresolved IAM grants included as candidate fallbacks "
             f"({sum(x['scope'] == '*' for x in fallbacks)} with Resource '*'); "
