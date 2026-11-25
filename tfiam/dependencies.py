@@ -166,7 +166,10 @@ def dependencies(typ,body,actions,account,region,partition,resolve,emit,omit,tas
                     omit("rds:CreateDBInstanceReadReplica")
     if typ=="aws_ecs_service":
         if any(a in actions for a in ("ecs:CreateService","ecs:UpdateService")):
-            if present("iam_role") and changed("iam_role"): role("iam_role","ecs.amazonaws.com")
+            # expand("ecs-service") owns the optional legacy IAM role,
+            # including exact role ARN and iam:PassedToService. Duplicating
+            # it here mistakes provider-computed 'iam_role' for a configured
+            # role, reintroducing an unresolved and broad PassRole fallback.
             if present("volume_configuration") or present("service_connect_configuration") or present("vpc_lattice_configurations"):
                 omit("iam:PassRole")
             if "ecs:CreateService" in actions:

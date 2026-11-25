@@ -42,6 +42,7 @@ def _fallback_scope(source, action, contexts):
         service = {
             "aws_ecs_task_definition": "ecs-tasks.amazonaws.com",
             "aws_iam_instance_profile": "ec2.amazonaws.com",
+            "aws_ecs_service": "ecs.amazonaws.com",
         }.get(kind)
         if service:
             return (f"arn:{partition}:iam::{account}:role/*",

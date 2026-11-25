@@ -125,3 +125,67 @@ def test_mixed_parents_do_not_produce_role_guess():
     assert not any(row["source"]=="aws_ecs_task_definition.app"
                    and row["action"]=="iam:PassRole"
                    for row in report["permissions"])
+
+
+def test_ecs_service_provider_unknown_optional_role_without_config_has_no_passrole():
+    from tfiam.candidate_fallback import include_unresolved
+    cluster=resource("aws_ecs_cluster","main",{"name":"ecs-demo-cluster"})
+    definition=resource("aws_ecs_task_definition","app",{"family":"ecs-demo"})
+    service=resource(
+        "aws_ecs_service","app",
+        {"name":"ecs-demo-service","cluster":None,
+         "task_definition":None,"iam_role":None},
+        {"cluster":True,"task_definition":True,"iam_role":True},
+        {"cluster":"aws_ecs_cluster.main.id",
+         "task_definition":"aws_ecs_task_definition.app.arn"}
+    )
+    data=plan(cluster,definition,service)
+    task={
+        "entry":{"type":"aws_ecs_service"},"operation":"create",
+        "unknown_fields":["cluster","task_definition","iam_role"],
+        "all_fields_masked":False
+    }
+    enriched=enrich(data,"aws_ecs_service.app",
+                    service[0]["change"]["after"],task,
+                    lambda _: (ACCOUNT,REGION,"aws"))
+    assert enriched["_tfiam_ecs_role_configured"] is False
+    report=scan(plan=data,account=ACCOUNT,region=REGION)
+    assert not any(
+        x["source"]=="aws_ecs_service.app" and x["action"]=="iam:PassRole"
+        for x in report["permissions"]+report["unresolved_permissions"]
+    )
+    include_unresolved(report)
+    assert not any(
+        x["source"]=="aws_ecs_service.app" and x["action"]=="iam:PassRole"
+        for x in report["permissions"]+report["fallback_permissions"]
+    )
+
+
+def test_ecs_service_explicit_unknown_legacy_role_remains_reported():
+    service=resource("aws_ecs_service","app",
+                     {"name":"ecs-demo-service","cluster":"ecs-demo-cluster",
+                      "task_definition":"ecs-demo:1","iam_role":None},
+                     {"iam_role":True})
+    service[1]["expressions"]["iam_role"]={
+        "references":["data.aws_iam_role.legacy.arn"]}
+    report=scan(plan=plan(service),account=ACCOUNT,region=REGION)
+    assert any(
+        x["source"]=="aws_ecs_service.app" and x["action"]=="iam:PassRole"
+        for x in report["unresolved_permissions"]
+    )
+
+
+def test_ecs_service_explicit_concrete_legacy_role_uses_exact_arn():
+    role_arn=f"arn:aws:iam::{ACCOUNT}:role/legacy-ecs-service"
+    service=resource("aws_ecs_service","app",
+                     {"name":"ecs-demo-service","cluster":"ecs-demo-cluster",
+                      "task_definition":"ecs-demo:1","iam_role":role_arn})
+    service[1]["expressions"]["iam_role"]={"constant_value":role_arn}
+    report=scan(plan=plan(service),account=ACCOUNT,region=REGION)
+    rows=[x for x in report["permissions"]
+          if x["source"]=="aws_ecs_service.app" and x["action"]=="iam:PassRole"]
+    assert len(rows)==1
+    assert rows[0]["scope"]==role_arn
+    assert rows[0]["condition"]=={
+        "StringEquals":{"iam:PassedToService":"ecs.amazonaws.com"}
+    }

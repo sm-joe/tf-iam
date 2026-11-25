@@ -125,11 +125,14 @@ def test_known_account_scopes_iam_passrole_and_ec2_tag_fallbacks():
         "arn:aws:ec2:us-east-1:638631156706:subnet/*")
     assert grants[("aws_security_group.ecs","ec2:DeleteTags")]["scope"] == (
         "arn:aws:ec2:us-east-1:638631156706:security-group/*")
-    assert grants[("aws_ecs_service.app","iam:PassRole")]["scope"] == "*"
+    assert grants[("aws_ecs_service.app","iam:PassRole")]["scope"] == (
+        "arn:aws:iam::638631156706:role/*")
+    assert grants[("aws_ecs_service.app","iam:PassRole")]["condition"] == {
+        "StringEquals":{"iam:PassedToService":"ecs.amazonaws.com"}}
     assert sum(x["scope_status"]=="SCOPED_FALLBACK"
-               for x in report["fallback_permissions"]) == 4
-    assert report["scope_summary"]["global"]==1
-    assert report["scope_summary"]["bounded_wildcard"]==4
+               for x in report["fallback_permissions"]) == 5
+    assert report["scope_summary"]["global"]==0
+    assert report["scope_summary"]["bounded_wildcard"]==5
 
 
 def test_unknown_account_preserves_nonblocking_broad_candidate_fallback():
