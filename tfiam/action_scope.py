@@ -138,11 +138,12 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     def existing_tag_condition():
         if not anchor: return None
         return {"StringEquals":{"ec2:ResourceTag/"+anchor[0]:anchor[1]}}
-    def tag_keys_condition():
-        if not tag_keys: return {}
+    def tag_keys_condition(keys=None):
+        selected=tag_keys if keys is None else keys
+        if not selected: return {}
         # IAM ForAllValues is true for absent context keys; explicitly
         # require the aws:TagKeys key for both tag-add and tag-delete calls.
-        return {"ForAllValues:StringEquals":{"aws:TagKeys":tag_keys},
+        return {"ForAllValues:StringEquals":{"aws:TagKeys":selected},
                 "Null":{"aws:TagKeys":"false"}}
     # EC2 actions confirmed to accept ec2:ResourceTag in AWS's Service
     # Authorization Reference. Do not generically tag-scope other actions.
@@ -394,9 +395,14 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                                     "StringEquals":{"ec2:CreateAction":create},
                                     **tag_keys_condition(),
                                 })
-                # Post-creation tag changes are limited to existing tagged
-                # resources and only Terraform-declared tag keys.
-                emit(action,own,{**existing_tag_condition(),**tag_keys_condition()})
+                # Never grant changes to the ownership key itself while
+                # using its current value to select resource-class wildcards.
+                # Otherwise the same identity can change the boundary used
+                # by future delete and mutation operations. Exact-ID saved
+                # plans can authorize an intentional anchor rotation.
+                mutable_keys=[key for key in tag_keys if key!=anchor[0]]
+                if mutable_keys:
+                    emit(action,own,{**existing_tag_condition(),**tag_keys_condition(mutable_keys)})
             elif own and (op!="create") and not isinstance(own,tuple):
                 emit(action,own)
             elif isinstance(own,tuple) and op!="create":
