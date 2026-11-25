@@ -66,6 +66,30 @@ jobs:
           print("PASS: source-only IAM cannot retag its own authorization anchor")
           print("PASS: packaged IAM policy retains bounded EC2 tagging and destruction")
           PY
+          dist/tfiam pack-policy "$RUNNER_TEMP/network-policy.json" \
+            --output-dir "$RUNNER_TEMP/network-policy-bundle" \
+            --max-policies 10 > "$RUNNER_TEMP/network-bundle-manifest.json"
+          python - "$RUNNER_TEMP/network-policy.json" "$RUNNER_TEMP/network-policy-bundle" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          from tfiam.policy_size import grants, size
+
+          original=json.loads(Path(sys.argv[1]).read_text())
+          folder=Path(sys.argv[2])
+          manifest=json.loads((folder/"manifest.json").read_text())
+          assert manifest["policy_count"]>=1
+          assert manifest["policy_count"]<=10
+          assert len(manifest["policies"])==manifest["policy_count"]
+          recovered=set()
+          for item in manifest["policies"]:
+              packed=json.loads((folder/item["file"]).read_text())
+              assert size(packed)==item["characters"]
+              assert size(packed)<=6144
+              recovered.update(grants(packed))
+          assert recovered==grants(original),("Grant union changed during IAM partition",len(recovered),len(grants(original)))
+          print("PASS: packaged IAM bundle fits AWS managed-policy limits with exactly equivalent grants")
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: tfiam-linux-x86_64
