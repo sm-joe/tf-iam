@@ -32,23 +32,44 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
     has_root=root is not None
     root=Path(root or '.').resolve()
     if not root.is_dir(): raise ValueError('Terraform directory does not exist')
-    report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'information':[], 'resolved_dependencies':[], 'backends':[], 'unresolved_permissions':[], 'input_blockers':[]}
+    report={'schema_version':1,'phase':phase,'coverage':'PARTIAL','resources':[], 'permissions':[], 'warnings':[], 'information':[], 'resolved_dependencies':[], 'backends':[], 'unresolved_permissions':[], 'not_required_permissions':[], 'input_blockers':[]}
     report['catalog']={'schema_version':CATALOG['schema_version'],'provider':CATALOG['provider'],'provider_version':None}
     provider_selection=selected_version(root if has_root else None,provider_version)
     version=provider_selection['version']
     report['catalog']['provider_version']=version
     report['catalog']['provider_selection']=provider_selection
-    visited=set(); records=set()
+    visited=set(); records=set(); not_required=set()
     def warn(msg):
         if msg not in report['warnings']: report['warnings'].append(msg)
     def info(message):
         if message not in report['information']: report['information'].append(message)
+    def mark_not_required(source, action, reason):
+        """Make a proved optional-action exclusion authoritative across all emitters."""
+        key = (source, action)
+        not_required.add(key)
+        report['not_required_permissions'].append({
+            'source': source, 'action': action, 'reason': reason,
+        })
+        # Do not retain earlier diagnostics if another resolver examined this
+        # optional action before the definitive decision was available.
+        report['unresolved_permissions'] = [
+            row for row in report['unresolved_permissions']
+            if (row['source'], row['action']) != key
+        ]
+        report['warnings'] = [
+            msg for msg in report['warnings']
+            if not msg.startswith(source + ': ' + action + ' omitted;')
+        ]
     def unresolved(source,action,reason='action-specific scope or dependency unresolved'):
+        if (source, action) in not_required:
+            return
         row={'source':source,'action':action,'reason':reason}
         if row not in report['unresolved_permissions']: report['unresolved_permissions'].append(row)
         warn(source+': '+action+' omitted; '+reason)
     def add(p,a,s,source,plane='management',condition=None):
         for action in a:
+            if (source, action) in not_required:
+                continue
             key=(p,action,s,source,plane,json.dumps(condition,sort_keys=True))
             if key not in records:
                 records.add(key); report['permissions'].append(dict(provider=p,action=action,scope=s,source=source,plane=plane, **({"condition":condition} if condition else {})))
@@ -240,6 +261,19 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                             if not task and unknown_fields:
                                 entry['unevaluated_fields']=sorted(unknown_fields)
                                 entry['unknown_values']=True
+                            # A missing optional legacy ECS service role is not an
+                            # unresolved dependency. It must never be reinstated by
+                            # a different permission resolver or fallback generator.
+                            # Preserve uncertainty when the role is computed or the
+                            # complete plan value was masked.
+                            if (category=='resource' and typ=='aws_ecs_service'
+                                    and resource_phase=='apply'
+                                    and body.get('iam_role') in (None, '')
+                                    and not unknown_field('iam_role')):
+                                mark_not_required(
+                                    address, 'iam:PassRole',
+                                    'No legacy ECS service iam_role is configured',
+                                )
                             p='aws'; acts=operation_actions(rule,operation) if task else actions_for(rule, 'plan' if category=='data' else phase)
                             if task and category=='resource':
                                 from .optimization import minimize
