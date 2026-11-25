@@ -34,7 +34,10 @@ jobs:
 
           policy=json.load(open(sys.argv[1]))
           actions={a for row in policy["Statement"] for a in row["Action"]}
-          assert "ec2:CreateTags" in actions and "ec2:DeleteTags" in actions
+          assert "ec2:CreateTags" in actions
+          # All fixture resource tags are the Name authorization anchor:
+          # post-create DeleteTags must not be granted on that anchor.
+          assert "ec2:DeleteTags" not in actions
           destructive={
               "ec2:DeleteVpc","ec2:DeleteSubnet","ec2:DeleteNatGateway",
               "ec2:DeleteNetworkAcl","ec2:DeleteRouteTable",
