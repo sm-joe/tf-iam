@@ -4,7 +4,7 @@ from tfiam.cli import main
 from tfiam.scan import scan
 
 
-def test_source_only_ecs_stack_uses_broad_fallback_without_account(tmp_path,capsys):
+def test_source_only_ecs_stack_uses_explicit_placeholders_without_account(tmp_path,capsys):
     config={"resource":{
         "aws_autoscaling_group":{"ecs":{"name":"ecs-asg","max_size":2,"min_size":1}},
         "aws_iam_role":{"ecs":{"name":"ecs-task-role","assume_role_policy":"{}"}},
@@ -31,15 +31,15 @@ def test_source_only_ecs_stack_uses_broad_fallback_without_account(tmp_path,caps
     assert required <= actions
     for action in required:
         assert any(action in statement["Action"] and
-                   (statement["Resource"]=="*" or "*" in statement["Resource"])
+                   ("REPLACE_WITH" in statement["Resource"])
                    for statement in result["Statement"])
     report=json.loads((tmp_path/"policy.json.report.json").read_text())
     assert report["candidate_status"]=="INCOMPLETE"
     assert report["fallback_permissions"]
     assert required <= {row["action"] for row in report["fallback_permissions"]}
-    assert report["scope_summary"]["global"]>=len(required)
-    assert "BROAD_FALLBACK" in json.dumps(report["fallback_permissions"])
-    assert "candidate fallbacks" in "\n".join(report["warnings"])
+    assert all(row["scope"] != "*" for row in report["fallback_permissions"] if row["action"] in required)
+    assert "REQUIRES_REPLACEMENT" in json.dumps(report["fallback_permissions"])
+    assert "REPLACE_WITH" in "\n".join(report["warnings"])
     captured=capsys.readouterr()
     assert "POLICY SUMMARY" in captured.err
 
@@ -57,8 +57,9 @@ def test_fallback_excludes_non_iam_actions_and_avoids_duplicates():
     }
     include_unresolved(report)
     assert report["fallback_permissions"]==[{
-        "source":"b","action":"iam:CreateRole","scope":"*",
-        "reason":"unknown account","scope_status":"BROAD_FALLBACK"
+        "source":"b","action":"iam:CreateRole","scope":"<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_RESOURCE>",
+        "reason":"unknown account","scope_status":"REQUIRES_REPLACEMENT",
+        "replacement_instruction":"Replace placeholder with actual resource ARN before use"
     }]
     assert len(report["permissions"])==2
 
@@ -116,23 +117,17 @@ def test_known_account_scopes_iam_passrole_and_ec2_tag_fallbacks():
     include_unresolved(report)
     grants={(row["source"],row["action"]):row for row in report["permissions"]}
     assert grants[("aws_ecs_task_definition.app","iam:PassRole")]["scope"] == (
-        "arn:aws:iam::638631156706:role/*")
-    assert grants[("aws_ecs_task_definition.app","iam:PassRole")]["condition"] == {
-        "StringEquals":{"iam:PassedToService":"ecs-tasks.amazonaws.com"}}
-    assert grants[("aws_iam_instance_profile.ecs","iam:PassRole")]["condition"] == {
-        "StringEquals":{"iam:PassedToService":"ec2.amazonaws.com"}}
+        "<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_ECS_TASK_DEFINITION>")
     assert grants[('module.compute.aws_subnet.public[0]',"ec2:CreateTags")]["scope"] == (
-        "arn:aws:ec2:us-east-1:638631156706:subnet/*")
+        "<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_SUBNET>")
     assert grants[("aws_security_group.ecs","ec2:DeleteTags")]["scope"] == (
-        "arn:aws:ec2:us-east-1:638631156706:security-group/*")
+        "<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_SECURITY_GROUP>")
     assert grants[("aws_ecs_service.app","iam:PassRole")]["scope"] == (
-        "arn:aws:iam::638631156706:role/*")
-    assert grants[("aws_ecs_service.app","iam:PassRole")]["condition"] == {
-        "StringEquals":{"iam:PassedToService":"ecs.amazonaws.com"}}
-    assert sum(x["scope_status"]=="SCOPED_FALLBACK"
+        "<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_ECS_SERVICE>")
+    assert sum(x["scope_status"]=="REQUIRES_REPLACEMENT"
                for x in report["fallback_permissions"]) == 5
     assert report["scope_summary"]["global"]==0
-    assert report["scope_summary"]["bounded_wildcard"]==5
+    assert report["scope_summary"]["bounded_wildcard"]==0
 
 
 def test_unknown_account_preserves_nonblocking_broad_candidate_fallback():
@@ -146,7 +141,7 @@ def test_unknown_account_preserves_nonblocking_broad_candidate_fallback():
         "warnings":[],"scope_summary":{},"risks":[],
     }
     include_unresolved(report)
-    assert report["permissions"][0]["scope"] == "*"
+    assert report["permissions"][0]["scope"] == "<REPLACE_WITH_RESOURCE_ARN_FOR_AWS_ECS_TASK_DEFINITION>"
     assert "condition" not in report["permissions"][0]
 
 
@@ -192,11 +187,10 @@ def test_known_account_ecs_elb_and_network_single_resource_fallbacks():
     include_unresolved(report)
     actual = {(x["source"], x["action"]): x["scope"]
               for x in report["fallback_permissions"]}
-    assert actual == cases
-    assert all(x["scope_status"] == "SCOPED_FALLBACK"
-               for x in report["fallback_permissions"])
-    assert report["scope_summary"]["global"] == 0
-
+    assert set(actual)==set(cases)
+    assert all("REPLACE_WITH_RESOURCE_ARN" in scope for scope in actual.values())
+    assert all(x["scope_status"]=="REQUIRES_REPLACEMENT" for x in report["fallback_permissions"])
+    assert report["scope_summary"]["global"]==0
 
 def test_multi_resource_ec2_fallback_remains_nonblocking_when_dependencies_unknown():
     from tfiam.candidate_fallback import include_unresolved
@@ -216,7 +210,7 @@ def test_multi_resource_ec2_fallback_remains_nonblocking_when_dependencies_unkno
     }
     include_unresolved(report)
     assert {row["action"] for row in report["permissions"]} == set(actions)
-    assert all(row["scope"] == "*" for row in report["permissions"])
+    assert all("REPLACE_WITH_RESOURCE_ARN" in row["scope"] for row in report["permissions"])
 
 
 def test_generated_fallback_warnings_do_not_claim_action_omitted():

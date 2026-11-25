@@ -243,6 +243,9 @@ def main(argv=None, *, maintainer=False):
         if args.command=='generate' and not args.require_complete:
             from .candidate_fallback import include_unresolved
             include_unresolved(report)
+            pending=[x for x in report.get('fallback_permissions',[]) if x.get('scope_status')=='REQUIRES_REPLACEMENT']
+            if pending:
+                print(f'NOTICE: Replace {len(pending)} resource ARN placeholders before using this policy. See report replacement_instruction entries.',file=sys.stderr)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
         require_complete_mapping=(args.command=='generate' and args.require_complete) or (args.command=='split' and not args.allow_partial)
         report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved or require_complete_mapping,args.fail_on_unmapped or require_complete_mapping,args.require_compatible_metadata,args.require_lifecycle_verified)
