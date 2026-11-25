@@ -141,15 +141,106 @@ def resolve_source(raw,meta,prefix,index,sources,depth=0):
         return resolve_source(call.get(name),call_cfg.get("expressions",{}).get(name,{}),parent_prefix,last.group(2),sources,depth+1)
     return None
 
+def recover_plan_config(plan,address,select,body,task):
+    """Recover direct Terraform plan-configuration dependency edges.
+
+    Accept only references to AWS-managed resources that are all being
+    created in the same resolved provider context. Computed IDs are
+    represented as prospective resource-class ARNs, not fabricated IDs.
+    """
+    result={}
+    if task.get("operation")!="create" or task.get("all_fields_masked"):
+        return result
+    parsed=split_address(address)
+    if not parsed:
+        return result
+    prefix,base,_=parsed
+    module=plan.get("configuration",{}).get("root_module",{})
+    for match in MODULE.finditer(prefix):
+        module=module.get("module_calls",{}).get(match.group(1),{}).get("module",{})
+        if not isinstance(module,dict):
+            return result
+    config=one(module.get("resources",[]),base)
+    if not config or config.get("mode")!="managed":
+        return result
+    changes=[
+        row for row in plan.get("resource_changes",[])
+        if row.get("provider_name")==AWS and row.get("mode")=="managed"
+        and not row.get("deposed")
+    ]
+    context=select(address)
+    if context is None:
+        return result
+    changed=one(changes,address).get("change",{})
+    flags=changed.get("after_unknown",{})
+    if not isinstance(flags,dict):
+        return result
+    kinds={
+        "vpc_id":"vpc","subnet_id":"subnet",
+        "security_group_id":"security-group",
+        "route_table_id":"route-table",
+        "gateway_id":"internet-gateway",
+        "subnet_ids":"subnet","security_group_ids":"security-group",
+        "route_table_ids":"route-table",
+    }
+    for field,kind in kinds.items():
+        if field not in config.get("expressions",{}):
+            continue
+        if field not in flags and body.get(field) is not None:
+            continue
+        meta=config["expressions"][field]
+        refs=meta.get("references",[]) if isinstance(meta,dict) else []
+        if not isinstance(refs,list) or not refs:
+            continue
+        parents=[]
+        valid=True
+        for ref in refs:
+            if not isinstance(ref,str):
+                valid=False
+                break
+            # No expression evaluation. Only a direct .id reference to a
+            # managed resource is sufficient evidence of the dependency.
+            target=ref.removesuffix(".id")
+            parent=split_address(target)
+            if not parent or EC2_TYPES.get(parent[1].split(".",1)[0],(None,))[0]!=kind:
+                valid=False
+                break
+            address_prefix=prefix+target
+            candidates=[
+                row for row in changes
+                if clean(row.get("address",""))==clean(address_prefix)
+            ]
+            if not candidates or any(
+                row.get("change",{}).get("actions")!=["create"]
+                or select(row["address"])!=context for row in candidates
+            ):
+                valid=False
+                break
+            parents.extend(candidates)
+        if not valid or not parents:
+            continue
+        evidence={"kind":kind,"prospective":True}
+        if field.endswith("_ids"):
+            known=body.get(field)
+            if isinstance(known,list) and known:
+                result[field]=[evidence for _ in known]
+            elif flags.get(field) is True or isinstance(flags.get(field),list):
+                result[field]=[evidence]
+        else:
+            result[field]=evidence
+    return result
+
+
 def recover(plan,address,definitions,select,body,task,sources=None,allow_name=False):
     out={}
     parsed=split_address(address)
     if not parsed or task.get("operation")!="create" or task.get("all_fields_masked"): return out
     prefix,base,index=parsed
+    from_plan=recover_plan_config(plan,address,select,body,task)
     if sources is None:
         sources={"":(definitions,{}, {},{},plan.get("configuration",{}).get("root_module",{}))}
     row=sources.get(clean(prefix))
-    if not row: return out
+    if not row: return from_plan
     changes=[r for r in plan.get("resource_changes",[]) if not r.get("deposed")]
     consumer=one(row[4].get("resources",[]),base)
     change=one(changes,address).get("change",{})
@@ -199,7 +290,9 @@ def recover(plan,address,definitions,select,body,task,sources=None,allow_name=Fa
                 if not ref: break
                 resolved.append(ref)
             if len(resolved)==len(raw) and all(isinstance(r,str) and r in allowed for r in refs): out[field]=resolved
-    return out
+    # Source-proven edges take precedence; the plan's configuration graph
+    # supplies additional direct references when raw HCL is unavailable.
+    return {**from_plan,**out}
 
 
 def omitted_instance_key(plan,address,sources,version):
