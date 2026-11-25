@@ -160,10 +160,11 @@ jobs:
           policy=json.loads(Path(sys.argv[1]).read_text())
           report=json.loads(Path(sys.argv[1]+".report.json").read_text())
           assert "fallback_permissions" in report
-          assert any(x["action"]=="iam:CreateRole" for x in report["fallback_permissions"])
           assert all(x["scope_status"] in ("BROAD_FALLBACK","SCOPED_FALLBACK")
                      for x in report["fallback_permissions"])
-          print("PASS: packaged binary includes scoped/broad fallback provenance")
+          assert all(x["scope"] != "*" for x in report["permissions"]
+                     if x["action"] in ("iam:CreateRole","ecs:CreateCluster","ecr:CreateRepository"))
+          print("PASS: packaged IAM generator scopes known-account roles, ECS and ECR resource grants")
           PY
       - uses: actions/upload-artifact@v4
         with:
