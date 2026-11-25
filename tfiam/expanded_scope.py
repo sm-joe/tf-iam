@@ -187,7 +187,9 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
                 prefix=arn("ecs","task-definition/")
                 if prefix and re.fullmatch(re.escape(prefix)+r"[A-Za-z0-9_-]+:[0-9]+",task_definition):
                     task_arn=task_definition
-                elif prefix and re.fullmatch(r"[A-Za-z0-9_-]+:[0-9]+",task_definition):
+                elif prefix and re.fullmatch(r"[A-Za-z0-9_-]+:(?:[0-9]+|\\*)",task_definition):
+                    # A graph-proven planned task-definition family has no
+                    # allocated revision until Terraform registers it.
                     task_arn=prefix+task_definition
                 elif prefix and re.fullmatch(r"[A-Za-z0-9_-]+",task_definition):
                     task_arn=prefix+task_definition+":*"
