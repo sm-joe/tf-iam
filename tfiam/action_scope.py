@@ -370,7 +370,9 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
                 else:
                     dependent.append(None)
             service=val("service_name")
-            if vpc and endpoint and all(dependent):
+            # Without a declared endpoint service, the create request itself
+            # is incomplete; do not mark the authorization as resolved.
+            if vpc and endpoint and service and all(dependent):
                 if not grant(action,[vpc]+dependent):
                     continue
                 conditions=request_tags().get("StringEquals",{}).copy()
