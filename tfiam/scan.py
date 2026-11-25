@@ -284,6 +284,11 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     body['_tfiam_self_tags']=anchor(body,scope_generated_names)
                                     if scope_generated_names and 'ec2:ResourceTag/Name' in body['_tfiam_self_tags'].get('StringEquals',{}):
                                         info(address+': opt-in EC2 Name tag scope; names are not unique and tag mutation must be controlled independently.')
+                            if task and plan is not None and category=='resource' and typ in (
+                                'aws_ecs_service','aws_ecs_task_definition','aws_lb_listener',
+                            ):
+                                from .plan_identity import enrich
+                                body=enrich(plan,address,body,task,select_context)
                             if task and operation in ('create','update','read') and typ in ('aws_instance','aws_iam_instance_profile'):
                                 # Only current role identities from same account/partition.
                                 if typ=='aws_instance':
