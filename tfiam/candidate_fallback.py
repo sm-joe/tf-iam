@@ -90,6 +90,19 @@ def _fallback_scope(source, action, contexts):
     return "*", None
 
 
+GLOBAL_FALLBACK_ACTIONS = {"kms:CreateKey", "kms:ListAliases", "ec2:DescribeVpcs"}
+
+def _placeholder(source, action, contexts):
+    context = contexts.get(source, {})
+    account = context.get("account") if re.fullmatch(r"[0-9]{12}", str(context.get("account", ""))) else "<AWS_ACCOUNT_ID>"
+    partition = context.get("partition") or "aws"
+    kind = _typed_source(source) or "aws_resource"
+    if action.startswith("s3:") and kind.startswith("aws_s3_"):
+        return f"arn:{partition}:s3:::<REPLACE_WITH_S3_BUCKET_NAME>", "S3 bucket name"
+    if action in ("iam:DeleteRolePolicy", "iam:GetRolePolicy", "iam:PutRolePolicy"):
+        return f"arn:{partition}:iam::{account}:role/<REPLACE_WITH_IAM_ROLE_PATH_AND_NAME>", "IAM role path/name"
+    return f"<REPLACE_WITH_RESOURCE_ARN_FOR_{kind.upper()}>", "resource ARN"
+
 def include_unresolved(report):
     existing = {
         (row["source"], row["action"], row["scope"], row.get("plane", "management"))
@@ -117,6 +130,10 @@ def include_unresolved(report):
         if (source, action) in excluded:
             continue
         scope, condition = _fallback_scope(source, action, contexts)
+        replacement = None
+        if action not in GLOBAL_FALLBACK_ACTIONS:
+            scope, replacement = _placeholder(source, action, contexts)
+            condition = None
         key = (source, action, scope, "management")
         if key in existing and condition is None:
             continue
@@ -131,7 +148,8 @@ def include_unresolved(report):
         fallbacks.append({
             "source": source, "action": action, "scope": scope,
             "reason": missing["reason"],
-            "scope_status": "BROAD_FALLBACK" if scope == "*" else "SCOPED_FALLBACK",
+            "scope_status": "REQUIRES_REPLACEMENT" if replacement else ("AWS_REQUIRED_GLOBAL" if scope == "*" else "SCOPED_FALLBACK"),
+            **({"replacement_instruction": "Replace placeholder with actual " + replacement + " before use"} if replacement else {}),
             **({"condition": condition} if condition else {}),
         })
     report["fallback_permissions"] = sorted(fallbacks, key=lambda row: (row["source"], row["action"]))
@@ -147,10 +165,9 @@ def include_unresolved(report):
                         " omitted;", " included as unverified fallback;", 1)
                     break
         report["warnings"].append(
-            f"{len(fallbacks)} unresolved IAM grants included as candidate fallbacks "
-            f"({sum(x['scope'] == '*' for x in fallbacks)} with Resource '*'); "
-            "verify the action/resource requirements and expected Terraform "
-            "lifecycle behavior before attachment."
+            f"{len(fallbacks)} unresolved actions retained as templates; "
+            f"{sum(x['scope_status'] == 'REQUIRES_REPLACEMENT' for x in fallbacks)} require "
+            "replacement of REPLACE_WITH placeholders before use."
         )
         report["permissions"].sort(key=lambda row: (row["provider"], row["action"], row["scope"], row["source"]))
         report["scope_summary"]["global"] = sum(row["scope"] == "*" for row in report["permissions"])
