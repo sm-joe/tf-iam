@@ -130,6 +130,18 @@ def test_known_account_scopes_iam_passrole_and_ec2_tag_fallbacks():
     assert report["scope_summary"]["bounded_wildcard"]==0
 
 
+def test_role_policy_placeholder_never_contains_specific_account():
+    from tfiam.candidate_fallback import include_unresolved
+    report = {"resources": [{"address": "aws_iam_role_policy.gateway",
+              "provider_context": {"account": "638631156706", "region": "ap-south-1", "partition": "aws"}}],
+              "permissions": [], "unresolved_permissions": [
+              {"source": "aws_iam_role_policy.gateway", "action": "iam:PutRolePolicy", "reason": "unknown role"}],
+              "warnings": [], "scope_summary": {}, "risks": []}
+    include_unresolved(report)
+    assert report["permissions"][0]["scope"] == "arn:aws:iam::<AWS_ACCOUNT_ID>:role/<REPLACE_WITH_IAM_ROLE_PATH_AND_NAME>"
+    assert "638631156706" not in report["permissions"][0]["scope"]
+
+
 def test_unknown_account_preserves_nonblocking_broad_candidate_fallback():
     from tfiam.candidate_fallback import include_unresolved
     report={
