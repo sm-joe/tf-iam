@@ -268,7 +268,7 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     elif not region:
                                         reason='AWS target region unknown; set a Terraform provider region or AWS_REGION'
                                 unresolved(address,action,reason)
-                            if task and has_root and (
+                            if task and (
                                 typ in EC2_TYPES or typ in (
                                     'aws_route','aws_route_table_association',
                                     'aws_vpc_endpoint_route_table_association',
