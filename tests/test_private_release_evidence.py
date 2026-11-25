@@ -56,7 +56,12 @@ def test_private_evidence_path_rejects_symlinks_and_traversal(tmp_path):
     source=tmp_path/"proof"
     source.write_text("test")
     alias=tmp_path/"alias"
+    try:
     alias.symlink_to(source)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink creation requires Developer Mode or SeCreateSymbolicLinkPrivilege")
+        raise
     with pytest.raises(ValueError,match="symlinks"):
         mod.ordinary(tmp_path,"alias")
     with pytest.raises(ValueError,match="Unsafe"):
