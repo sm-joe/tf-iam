@@ -64,7 +64,7 @@ def test_iam_ecs_elb_plan_references_no_unscoped_passrole(monkeypatch):
             seen.append((body.get("_tfiam_parent_lb_arn"),args[0]))
             import re
             prefix=f"arn:aws:elasticloadbalancing:{REGION}:{ACCOUNT}:"
-            assert re.fullmatch(re.escape(prefix)+r"loadbalancer/(?:app|net|gwy)/[A-Za-z0-9-]{1,32}/\\*",body["_tfiam_parent_lb_arn"])
+            assert re.fullmatch(re.escape(prefix)+r"loadbalancer/(?:app|net|gwy)/[A-Za-z0-9-]{1,32}/\*",body["_tfiam_parent_lb_arn"])
         return original(typ,body,*args,**kwargs)
     monkeypatch.setattr(module,"elb",capture)
     report=scan(plan=p,account=ACCOUNT,region=REGION)
