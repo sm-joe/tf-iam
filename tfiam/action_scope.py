@@ -88,7 +88,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
         condition=dynamic.get("condition")
         if scope_resource_tags and condition and ec(kind,"*"):
             return (ec(kind,"*"),condition)
-        if task is None and dynamic.get("prospective"):
+        if dynamic.get("prospective"):
             return prospective(kind)
         return None
     def many(field,kind,prefix):
@@ -107,7 +107,7 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
             if isinstance(ref,dict) and ref.get("kind")==kind:
                 if scope_resource_tags and ref.get("condition") and ec(kind,"*"):
                     out.append((ec(kind,"*"),ref["condition"]))
-                elif task is None and ref.get("prospective"):
+                elif ref.get("prospective"):
                     out.append(prospective(kind))
                 else: return None
             else: return None
@@ -172,8 +172,10 @@ def network(typ,body,actions,account,region,partition,resolve,emit,omit,task=Non
     if typ=="aws_eip": own=dep("allocation_id","elastic-ip","eipalloc") or own
     # AWS allocates IDs for new gateways. Scope unknown current identity to
     # the verified regional resource class without inventing an exact ID.
-    if not own and task is None and spec and (
-        body.get("id") is None or managed_reference(body.get("id"),spec[0])
+    if not own and spec and (
+        (task is None and (body.get("id") is None or managed_reference(body.get("id"),spec[0])))
+        or (task is not None and task.get("operation")=="create"
+            and body.get("id") is None and not task.get("all_fields_masked"))
     ) and (typ!="aws_vpc_endpoint" or bool(
         body.get("vpc_id") or body.get("_tfiam_dynamic_ec2",{}).get("vpc_id")
     )):
