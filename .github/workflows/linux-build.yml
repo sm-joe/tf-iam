@@ -124,6 +124,33 @@ jobs:
           assert grants(m)==grants(g)|grants(o)
           print("PASS: packaged IAM Live reconciliation preserves exact generated and observed grant union")
           PY
+          mkdir -p "$RUNNER_TEMP/broad-iam-fixture"
+          python - "$RUNNER_TEMP/broad-iam-fixture/main.tf.json" <<'PY'
+          import json,sys
+          with open(sys.argv[1],"w",encoding="utf-8") as out:
+              json.dump({"resource":{
+                  "aws_ecs_cluster":{"main":{"name":"my-cluster"}},
+                  "aws_ecr_repository":{"main":{"name":"my-repository"}},
+                  "aws_iam_role":{"main":{"name":"my-role","assume_role_policy":"{}"}}
+              }},out)
+          PY
+          dist/tfiam generate "$RUNNER_TEMP/broad-iam-fixture" \
+            --allow-partial --aws-region ap-south-1 \
+            --output "$RUNNER_TEMP/broad-iam-policy.json"
+          python - "$RUNNER_TEMP/broad-iam-policy.json" <<'PY'
+          import json,sys
+          from pathlib import Path
+          path=Path(sys.argv[1])
+          policy=json.loads(path.read_text())
+          actions={action for row in policy["Statement"] for action in row["Action"]}
+          assert {"ecs:CreateCluster","ecr:CreateRepository","iam:CreateRole"} <= actions
+          report=json.loads(path.with_name(path.name+".report.json").read_text())
+          assert report["candidate_status"]=="INCOMPLETE"
+          assert report["fallback_permissions"]
+          assert {"ecs:CreateCluster","ecr:CreateRepository","iam:CreateRole"} <= {
+              x["action"] for x in report["fallback_permissions"]}
+          print("PASS: packaged IAM generator retains broad lifecycle permissions when account scope is unknown")
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: tfiam-linux-x86_64
