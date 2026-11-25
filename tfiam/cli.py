@@ -99,6 +99,15 @@ def main(argv=None, *, maintainer=False):
             from .policy_size import partition
             from .policy_size import compact
             result=partition(json.loads(args.policy.read_bytes()),args.policy_type,args.max_chars,args.max_policies,args.name)
+            # One parseable JSON document contains all IAM policy documents.
+            # Individual JSON files remain the attachable AWS IAM documents.
+            bundle={
+                'schema_version':result['schema_version'],
+                'policy_type':result['policy_type'],
+                'policy_count':result['policy_count'],
+                'managed_policy_character_limit':result['limit'],
+                'policies':[{'name':item['name'],'document':item['document']} for item in result['policies']],
+            }
             # Never overwrite a previous policy set or leave a half-written set.
             import os, tempfile, shutil
             target=args.output_dir.absolute()
@@ -107,9 +116,10 @@ def main(argv=None, *, maintainer=False):
             try:
                 for item in result['policies']:
                     path=stage/(item['name']+'.json')
-                    path.write_text(compact(item['document'])+'\n',encoding='utf-8')
+                    path.write_text(json.dumps(item['document'],indent=2,ensure_ascii=True)+'\n',encoding='utf-8')
                     item['file']=path.name
                     del item['document']
+                (stage/'bundle.json').write_text(json.dumps(bundle,indent=2,ensure_ascii=True)+'\n',encoding='utf-8')
                 (stage/'manifest.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
                 # Reserve destination exclusively, then move the completed files.
                 target.mkdir(mode=0o700)
@@ -119,7 +129,14 @@ def main(argv=None, *, maintainer=False):
                     shutil.rmtree(target)
                     raise
             finally: shutil.rmtree(stage)
-            print(json.dumps(result,indent=2))
+            print(json.dumps({
+                'status':'PACKED',
+                'output_directory':str(target),
+                'bundle_file':str(target/'bundle.json'),
+                'manifest_file':str(target/'manifest.json'),
+                'policy_count':result['policy_count'],
+                'policies':[{'name':item['name'],'file':item['file'],'characters':item['characters']} for item in result['policies']],
+            },indent=2))
             return 0
         if args.command=='evidence-audit':
             from .evidence_audit import reconcile,read_events
@@ -262,6 +279,33 @@ def main(argv=None, *, maintainer=False):
     except (ValueError,OSError,TypeError,AttributeError,KeyError) as e:
         print('ERROR: '+str(e),file=sys.stderr); return 1
     except Exception as e:
-        # AWS SDK errors can contain request or identity details; avoid echoing them.
+        # Print only the structured AWS error code, never the untrusted raw
+        # SDK exception message (which may contain request or identity data).
+        response=getattr(e,'response',None)
+        if isinstance(response,dict) and isinstance(response.get('Error'),dict):
+            code=response['Error'].get('Code')
+            if isinstance(code,str) and code in (
+                'AccessDenied','AccessDeniedException','UnauthorizedOperation',
+                'UnrecognizedClientException','InvalidClientTokenId',
+                'ExpiredToken','ExpiredTokenException','SignatureDoesNotMatch',
+                'ValidationException','InvalidParameterException',
+                'ThrottlingException','TooManyRequestsException',
+            ):
+                hints={
+                    'AccessDenied':'Check accessanalyzer:ValidatePolicy permission for the active AWS identity.',
+                    'AccessDeniedException':'Check accessanalyzer:ValidatePolicy permission for the active AWS identity.',
+                    'UnauthorizedOperation':'The active AWS identity is not authorized for this operation.',
+                    'UnrecognizedClientException':'Check the selected AWS profile and credentials.',
+                    'InvalidClientTokenId':'Check the selected AWS profile and credentials.',
+                    'ExpiredToken':'Refresh the active AWS credentials.',
+                    'ExpiredTokenException':'Refresh the active AWS credentials.',
+                    'SignatureDoesNotMatch':'Check AWS credential validity and clock synchronization.',
+                    'ValidationException':'AWS rejected the request; verify input policy size and JSON format.',
+                    'InvalidParameterException':'AWS rejected a request parameter; verify the IAM document.',
+                    'ThrottlingException':'AWS rate limit reached; retry with bounded backoff.',
+                    'TooManyRequestsException':'AWS rate limit reached; retry with bounded backoff.',
+                }
+                print('ERROR: AWS '+code+'. '+hints[code],file=sys.stderr)
+                return 1
         print('ERROR: operation failed ('+type(e).__name__+')',file=sys.stderr); return 1
 if __name__=='__main__': sys.exit(main())

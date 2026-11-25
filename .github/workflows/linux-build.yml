@@ -88,6 +88,18 @@ jobs:
               assert size(packed)<=6144
               recovered.update(grants(packed))
           assert recovered==grants(original),("Grant union changed during IAM partition",len(recovered),len(grants(original)))
+          # A single document for applications, plus readable standalone IAM JSON.
+          bundle=json.loads((folder/"bundle.json").read_text())
+          assert len(bundle["policies"])==manifest["policy_count"]
+          bundle_grants=set()
+          for entry in bundle["policies"]:
+              assert entry["document"]["Version"]=="2012-10-17"
+              bundle_grants.update(grants(entry["document"]))
+          assert bundle_grants==grants(original)
+          for item in manifest["policies"]:
+              file_text=(folder/item["file"]).read_text()
+              assert len(file_text.splitlines())>5
+              assert json.loads(file_text)["Version"]=="2012-10-17"
           print("PASS: packaged IAM bundle fits AWS managed-policy limits with exactly equivalent grants")
           PY
       - uses: actions/upload-artifact@v4
