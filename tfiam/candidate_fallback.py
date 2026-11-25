@@ -100,10 +100,21 @@ def include_unresolved(report):
         for row in report.get("resources", [])
         if isinstance(row, dict) and isinstance(row.get("address"), str)
     }
+    # An authoritative NOT_REQUIRED decision takes precedence over unresolved
+    # action candidates. In particular, a legacy ECS service role that was not
+    # configured must not be brought back as an unconstrained iam:PassRole.
+    excluded = {
+        (row["source"], row["action"])
+        for row in report.get("not_required_permissions", [])
+        if isinstance(row, dict) and isinstance(row.get("source"), str)
+        and isinstance(row.get("action"), str)
+    }
     fallbacks = []
     for missing in report.get("unresolved_permissions", []):
         source, action = missing.get("source"), missing.get("action")
         if not isinstance(source, str) or not isinstance(action, str) or not IAM_ACTION.fullmatch(action):
+            continue
+        if (source, action) in excluded:
             continue
         scope, condition = _fallback_scope(source, action, contexts)
         key = (source, action, scope, "management")
