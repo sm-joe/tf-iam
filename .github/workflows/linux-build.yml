@@ -102,6 +102,28 @@ jobs:
               assert json.loads(file_text)["Version"]=="2012-10-17"
           print("PASS: packaged IAM bundle fits AWS managed-policy limits with exactly equivalent grants")
           PY
+          python - "$RUNNER_TEMP/iamlive-observed.json" <<'PY'
+          import json,sys
+          with open(sys.argv[1],"w",encoding="utf-8") as handle:
+              json.dump({"Version":"2012-10-17","Statement":[
+                  {"Effect":"Allow","Action":["ec2:DescribeVpcs"],"Resource":"*"},
+                  {"Effect":"Allow","Action":["ec2:DescribeInstances"],"Resource":"*"}
+              ]},handle)
+          PY
+          dist/tfiam reconcile-observed \
+            --generated "$RUNNER_TEMP/network-policy.json" \
+            --observed "$RUNNER_TEMP/iamlive-observed.json" \
+            --output "$RUNNER_TEMP/observed-diff.json" \
+            --merged-policy "$RUNNER_TEMP/observed-merged.json"
+          python - "$RUNNER_TEMP/network-policy.json" "$RUNNER_TEMP/iamlive-observed.json" "$RUNNER_TEMP/observed-diff.json" "$RUNNER_TEMP/observed-merged.json" <<'PY'
+          import json,sys
+          from tfiam.policy_size import grants
+          g,o,d,m=[json.load(open(p)) for p in sys.argv[1:]]
+          assert d["status"]=="DIFFERENCES"
+          assert any(x["action"]=="ec2:DescribeInstances" for x in d["observed_not_in_generated"])
+          assert grants(m)==grants(g)|grants(o)
+          print("PASS: packaged IAM Live reconciliation preserves exact generated and observed grant union")
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: tfiam-linux-x86_64
