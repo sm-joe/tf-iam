@@ -101,7 +101,8 @@ def enrich(plan, address, body, task, select):
         if definition:
             family = definition.get("family")
             if isinstance(family, str) and re.fullmatch(r"[A-Za-z0-9_-]+", family):
-                set_if_unknown("task_definition", f"{family}:*")
+                if "task_definition" in unknown and body.get("task_definition") is None:
+                    result["_tfiam_task_definition_family"] = family
     if typ == "aws_lb_listener":
         lb = _parent(plan, address, "load_balancer_arn", "aws_lb", select)
         if lb:
