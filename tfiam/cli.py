@@ -99,6 +99,15 @@ def main(argv=None, *, maintainer=False):
             from .policy_size import partition
             from .policy_size import compact
             result=partition(json.loads(args.policy.read_bytes()),args.policy_type,args.max_chars,args.max_policies,args.name)
+            # One parseable JSON document contains all IAM policy documents.
+            # Individual JSON files remain the attachable AWS IAM documents.
+            bundle={
+                'schema_version':result['schema_version'],
+                'policy_type':result['policy_type'],
+                'policy_count':result['policy_count'],
+                'managed_policy_character_limit':result['limit'],
+                'policies':[{'name':item['name'],'document':item['document']} for item in result['policies']],
+            }
             # Never overwrite a previous policy set or leave a half-written set.
             import os, tempfile, shutil
             target=args.output_dir.absolute()
@@ -107,9 +116,10 @@ def main(argv=None, *, maintainer=False):
             try:
                 for item in result['policies']:
                     path=stage/(item['name']+'.json')
-                    path.write_text(compact(item['document'])+'\n',encoding='utf-8')
+                    path.write_text(json.dumps(item['document'],indent=2,ensure_ascii=True)+'\n',encoding='utf-8')
                     item['file']=path.name
                     del item['document']
+                (stage/'bundle.json').write_text(json.dumps(bundle,indent=2,ensure_ascii=True)+'\n',encoding='utf-8')
                 (stage/'manifest.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
                 # Reserve destination exclusively, then move the completed files.
                 target.mkdir(mode=0o700)
@@ -119,7 +129,14 @@ def main(argv=None, *, maintainer=False):
                     shutil.rmtree(target)
                     raise
             finally: shutil.rmtree(stage)
-            print(json.dumps(result,indent=2))
+            print(json.dumps({
+                'status':'PACKED',
+                'output_directory':str(target),
+                'bundle_file':str(target/'bundle.json'),
+                'manifest_file':str(target/'manifest.json'),
+                'policy_count':result['policy_count'],
+                'policies':[{'name':item['name'],'file':item['file'],'characters':item['characters']} for item in result['policies']],
+            },indent=2))
             return 0
         if args.command=='evidence-audit':
             from .evidence_audit import reconcile,read_events
