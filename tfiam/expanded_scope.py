@@ -186,13 +186,13 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
             inferred_family=body.get("_tfiam_task_definition_family")
             if task_definition or inferred_family:
                 prefix=arn("ecs","task-definition/")
-                if prefix and re.fullmatch(re.escape(prefix)+r"[A-Za-z0-9_-]+:[0-9]+",task_definition):
+                if prefix and task_definition and re.fullmatch(re.escape(prefix)+r"[A-Za-z0-9_-]+:[0-9]+",task_definition):
                     task_arn=task_definition
-                elif prefix and re.fullmatch(r"[A-Za-z0-9_-]+:(?:[0-9]+|\\*)",task_definition):
+                elif prefix and task_definition and re.fullmatch(r"[A-Za-z0-9_-]+:(?:[0-9]+|\\*)",task_definition):
                     # A graph-proven planned task-definition family has no
                     # allocated revision until Terraform registers it.
                     task_arn=prefix+task_definition
-                elif prefix and re.fullmatch(r"[A-Za-z0-9_-]+",task_definition):
+                elif prefix and task_definition and re.fullmatch(r"[A-Za-z0-9_-]+",task_definition):
                     task_arn=prefix+task_definition+":*"
                 else: task_arn=None
                 if not task_arn and prefix and inferred_family and re.fullmatch(r"[A-Za-z0-9_-]+",inferred_family):
