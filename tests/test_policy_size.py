@@ -39,8 +39,15 @@ def test_cli_pack_policy(tmp_path):
     args=["pack-policy",str(source),"--output-dir",str(target)]
     assert main(args)==0
     manifest=json.loads((target/"manifest.json").read_text())
-    packed=json.loads((target/manifest["policies"][0]["file"]).read_text())
+    packed_text=(target/manifest["policies"][0]["file"]).read_text()
+    packed=json.loads(packed_text)
+    assert "\\n  \\"Version\\"" in packed_text
     assert grants(packed)==grants(original)
+    bundle=json.loads((target/"bundle.json").read_text())
+    assert bundle["schema_version"]==1
+    assert bundle["policy_count"]==manifest["policy_count"]
+    assert bundle["policies"][0]["document"]==packed
+    assert grants(bundle["policies"][0]["document"])==grants(original)
     assert main(args)!=0
     assert main(["pack-policy",str(source),"--output-dir",str(tmp_path/"bad"),"--max-chars","1"])!=0
     assert not (tmp_path/"bad").exists()
@@ -90,3 +97,24 @@ def test_optimized_generation_preserves_peer_and_tag_conditions_exactly():
         (p["action"],p["scope"],json.dumps(p["condition"],sort_keys=True,separators=(",",":"),ensure_ascii=True))
         for p in records
     }
+
+
+def test_cli_pack_policy_emits_one_readable_bundle_and_no_policy_dump(tmp_path,capsys):
+    source=tmp_path/"policy.json"
+    directory=tmp_path/"packed"
+    original=doc([row("ec2:DescribeVpcs","*"),row("ec2:DescribeSubnets","*")])
+    source.write_text(json.dumps(original))
+    assert main(["pack-policy",str(source),"--output-dir",str(directory)])==0
+    summary=json.loads(capsys.readouterr().out)
+    assert summary["status"]=="PACKED"
+    assert summary["bundle_file"]==str(directory/"bundle.json")
+    assert "Statement" not in summary
+    bundle_text=(directory/"bundle.json").read_text()
+    assert '\\n  "policies": [' in bundle_text
+    bundle=json.loads(bundle_text)
+    assert bundle["policy_count"]==1
+    assert grants(bundle["policies"][0]["document"])==grants(original)
+    files=[item["file"] for item in summary["policies"]]
+    assert len(files)==bundle["policy_count"]
+    for path in files:
+        assert json.loads((directory/path).read_text())["Version"]=="2012-10-17"
