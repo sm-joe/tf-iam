@@ -37,7 +37,7 @@ def test_source_only_ecs_stack_uses_explicit_placeholders_without_account(tmp_pa
     assert report["candidate_status"]=="INCOMPLETE"
     assert report["fallback_permissions"]
     assert required <= {row["action"] for row in report["fallback_permissions"]}
-    assert report["scope_summary"]["global"]<len(required)
+    assert all(row["scope"] != "*" for row in report["fallback_permissions"] if row["action"] in required)
     assert "REQUIRES_REPLACEMENT" in json.dumps(report["fallback_permissions"])
     assert "REPLACE_WITH" in "\n".join(report["warnings"])
     captured=capsys.readouterr()
