@@ -235,6 +235,10 @@ The Output Directory Must Not Already Exist. The Manifest Reports Original And O
 
 For Inline Policies, Use `--policy-type inline-role`, `inline-user` Or `inline-group`. The Aggregate Identity Limit Is Enforced; Splitting Cannot Bypass It. Existing Inline Policy Usage Must Be Accounted For With A Reduced `--max-chars`.
 
+The Output Directory Contains `bundle.json` (One Valid, Pretty-Printed JSON Object With A `policies` Array And Each Policy's IAM `document`), `manifest.json` (Names, Quota Counts And File References), And Separate Pretty-Printed `TerraformPipeline-01.json`, `TerraformPipeline-02.json`, Etc. The Separate Files Are AWS IAM Policy Documents Suitable For Individual Validation And Attachment; `bundle.json` Is A Container Format, Not A Single IAM Policy.
+
+The Command Prints A Small JSON Summary With Output Paths Instead Of Dumping Multiple IAM Documents Into The Terminal. Open `policy-bundle/bundle.json` For The Complete Set Of Packed Policies In One JSON File.
+
 This Command Does Not Attach Policies Or Change AWS Resources. Review And Validate Each Generated Policy Document Independently.
 
 See [Mixed Infrastructure Lifecycle Acceptance](docs/mixed-lifecycle.md) For The Maintainer's Isolated Create, Update And Destroy Workflow.
