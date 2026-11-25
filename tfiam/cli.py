@@ -112,9 +112,9 @@ def main(argv=None, *, maintainer=False):
             if len({p.absolute() for p in paths+[args.generated,args.observed]})!=len(paths)+2:
                 raise ValueError('Reconciliation outputs must be different from inputs and each other')
             if args.merged_policy:
-                args.merged_policy.write_text(json.dumps(result['merged_policy'],indent=2)+'\\n',encoding='utf-8')
+                args.merged_policy.write_text(json.dumps(result['merged_policy'],indent=2)+'\n',encoding='utf-8')
             if args.output:
-                args.output.write_text(json.dumps(result['report'],indent=2)+'\\n',encoding='utf-8')
+                args.output.write_text(json.dumps(result['report'],indent=2)+'\n',encoding='utf-8')
             else:
                 print(json.dumps(result['report'],indent=2))
             return 0
