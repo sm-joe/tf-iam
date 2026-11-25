@@ -66,6 +66,11 @@ def main(argv=None, *, maintainer=False):
     validate.add_argument('policy',type=Path); validate.add_argument('--aws-profile'); validate.add_argument('--aws-region'); validate.add_argument('--strict',action='store_true'); validate.add_argument('--output',type=Path)
     pack=sub.add_parser('pack-policy',help='Optimize and partition generated AWS policies without changing grants')
     pack.add_argument('policy',type=Path); pack.add_argument('--policy-type',choices=['managed','inline-role','inline-user','inline-group'],default='managed'); pack.add_argument('--max-chars',type=int); pack.add_argument('--max-policies',type=int,default=10); pack.add_argument('--name',default='TerraformPipeline'); pack.add_argument('--output-dir',type=Path,required=True)
+    observed=sub.add_parser('reconcile-observed',help='Compare an IAM Live policy to generated IAM and optionally emit reviewed grant union')
+    observed.add_argument('--generated',type=Path,required=True,help='Generated IAM identity policy JSON')
+    observed.add_argument('--observed',type=Path,required=True,help='IAM Live observed IAM policy JSON')
+    observed.add_argument('--output',type=Path,help='Write exact-grant difference report JSON')
+    observed.add_argument('--merged-policy',type=Path,help='Opt in to writing union of generated and observed IAM grants')
     runtime=sub.add_parser('runtime-audit',help='Compare observed CloudTrail management operations with candidate actions')
     runtime.add_argument('--role-arn',required=True); runtime.add_argument('--events',type=Path); runtime.add_argument('--start'); runtime.add_argument('--end'); runtime.add_argument('--aws-profile'); runtime.add_argument('--aws-region'); runtime.add_argument('--candidate',type=Path,required=True); runtime.add_argument('--output',type=Path); runtime.add_argument('--session-name',action='append',default=[],help='Exact known STS session name; repeat for multiple sessions'); runtime.add_argument('--max-pages',type=int,default=100); runtime.add_argument('--max-seconds',type=int,default=120); runtime.add_argument('--quiet',action='store_true')
     for cmd in ('scan','generate','compare','split'):
@@ -96,6 +101,23 @@ def main(argv=None, *, maintainer=False):
             if args.show_table and args.format!='table': print(render(args.command,result),file=sys.stderr)
         else: print(output)
     try:
+        if args.command=='reconcile-observed':
+            from .observed import reconcile
+            from .policy_size import grants
+            generated=json.loads(args.generated.read_bytes())
+            observed_doc=json.loads(args.observed.read_bytes())
+            result=reconcile(generated,observed_doc)
+            # Read and check both documents before touching any outputs.
+            paths=[p for p in (args.output,args.merged_policy) if p is not None]
+            if len({p.absolute() for p in paths+[args.generated,args.observed]})!=len(paths)+2:
+                raise ValueError('Reconciliation outputs must be different from inputs and each other')
+            if args.merged_policy:
+                args.merged_policy.write_text(json.dumps(result['merged_policy'],indent=2)+'\n',encoding='utf-8')
+            if args.output:
+                args.output.write_text(json.dumps(result['report'],indent=2)+'\n',encoding='utf-8')
+            else:
+                print(json.dumps(result['report'],indent=2))
+            return 0
         if args.command=='pack-policy':
             from .policy_size import partition
             from .policy_size import compact
