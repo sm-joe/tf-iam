@@ -167,7 +167,10 @@ def recover(plan,address,definitions,select,body,task,sources=None,allow_name=Fa
         parent_body=masked(pc.get("after") or {},pc.get("after_sensitive"),pc.get("after_unknown"))
         condition=anchor(parent_body,allow_name) if isinstance(parent_body,dict) else {}
         if condition: return {"kind":EC2_TYPES[kind][0],"condition":condition}
-        return None
+        # A direct reference to a resource being created proves its prospective
+        # AWS resource class and provider context even when it has no tags.
+        # The exact ID is not invented; the class ARN remains a wildcard.
+        return {"kind":EC2_TYPES[kind][0],"prospective":True}
     for field,raw in row[0].get(base,{}).items():
         if isinstance(sensitive,dict) and marked(sensitive.get(field)): continue
         meta=consumer.get("expressions",{}).get(field,{})
