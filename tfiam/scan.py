@@ -379,6 +379,14 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                         if known and re.fullmatch(
                                                 rf'arn:{partition}:iam::{account}:role/[^\s*?]+',known):
                                             body={**body,'_tfiam_identity_arn':known}
+                                if typ=='aws_iam_role_policy' and not task:
+                                    owner_arn=resolve(body.get('_tfiam_identity_arn'))
+                                    if owner_arn and re.fullmatch(
+                                            rf'arn:{partition}:iam::{account}:role/[^\\s*?]+',
+                                            owner_arn):
+                                        for action in acts:
+                                            add('aws',[action],owner_arn,address)
+                                        continue
                                 expand(rule['scope_strategy'],typ,body,acts,account,region,partition,resolve,add,warn,address,task,unresolved=omit)
                                 continue
                             if typ=='aws_dynamodb_table' and task:
