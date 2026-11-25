@@ -233,6 +233,16 @@ def main(argv=None, *, maintainer=False):
         elif args.command=='scan': result=report; output=json.dumps(report,indent=2)
         elif args.command=='generate':
             result=policy(report,args.provider,args.name,args.scope)
+            from .policy_size import size as policy_characters, LIMITS
+            candidate_size=policy_characters(result)
+            if candidate_size>LIMITS['managed']:
+                print(
+                    f'NOTICE: Generated policy contains {candidate_size} IAM characters, '
+                    f'exceeding the {LIMITS["managed"]}-character customer-managed policy limit. '
+                    'The candidate is not attachable as one managed policy. '
+                    'Run: tfiam pack-policy policy.json --output-dir policy-bundle',
+                    file=sys.stderr,
+                )
             if args.format=='terraform': output=json.dumps(terraform(result,args.provider,args.name,args.scope),indent=2)
             else: output=json.dumps(result,indent=2)
         else:
