@@ -39,7 +39,7 @@ def test_source_only_ecs_stack_uses_broad_fallback_without_account(tmp_path,caps
     assert required <= {row["action"] for row in report["fallback_permissions"]}
     assert report["scope_summary"]["global"]>=len(required)
     assert "BROAD_FALLBACK" in json.dumps(report["fallback_permissions"])
-    assert "broad generation fallbacks" in "\n".join(report["warnings"])
+    assert "candidate fallbacks" in "\n".join(report["warnings"])
     captured=capsys.readouterr()
     assert "POLICY SUMMARY" in captured.err
 
@@ -92,3 +92,56 @@ def test_conditional_global_grant_does_not_mask_unresolved_fallback():
     assert report["fallback_permissions"][0]["action"]=="iam:PassRole"
     assert any(p["action"]=="iam:PassRole" and "condition" not in p
                for p in report["permissions"])
+
+
+def test_known_account_scopes_iam_passrole_and_ec2_tag_fallbacks():
+    from tfiam.candidate_fallback import include_unresolved
+    def resource(address):
+        return {"address": address, "provider_context": {
+            "account":"638631156706", "region":"us-east-1","partition":"aws"}}
+    sources = [
+        ("aws_ecs_task_definition.app", "iam:PassRole"),
+        ("aws_iam_instance_profile.ecs", "iam:PassRole"),
+        ('module.compute.aws_subnet.public[0]', "ec2:CreateTags"),
+        ('aws_security_group.ecs', "ec2:DeleteTags"),
+        ("aws_ecs_service.app", "iam:PassRole"),
+    ]
+    report={
+        "resources":[resource(src) for src,_ in sources],
+        "permissions":[],
+        "unresolved_permissions":[{"source":src, "action":action,"reason":"unknown"}
+                                  for src,action in sources],
+        "warnings":[], "scope_summary":{}, "risks":[],
+    }
+    include_unresolved(report)
+    grants={(row["source"],row["action"]):row for row in report["permissions"]}
+    assert grants[("aws_ecs_task_definition.app","iam:PassRole")]["scope"] == (
+        "arn:aws:iam::638631156706:role/*")
+    assert grants[("aws_ecs_task_definition.app","iam:PassRole")]["condition"] == {
+        "StringEquals":{"iam:PassedToService":"ecs-tasks.amazonaws.com"}}
+    assert grants[("aws_iam_instance_profile.ecs","iam:PassRole")]["condition"] == {
+        "StringEquals":{"iam:PassedToService":"ec2.amazonaws.com"}}
+    assert grants[('module.compute.aws_subnet.public[0]',"ec2:CreateTags")]["scope"] == (
+        "arn:aws:ec2:us-east-1:638631156706:subnet/*")
+    assert grants[("aws_security_group.ecs","ec2:DeleteTags")]["scope"] == (
+        "arn:aws:ec2:us-east-1:638631156706:security-group/*")
+    assert grants[("aws_ecs_service.app","iam:PassRole")]["scope"] == "*"
+    assert sum(x["scope_status"]=="SCOPED_FALLBACK"
+               for x in report["fallback_permissions"]) == 4
+    assert report["scope_summary"]["global"]==1
+    assert report["scope_summary"]["bounded_wildcard"]==4
+
+
+def test_unknown_account_preserves_nonblocking_broad_candidate_fallback():
+    from tfiam.candidate_fallback import include_unresolved
+    report={
+        "resources":[{"address":"aws_ecs_task_definition.app",
+                      "provider_context":{"account":None,"region":"us-east-1","partition":"aws"}}],
+        "permissions":[],
+        "unresolved_permissions":[{"source":"aws_ecs_task_definition.app",
+                                   "action":"iam:PassRole","reason":"unknown"}],
+        "warnings":[],"scope_summary":{},"risks":[],
+    }
+    include_unresolved(report)
+    assert report["permissions"][0]["scope"] == "*"
+    assert "condition" not in report["permissions"][0]
