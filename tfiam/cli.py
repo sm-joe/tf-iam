@@ -240,6 +240,9 @@ def main(argv=None, *, maintainer=False):
                 account,region,partition=discover_aws_identity(account,region,partition)
             contexts=discover_profile_contexts(args.directory,contexts)
         report=scan(args.directory,args.phase,account,region,partition,config,plan=plan,var_files=args.var_file,variables=variables,scope_resource_tags=args.scope_resource_tags,scope_generated_names=args.scope_generated_names,provider_version=args.aws_provider_version,authorization_metadata=args.authorization_metadata,provider_contexts=contexts)
+        if args.command=='generate' and not args.require_complete:
+            from .candidate_fallback import include_unresolved
+            include_unresolved(report)
         status=2 if args.strict and report['coverage']!='COMPLETE' else 0
         require_complete_mapping=(args.command=='generate' and args.require_complete) or (args.command=='split' and not args.allow_partial)
         report['gate_failures']=gate(report,args.fail_on_risk,args.fail_on_unresolved or require_complete_mapping,args.fail_on_unmapped or require_complete_mapping,args.require_compatible_metadata,args.require_lifecycle_verified)
@@ -296,6 +299,7 @@ def main(argv=None, *, maintainer=False):
                 report['coverage']!='COMPLETE'
                 or report.get('unresolved_permissions')
                 or report.get('source_only_resources')
+                or report.get('fallback_permissions')
                 or report['authorization_metadata']['status']=='issues'
             )
             report['candidate_status']='INCOMPLETE' if incomplete else 'COMPLETE'
