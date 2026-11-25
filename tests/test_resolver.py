@@ -100,10 +100,13 @@ def test_unknown_optional_delegation_and_boundary_block_generation(tmp_path):
     assert main(["generate",str(tmp_path),"--aws-account","123456789012","--aws-region","us-east-1","--output",str(output)])==0
     assert output.is_file()
     candidate=json.loads(output.read_text())
-    assert not any("iam:PassRole" in row["Action"] for row in candidate["Statement"])
+    assert any("iam:PassRole" in row["Action"] and row["Resource"]=="*" for row in candidate["Statement"])
     assert "policy/hidden" not in output.read_text()
     report=json.loads((tmp_path/"policy.json.report.json").read_text())
     assert report["candidate_status"]=="INCOMPLETE"
+    assert {"iam:PassRole","iam:CreateRole","iam:PutRolePermissionsBoundary"} <= {
+        row["action"] for row in report["fallback_permissions"]}
+    assert "policy/hidden" not in json.dumps(report)
     assert main(["generate",str(tmp_path),"--aws-account","123456789012","--aws-region","us-east-1","--require-complete"])==4
 
 def test_new_iam_user_and_group_attachment_files(tmp_path):
