@@ -268,11 +268,13 @@ def scan(root=None, phase='apply', account=None, region=None, partition='aws', b
                                     elif not region:
                                         reason='AWS target region unknown; set a Terraform provider region or AWS_REGION'
                                 unresolved(address,action,reason)
-                            if task and has_root and typ in EC2_TYPES | {
-                                'aws_route','aws_route_table_association',
-                                'aws_vpc_endpoint_route_table_association',
-                                'aws_vpc_endpoint_subnet_association',
-                            }:
+                            if task and has_root and (
+                                typ in EC2_TYPES or typ in (
+                                    'aws_route','aws_route_table_association',
+                                    'aws_vpc_endpoint_route_table_association',
+                                    'aws_vpc_endpoint_subnet_association',
+                                )
+                            ):
                                 from .plan_network import recover, anchor
                                 body={**body,'_tfiam_dynamic_ec2':recover(
                                     plan,address,definitions,select_context,body,task,
