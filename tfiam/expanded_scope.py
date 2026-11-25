@@ -71,9 +71,10 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
             if key and KEY.fullmatch(key): target=key; break
             if task and key and re.fullmatch(r"(?:mrk-[a-f0-9]{32}|[a-f0-9-]{36})",key):
                 target=arn("kms","key/"+key); break
-        if not target and account and region:
-            # KMS allocates the ID during CreateKey; a known account/region
-            # allows a prospective key class, not an exact key ARN.
+        if not target and account and region and typ=="aws_kms_key":
+            # The provider allocates key IDs during aws_kms_key creation.
+            # Do not apply this prospective class scope to external
+            # aws_kms_key_policy resources with unknown key identities.
             target=arn("kms","key/*")
     elif strategy=="kms-alias":
         expected=rf"arn:{partition}:kms:[a-z0-9-]+:[0-9]{{12}}:alias/[A-Za-z0-9/_-]+"
@@ -176,9 +177,12 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
                 key=arn("kms","key/*")
             if action=="kms:CreateAlias" and target and key:
                 emit(action,target); emit(action,key)
-            elif action=="kms:UpdateAlias" and target and key:
-                # A static full-lifecycle candidate cannot inspect a future
-                # former key. A scoped key class covers both possible keys.
+            elif action=="kms:UpdateAlias" and target and key and (
+                    not task or task.get("operation")!="update" or old):
+                # Updates require authorization on the alias, the new key
+                # and the previous key. A static source scan cannot recover
+                # the previous key so its lifecycle candidate is class-bound;
+                # a concrete update plan must identify the old key.
                 emit(action,target); emit(action,key)
                 if old: emit(action,old)
             elif action=="kms:DeleteAlias" and target:
