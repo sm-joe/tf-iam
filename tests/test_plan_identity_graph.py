@@ -46,8 +46,16 @@ def test_iam_ecs_elb_plan_references_no_unscoped_passrole():
     listener=resource("aws_lb_listener","http",{"load_balancer_arn":None,"port":80,"protocol":"HTTP"},
                       {"load_balancer_arn":True},
                       {"load_balancer_arn":"aws_lb.main.arn"})
-    report=scan(plan=plan(*roles,cluster,task,service,lb,listener),
-                account=ACCOUNT,region=REGION)
+    p=plan(*roles,cluster,task,service,lb,listener)
+    direct=enrich(
+        p,"aws_lb_listener.http",listener[0]["change"]["after"],
+        {"entry":{"type":"aws_lb_listener"},"operation":"create",
+         "unknown_fields":["load_balancer_arn"],"all_fields_masked":False},
+        lambda _: (ACCOUNT,REGION,"aws")
+    )
+    assert direct.get("_tfiam_parent_lb_arn")==(
+        f"arn:aws:elasticloadbalancing:{REGION}:{ACCOUNT}:loadbalancer/app/ecs-demo-alb/*")
+    report=scan(plan=p,account=ACCOUNT,region=REGION)
     def rows(source,action):
         return [row for row in report["permissions"]
                 if row["source"]==source and row["action"]==action]
