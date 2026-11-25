@@ -71,10 +71,19 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
             if key and KEY.fullmatch(key): target=key; break
             if task and key and re.fullmatch(r"(?:mrk-[a-f0-9]{32}|[a-f0-9-]{36})",key):
                 target=arn("kms","key/"+key); break
+        if not target and account and region:
+            # KMS allocates the ID during CreateKey; a known account/region
+            # allows a prospective key class, not an exact key ARN.
+            target=arn("kms","key/*")
     elif strategy=="kms-alias":
         expected=rf"arn:{partition}:kms:[a-z0-9-]+:[0-9]{{12}}:alias/[A-Za-z0-9/_-]+"
         alias=value("name")
         if alias and alias.startswith("alias/"): target=name_arn("kms","","name")
+        if not target and account and region:
+            # The alias name may depend on an unbound Terraform variable.
+            # Do not claim an exact identity; at least constrain the resource
+            # class rather than inventing an account-global mutation.
+            target=arn("kms","alias/*")
     elif strategy=="eks-access":
         expected=rf"arn:{partition}:eks:[a-z0-9-]+:[0-9]{{12}}:access-entry/[^\s*?]+"
         # AWS assigns an opaque UUID. Scope to exact ARN when supplied by Terraform.
@@ -163,12 +172,17 @@ def expand(strategy, typ, body, actions, account, region, partition, resolve, ad
                 return None
             key=key_arn(body.get("target_key_id"))
             old=key_arn(task.get("before",{}).get("target_key_id")) if task else None
+            if not key and account and region:
+                key=arn("kms","key/*")
             if action=="kms:CreateAlias" and target and key:
                 emit(action,target); emit(action,key)
-            elif action=="kms:UpdateAlias" and target and key and old and task and task["operation"]=="update":
-                for resource in sorted({target,key,old}): emit(action,resource)
-            elif action=="kms:DeleteAlias" and target and key and task and task["operation"]=="delete":
+            elif action=="kms:UpdateAlias" and target and key:
+                # A static full-lifecycle candidate cannot inspect a future
+                # former key. A scoped key class covers both possible keys.
                 emit(action,target); emit(action,key)
+                if old: emit(action,old)
+            elif action=="kms:DeleteAlias" and target:
+                emit(action,target)
             else: omit(action)
             continue
         if action in ("route53:GetChange",):
