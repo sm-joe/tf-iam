@@ -46,7 +46,7 @@ Use A Dedicated Audit Identity For Live Integrations, Separate Policy Approval F
 
 Where Terraform Declares A Resolvable `tfiam:scope` Or `Name` Tag, The Generator Can Restrict Certain EC2 Tagging And Destructive Operations With AWS Resource-Tag Conditions. `ec2:CreateAction` Limits Creation-Time Tagging, And `aws:TagKeys` Limits Existing-Resource Tag Operations To Declared Keys.
 
-A `Name` Tag Is Neither A Unique Resource Identifier Nor An Immutable Security Boundary. A Principal With Separate Broad Tag Permissions Can Potentially Change The Resource Set Matching A Tag Condition. Require Dedicated Ownership Tags, Controlled Tag Mutation, Resource-Specific ARNs From Saved Plans, Or Additional IAM Guardrails Where Strong Isolation Is Necessary.
+A `Name` Tag Is Neither A Unique Resource Identifier Nor An Immutable Security Boundary. In Source-Only Policies, The Generator Does Not Authorize Changing The Key Used As Its Own Resource-Tag Authorization Anchor Through Post-Creation `ec2:CreateTags` Or `ec2:DeleteTags`. A Principal With Separate Broad Tag Permissions May Still Change The Resource Set Matching A Tag Condition. Require Dedicated Ownership Tags, Controlled Tag Mutation, Resource-Specific ARNs From Saved Plans, Or Additional IAM Guardrails Where Strong Isolation Is Necessary.
 
 Offline Generation Does Not Verify That AWS Will Authorize A Particular Terraform Apply. Use The Existing AWS Access Analyzer Validation Command For Policy Findings And A Separately Authorized, Isolated AWS Lifecycle Test For Create/Update/Destroy. Neither A Green CLI Test Nor A Successful Policy File Write Is Equivalent To Live Authorization Evidence.
 
